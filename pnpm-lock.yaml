@@ -14,9 +14,9 @@ importers:
       '@electron/remote':
         specifier: ^2.1.2
         version: 2.1.2(electron@34.2.0)
-      '@nutstore/obsidian-sso':
-        specifier: workspace:*
-        version: link:packages/sso
+      '@nutstore/sso-wasm':
+        specifier: ^0.0.2
+        version: 0.0.2
       '@types/diff-match-patch':
         specifier: ^1.0.36
         version: 1.0.36
@@ -140,8 +140,6 @@ importers:
       webdav-explorer:
         specifier: 'workspace: *'
         version: link:packages/webdav-explorer
-
-  packages/sso: {}
 
   packages/webdav-explorer:
     dependencies:
@@ -821,6 +819,9 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
+
+  '@nutstore/sso-wasm@0.0.2':
+    resolution: {integrity: sha512-mFks4Rk+vnKWGegSb1XhwGEcOubtdDWJVI7amyyXX+7yldxNf/uUjdgueWF6GyVp3mSOTRIW59A9WLLc7W/c8A==, tarball: https://npm.pkg.github.com/download/@nutstore/sso-wasm/0.0.2/17a7e4e72cb6e6b2e85295a3817836c30b72f979}
 
   '@parcel/watcher-android-arm64@2.5.1':
     resolution: {integrity: sha512-KF8+j9nNbUN8vzOFDpRMsaKBHZ/mcjEjMToVMJOhTozkDonQFFrRcfdLWn6yWKCmJKmdVxSgHiYvTCef4/qcBA==}
@@ -4131,6 +4132,8 @@ snapshots:
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.19.0
+
+  '@nutstore/sso-wasm@0.0.2': {}
 
   '@parcel/watcher-android-arm64@2.5.1':
     optional: true
