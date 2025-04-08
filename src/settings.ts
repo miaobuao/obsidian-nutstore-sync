@@ -131,11 +131,12 @@ export class NutstoreSettingTab extends PluginSettingTab {
 
 	private displayManualLoginSettings(): void {
 		const helper = new Setting(this.containerEl)
-		helper.descEl.createEl('a', {
+		const anchor = helper.descEl.createEl('a', {
 			href: 'https://help.jianguoyun.com/?p=2064',
 			cls: 'no-underline',
 			text: i18n.t('settings.help.name'),
 		})
+		anchor.target = '_blank'
 
 		new Setting(this.containerEl)
 			.setName(i18n.t('settings.account.name'))
@@ -291,7 +292,10 @@ export class NutstoreSettingTab extends PluginSettingTab {
 		const url = await createOAuthUrl({
 			app: 'obsidian',
 		})
-		window.open(url)
+		const anchor = document.createElement('a')
+		anchor.href = url
+		anchor.target = '_blank'
+		anchor.click()
 		return new Promise<boolean>((resolve, reject) => {
 			const timeout = setTimeout(
 				() => {
