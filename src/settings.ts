@@ -205,6 +205,10 @@ export class NutstoreSettingTab extends PluginSettingTab {
 					button
 						.setButtonText(i18n.t('settings.login.name'))
 						.onClick(async () => {
+							anchor.href = await createOAuthUrl({
+								app: 'obsidian',
+							})
+							anchor.click()
 							const ssoRes = await this.handleSSO()
 							if (ssoRes) {
 								new Notice(i18n.t('settings.login.success'), 5000)
@@ -214,12 +218,22 @@ export class NutstoreSettingTab extends PluginSettingTab {
 							}
 						})
 					const anchor = document.createElement('a')
-					anchor.href = await createOAuthUrl({
-						app: 'obsidian',
-					})
 					anchor.target = '_blank'
 					button.buttonEl.parentElement?.appendChild(anchor)
 					anchor.appendChild(button.buttonEl)
+					// updateUrl()
+					// async function updateUrl() {
+					// 	anchor.href = await createOAuthUrl({
+					// 		app: 'obsidian',
+					// 	})
+					// }
+					// const timer = setInterval(async () => {
+					// 	try {
+					// 		await updateUrl()
+					// 	} catch {
+					// 		clearInterval(timer)
+					// 	}
+					// })
 				})
 		}
 	}
@@ -296,13 +310,6 @@ export class NutstoreSettingTab extends PluginSettingTab {
 	}
 
 	handleSSO = async () => {
-		// const url = await createOAuthUrl({
-		// 	app: 'obsidian',
-		// })
-		// const anchor = document.createElement('a')
-		// anchor.href = url
-		// anchor.target = '_blank'
-		// anchor.click()
 		return new Promise<boolean>((resolve, reject) => {
 			const timeout = setTimeout(
 				() => {
