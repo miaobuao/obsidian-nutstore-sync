@@ -46,6 +46,8 @@ export function useSettings() {
 export class NutstoreSettingTab extends PluginSettingTab {
 	plugin: NutstorePlugin
 
+	updateOAuthUrlTimer: number | null = null
+
 	constructor(app: App, plugin: any) {
 		super(app, plugin)
 		this.plugin = plugin
@@ -131,11 +133,12 @@ export class NutstoreSettingTab extends PluginSettingTab {
 
 	private displayManualLoginSettings(): void {
 		const helper = new Setting(this.containerEl)
-		helper.descEl.createEl('a', {
+		const anchor = helper.descEl.createEl('a', {
 			href: 'https://help.jianguoyun.com/?p=2064',
 			cls: 'no-underline',
 			text: i18n.t('settings.help.name'),
 		})
+		anchor.target = '_blank'
 
 		new Setting(this.containerEl)
 			.setName(i18n.t('settings.account.name'))
@@ -200,7 +203,7 @@ export class NutstoreSettingTab extends PluginSettingTab {
 		} else {
 			new Setting(this.containerEl)
 				.setName(i18n.t('settings.ssoStatus.notLoggedIn'))
-				.addButton((button) => {
+				.addButton(async (button) => {
 					button
 						.setButtonText(i18n.t('settings.login.name'))
 						.onClick(async () => {
@@ -212,6 +215,24 @@ export class NutstoreSettingTab extends PluginSettingTab {
 								new Notice(i18n.t('settings.login.failure'), 5000)
 							}
 						})
+					const anchor = document.createElement('a')
+					anchor.target = '_blank'
+					button.buttonEl.parentElement?.appendChild(anchor)
+					anchor.appendChild(button.buttonEl)
+					anchor.href = await createOAuthUrl({
+						app: 'obsidian',
+					})
+					this.updateOAuthUrlTimer = window.setInterval(async () => {
+						const stillInDoc = document.contains(anchor)
+						if (stillInDoc) {
+							anchor.href = await createOAuthUrl({
+								app: 'obsidian',
+							})
+						} else {
+							clearInterval(this.updateOAuthUrlTimer!)
+							this.updateOAuthUrlTimer = null
+						}
+					}, 10000)
 				})
 		}
 	}
@@ -288,10 +309,6 @@ export class NutstoreSettingTab extends PluginSettingTab {
 	}
 
 	handleSSO = async () => {
-		const url = await createOAuthUrl({
-			app: 'obsidian',
-		})
-		window.open(url)
 		return new Promise<boolean>((resolve, reject) => {
 			const timeout = setTimeout(
 				() => {
@@ -312,5 +329,12 @@ export class NutstoreSettingTab extends PluginSettingTab {
 				}
 			})
 		})
+	}
+
+	hide() {
+		if (this.updateOAuthUrlTimer !== null) {
+			clearInterval(this.updateOAuthUrlTimer)
+			this.updateOAuthUrlTimer = null
+		}
 	}
 }
