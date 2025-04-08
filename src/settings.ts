@@ -201,7 +201,7 @@ export class NutstoreSettingTab extends PluginSettingTab {
 		} else {
 			new Setting(this.containerEl)
 				.setName(i18n.t('settings.ssoStatus.notLoggedIn'))
-				.addButton((button) => {
+				.addButton(async (button) => {
 					button
 						.setButtonText(i18n.t('settings.login.name'))
 						.onClick(async () => {
@@ -213,6 +213,13 @@ export class NutstoreSettingTab extends PluginSettingTab {
 								new Notice(i18n.t('settings.login.failure'), 5000)
 							}
 						})
+					const anchor = document.createElement('a')
+					anchor.href = await createOAuthUrl({
+						app: 'obsidian',
+					})
+					anchor.target = '_blank'
+					button.buttonEl.parentElement?.appendChild(anchor)
+					anchor.appendChild(button.buttonEl)
 				})
 		}
 	}
@@ -289,13 +296,13 @@ export class NutstoreSettingTab extends PluginSettingTab {
 	}
 
 	handleSSO = async () => {
-		const url = await createOAuthUrl({
-			app: 'obsidian',
-		})
-		const anchor = document.createElement('a')
-		anchor.href = url
-		anchor.target = '_blank'
-		anchor.click()
+		// const url = await createOAuthUrl({
+		// 	app: 'obsidian',
+		// })
+		// const anchor = document.createElement('a')
+		// anchor.href = url
+		// anchor.target = '_blank'
+		// anchor.click()
 		return new Promise<boolean>((resolve, reject) => {
 			const timeout = setTimeout(
 				() => {
