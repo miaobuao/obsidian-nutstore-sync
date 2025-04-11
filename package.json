@@ -6,7 +6,7 @@
 		"dev": "run-p dev:*",
 		"dev:plugin": "node esbuild.config.mjs",
 		"dev:webdav-explorer": "pnpm --filter webdav-explorer dev",
-		"build": "run-s build:webdav-explorer build:plugin",
+		"build": "run-s build:webdav-explorer build:hierarchy-picker build:plugin",
 		"build:webdav-explorer": "pnpm --filter webdav-explorer build",
 		"build:plugin": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
