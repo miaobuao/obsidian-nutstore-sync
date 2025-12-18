@@ -53,6 +53,9 @@ importers:
       assert:
         specifier: ^2.1.0
         version: 2.1.0
+      blob-polyfill:
+        specifier: ^9.0.20240710
+        version: 9.0.20240710
       bottleneck:
         specifier: ^2.19.5
         version: 2.19.5
@@ -121,7 +124,7 @@ importers:
         version: 7.0.2
       obsidian:
         specifier: latest
-        version: 1.10.3(@codemirror/state@6.5.2)(@codemirror/view@6.36.4)
+        version: 1.11.0(@codemirror/state@6.5.2)(@codemirror/view@6.36.4)
       ohash:
         specifier: ^1.1.4
         version: 1.1.6
@@ -1597,6 +1600,9 @@ packages:
     resolution: {integrity: sha512-Ceh+7ox5qe7LJuLHoY0feh3pHuUDHAcRUeyL2VYghZwfpkNIy/+8Ocg0a3UuSoYzavmylwuLWQOf3hl0jjMMIw==}
     engines: {node: '>=8'}
 
+  blob-polyfill@9.0.20240710:
+    resolution: {integrity: sha512-DPUO/EjNANCgSVg0geTy1vmUpu5hhp9tV2F7xUSTUd1jwe4XpwupGB+lt5PhVUqpqAk+zK1etqp6Pl/HVf71Ug==}
+
   bn.js@4.12.1:
     resolution: {integrity: sha512-k8TVBiPkPJT9uHLdOKfFpqcfprwBFOAAXXozRubr7R7PfIuKvQlzcI4M0pALeqXN09vdaMbUdUj+pass+uULAg==}
 
@@ -2719,8 +2725,8 @@ packages:
     resolution: {integrity: sha512-nK28WOo+QIjBkDduTINE4JkF/UJJKyf2EJxvJKfblDpyg0Q+pkOHNTL0Qwy6NP6FhE/EnzV73BxxqcJaXY9anw==}
     engines: {node: '>= 0.4'}
 
-  obsidian@1.10.3:
-    resolution: {integrity: sha512-VP+ZSxNMG7y6Z+sU9WqLvJAskCfkFrTz2kFHWmmzis+C+4+ELjk/sazwcTHrHXNZlgCeo8YOlM6SOrAFCynNew==}
+  obsidian@1.11.0:
+    resolution: {integrity: sha512-lVqN9AmDWHzhNATi2tDnjqVgI6WUYKeT+lIsAycAyLt4XCC6zRsWzb+tFCiB7Rn3PpttefjoovilhYwvS4Iqxw==}
     peerDependencies:
       '@codemirror/state': 6.5.0
       '@codemirror/view': 6.38.6
@@ -4523,7 +4529,7 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.0.4
       '@types/keyv': 3.1.4
-      '@types/node': 22.19.1
+      '@types/node': 16.18.126
       '@types/responselike': 1.0.3
 
   '@types/chai@5.2.2':
@@ -4550,7 +4556,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 22.19.1
+      '@types/node': 16.18.126
 
   '@types/lodash-es@4.17.12':
     dependencies:
@@ -4574,7 +4580,7 @@ snapshots:
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 22.19.1
+      '@types/node': 16.18.126
 
   '@types/tern@0.23.9':
     dependencies:
@@ -4582,7 +4588,7 @@ snapshots:
 
   '@types/yauzl@2.10.3':
     dependencies:
-      '@types/node': 22.19.1
+      '@types/node': 16.18.126
     optional: true
 
   '@typescript-eslint/eslint-plugin@5.29.0(@typescript-eslint/parser@5.29.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)':
@@ -5053,6 +5059,8 @@ snapshots:
   baseline-browser-mapping@2.8.32: {}
 
   binary-extensions@2.3.0: {}
+
+  blob-polyfill@9.0.20240710: {}
 
   bn.js@4.12.1: {}
 
@@ -6259,7 +6267,7 @@ snapshots:
       has-symbols: 1.1.0
       object-keys: 1.1.1
 
-  obsidian@1.10.3(@codemirror/state@6.5.2)(@codemirror/view@6.36.4):
+  obsidian@1.11.0(@codemirror/state@6.5.2)(@codemirror/view@6.36.4):
     dependencies:
       '@codemirror/state': 6.5.2
       '@codemirror/view': 6.36.4

@@ -1,9 +1,10 @@
-import 'core-js/actual/array'
-import 'core-js/actual/string/pad-start'
-import 'core-js/actual/string/replace-all'
-import './assets/styles/global.css'
+import 'blob-polyfill'
+import 'core-js/stable'
+
 import './polyfill'
 import './webdav-patch'
+
+import './assets/styles/global.css'
 
 import { toBase64 } from 'js-base64'
 import { normalizePath, Notice, Plugin } from 'obsidian'
