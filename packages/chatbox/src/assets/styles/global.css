@@ -1,0 +1,52 @@
+@unocss;
+
+.markdown-rendered {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.markdown-rendered > *:first-child {
+	margin-top: 0;
+}
+
+.markdown-rendered > *:last-child {
+	margin-bottom: 0;
+}
+
+.markdown-rendered table {
+	display: block;
+	max-width: 100%;
+	overflow-x: auto;
+	border-collapse: collapse;
+	white-space: nowrap;
+}
+
+.markdown-rendered thead,
+.markdown-rendered tbody,
+.markdown-rendered tr {
+	width: max-content;
+	min-width: 100%;
+}
+
+.markdown-rendered th,
+.markdown-rendered td {
+	white-space: nowrap;
+}
+
+.markdown-rendered pre,
+.markdown-rendered code,
+.markdown-rendered .internal-embed,
+.markdown-rendered img {
+	max-width: 100%;
+}
+
+.markdown-rendered pre {
+	overflow-x: auto;
+	white-space: pre;
+}
+
+.chatbox-tag-button {
+	border-radius: 999px;
+}
+

@@ -22,12 +22,15 @@ import ScheduledSyncService from './services/scheduled-sync.service'
 import { StatusService } from './services/status.service'
 import SyncExecutorService from './services/sync-executor.service'
 import { WebDAVService } from './services/webdav.service'
+import ChatService from './services/chat.service'
 import {
 	NutstoreSettings,
 	NutstoreSettingTab,
 	setPluginInstance,
 	SyncMode,
 } from './settings'
+import ChatboxView, { CHATBOX_VIEW_TYPE } from './views/chatbox.view'
+import { sanitizeDefaultSelections, sanitizeProviders } from './ai/config'
 import { ConflictStrategy } from './sync/tasks/conflict-resolve.task'
 import { decryptOAuthResponse } from './utils/decrypt-ticket-response'
 import { GlobMatchOptions } from './utils/glob-match'
@@ -46,6 +49,7 @@ export default class NutstorePlugin extends Plugin {
 	public statusService = new StatusService(this)
 	public webDAVService = new WebDAVService(this)
 	public syncExecutorService = new SyncExecutorService(this)
+	public chatService = new ChatService(this)
 	public realtimeSyncService = new RealtimeSyncService(
 		this,
 		this.syncExecutorService,
@@ -57,7 +61,12 @@ export default class NutstorePlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings()
+		await this.chatService.initialize()
 		this.addSettingTab(new NutstoreSettingTab(this.app, this))
+		this.registerView(
+			CHATBOX_VIEW_TYPE,
+			(leaf) => new ChatboxView(leaf, this),
+		)
 
 		this.registerObsidianProtocolHandler('nutstore-sync/sso', async (data) => {
 			if (data?.s) {
@@ -70,11 +79,13 @@ export default class NutstorePlugin extends Plugin {
 			})
 		})
 		setPluginInstance(this)
+		await this.chatService.handleSettingsChanged()
 
 		await this.scheduledSyncService.start()
 	}
 
 	async onunload() {
+		this.app.workspace.detachLeavesOfType(CHATBOX_VIEW_TYPE)
 		setPluginInstance(null)
 		emitCancelSync()
 		this.scheduledSyncService.unload()
@@ -121,13 +132,25 @@ export default class NutstorePlugin extends Plugin {
 			startupSyncDelaySeconds: 0,
 			autoSyncIntervalSeconds: 300,
 			language: undefined,
+			providers: [],
+			defaultProviderId: undefined,
+			defaultModelId: undefined,
 		}
 
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
+		this.settings.providers = sanitizeProviders(this.settings.providers)
+		const defaults = sanitizeDefaultSelections(
+			this.settings.providers,
+			this.settings.defaultProviderId,
+			this.settings.defaultModelId,
+		)
+		this.settings.defaultProviderId = defaults.defaultProviderId
+		this.settings.defaultModelId = defaults.defaultModelId
 	}
 
 	async saveSettings() {
 		await this.saveData(this.settings)
+		await this.chatService.handleSettingsChanged()
 	}
 
 	toggleSyncUI(isSyncing: boolean) {
