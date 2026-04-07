@@ -3,9 +3,9 @@ import { dirname } from 'path-browserify'
 import { z } from 'zod'
 import i18n from '~/i18n'
 import GlobMatch, { needIncludeFromGlobRules } from '~/utils/glob-match'
-import { AIToolDefinition } from './types'
 import { filterVaultEntries } from './search-path-filter'
 import { flattenTreeNodes, type TreeNode } from './tree'
+import { AIToolDefinition } from './types'
 
 const DEFAULT_RESULT_LIMIT = 20
 const MAX_RESULT_LIMIT = 200
@@ -48,11 +48,28 @@ const textValue = (field: string) =>
 	})
 
 const positiveInteger = (field: string, fallback: number) =>
-	z
+	z.coerce
 		.number()
 		.int(i18n.t('chatbox.errors.invalidPositiveInteger', { field }))
 		.min(1, i18n.t('chatbox.errors.invalidPositiveInteger', { field }))
 		.default(fallback)
+
+const booleanValue = (field: string) =>
+	z.preprocess((value) => {
+		if (typeof value === 'boolean') {
+			return value
+		}
+		if (typeof value === 'string') {
+			const normalized = value.trim().toLowerCase()
+			if (normalized === 'true') {
+				return true
+			}
+			if (normalized === 'false') {
+				return false
+			}
+		}
+		return value
+	}, z.boolean(i18n.t('chatbox.errors.toolFieldRequired', { field })))
 
 function clampLimit(value: unknown, fallback: number, max = MAX_RESULT_LIMIT) {
 	if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -145,7 +162,9 @@ function collectVaultEntries(
 
 function getVaultEntries(app: App, rawPath: string) {
 	const path = normalizeVaultPath(rawPath)
-	const target = path ? app.vault.getAbstractFileByPath(path) : app.vault.getRoot()
+	const target = path
+		? app.vault.getAbstractFileByPath(path)
+		: app.vault.getRoot()
 
 	if (!target) {
 		throw new Error(i18n.t('chatbox.errors.folderNotFound', { path: rawPath }))
@@ -170,7 +189,11 @@ function collectTreeItems(folder: TFolder, depth: number) {
 		path: child.path,
 		type: child instanceof TFolder ? 'folder' : 'file',
 		...(child instanceof TFolder
-			? { children: child.children.map((nested) => toTreeNode(nested as TFolder | TFile)) }
+			? {
+					children: child.children.map((nested) =>
+						toTreeNode(nested as TFolder | TFile),
+					),
+				}
 			: {}),
 	})
 
@@ -227,7 +250,11 @@ function createSearchRegExp(
 	}
 }
 
-function findMatchesInLine(lineText: string, regex: RegExp, patternIndex: number) {
+function findMatchesInLine(
+	lineText: string,
+	regex: RegExp,
+	patternIndex: number,
+) {
 	const matches: SearchMatch[] = []
 	regex.lastIndex = 0
 
@@ -288,7 +315,11 @@ function collectLineMatches(
 	})
 }
 
-function replaceUniqueOccurrence(content: string, oldText: string, newText: string) {
+function replaceUniqueOccurrence(
+	content: string,
+	oldText: string,
+	newText: string,
+) {
 	let matchIndex = content.indexOf(oldText)
 	let matchCount = 0
 
@@ -329,10 +360,14 @@ export function createAITools(
 				const rawPath = params.path
 				const depth = params.depth
 				const path = normalizeVaultPath(rawPath)
-				const target = path ? app.vault.getAbstractFileByPath(path) : app.vault.getRoot()
+				const target = path
+					? app.vault.getAbstractFileByPath(path)
+					: app.vault.getRoot()
 
 				if (!target) {
-					throw new Error(i18n.t('chatbox.errors.folderNotFound', { path: rawPath }))
+					throw new Error(
+						i18n.t('chatbox.errors.folderNotFound', { path: rawPath }),
+					)
 				}
 				if (!(target instanceof TFolder)) {
 					throw new Error(i18n.t('chatbox.errors.notFolder', { path: rawPath }))
@@ -374,7 +409,7 @@ export function createAITools(
 			inputSchema: z.object({
 				path: trimmedString('path'),
 				content: textValue('content'),
-				overwrite: z.boolean().default(false),
+				overwrite: booleanValue('overwrite').default(false),
 			}),
 			execute: async (params) => {
 				const path = params.path
@@ -415,7 +450,10 @@ export function createAITools(
 				path: trimmedString('path'),
 				oldText: z
 					.string()
-					.min(1, i18n.t('chatbox.errors.toolFieldRequired', { field: 'oldText' })),
+					.min(
+						1,
+						i18n.t('chatbox.errors.toolFieldRequired', { field: 'oldText' }),
+					),
 				newText: textValue('newText'),
 			}),
 			execute: async (params) => {
@@ -448,20 +486,22 @@ export function createAITools(
 			description:
 				'Search file contents line by line like grep. This only searches file contents, not file names or paths. Supports multiple patterns, regex, and path glob filters. Defaults to markdown files.',
 			inputSchema: z.object({
-				patterns: z.array(trimmedString('patterns')).min(
-					1,
-					i18n.t('chatbox.errors.toolFieldRequired', { field: 'patterns' }),
+				patterns: z
+					.array(trimmedString('patterns'))
+					.min(
+						1,
+						i18n.t('chatbox.errors.toolFieldRequired', { field: 'patterns' }),
 				),
 				mode: z.enum(['or', 'and']).default('or'),
-				regex: z.boolean().default(false),
-				caseSensitive: z.boolean().default(false),
+				regex: booleanValue('regex').default(false),
+				caseSensitive: booleanValue('caseSensitive').default(false),
 				path: z.string().default('/'),
 				include: z.array(z.string().trim()).default([]),
 				exclude: z.array(z.string().trim()).default([]),
 				extensions: z.array(z.string().trim()).default([]),
-				limit: z.number().default(DEFAULT_RESULT_LIMIT),
-				fileLimit: z.number().default(DEFAULT_FILE_LIMIT),
-				includeMatches: z.boolean().default(true),
+				limit: z.coerce.number().default(DEFAULT_RESULT_LIMIT),
+				fileLimit: z.coerce.number().default(DEFAULT_FILE_LIMIT),
+				includeMatches: booleanValue('includeMatches').default(true),
 			}),
 			execute: async (params) => {
 				const patterns = params.patterns
@@ -558,7 +598,7 @@ export function createAITools(
 				exclude: z.array(z.string().trim()).default([]),
 				query: z.string().default(''),
 				type: z.enum(['file', 'folder', 'all']).default('file'),
-				limit: z.number().default(DEFAULT_RESULT_LIMIT),
+				limit: z.coerce.number().default(DEFAULT_RESULT_LIMIT),
 			}),
 			execute: async (params) => {
 				const rawPath = params.path
@@ -574,10 +614,9 @@ export function createAITools(
 					exclude,
 					type,
 					defaultMarkdownOnly: false,
-				})
-					.filter((entry) =>
-						!query ? true : entry.path.toLowerCase().includes(query),
-					)
+				}).filter((entry) =>
+					!query ? true : entry.path.toLowerCase().includes(query),
+				)
 				const results = filteredEntries.slice(0, limit).map((entry) => ({
 					path: entry.path,
 					type: entry.type,

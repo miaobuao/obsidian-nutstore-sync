@@ -70,21 +70,60 @@ describe('filterVaultEntries', () => {
 		const tools = createAITools({} as never)
 		const treeTool = tools.find((tool) => tool.name === 'tree')
 
-		expect(() =>
+		expect(
 			treeTool?.inputSchema.parse({
 				path: '/',
 				depth: '2',
 			}),
-		).toThrow()
-
-		expect(
-			treeTool?.inputSchema.parse({
-				path: '/',
-				depth: 2,
-			}),
 		).toEqual({
 			path: '/',
 			depth: 2,
+		})
+
+		expect(() =>
+			treeTool?.inputSchema.parse({
+				path: '/',
+				depth: 0,
+			}),
+		).toThrow()
+	})
+
+	it('parses string boolean values without JS truthiness coercion', () => {
+		const tools = createAITools({} as never)
+		const writeFileTool = tools.find((tool) => tool.name === 'write_file')
+		const searchVaultTool = tools.find((tool) => tool.name === 'search_vault')
+
+		expect(
+			writeFileTool?.inputSchema.parse({
+				path: 'test.md',
+				content: 'hello',
+				overwrite: 'false',
+			}),
+		).toEqual({
+			path: 'test.md',
+			content: 'hello',
+			overwrite: false,
+		})
+
+		expect(
+			searchVaultTool?.inputSchema.parse({
+				patterns: ['todo'],
+				regex: 'true',
+				caseSensitive: 'false',
+				includeMatches: 'false',
+			}),
+		).toEqual({
+			patterns: ['todo'],
+			mode: 'or',
+			regex: true,
+			caseSensitive: false,
+			path: '/',
+			include: [],
+			exclude: [],
+			extensions: [],
+			limit: 20,
+			fileLimit: 200,
+			includeMatches: false,
 		})
 	})
 
