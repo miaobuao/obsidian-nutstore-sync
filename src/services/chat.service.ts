@@ -65,7 +65,7 @@ const COMPRESSION_PROMPT = [
 ].join(' ')
 
 interface ResolvedToolResult {
-	payload: Record<string, unknown>
+	payload: string | Record<string, unknown>
 	isError: boolean
 }
 
@@ -1412,7 +1412,11 @@ export default class ChatService {
 		return toolCalls.map((toolCall, index) => ({
 			message: {
 				role: 'tool' as const,
-				content: toTextParts(JSON.stringify(results[index].payload, null, 2)),
+				content: toTextParts(
+				typeof results[index].payload === 'string'
+					? results[index].payload
+					: JSON.stringify(results[index].payload, null, 2),
+			),
 				name: toolCall.function.name,
 				tool_call_id: toolCall.id,
 			},
@@ -1444,7 +1448,7 @@ export default class ChatService {
 		)
 		return {
 			payload,
-			isError: !!payload.error,
+			isError: typeof payload === 'object' && !!payload.error,
 		}
 	}
 
@@ -1699,7 +1703,7 @@ export default class ChatService {
 		context: AIToolExecutionContext,
 	) {
 		const tool = new Map(tools.map((item) => [item.name, item])).get(name)
-		let result: Record<string, unknown>
+		let result: string | Record<string, unknown>
 
 		try {
 			if (!tool) {

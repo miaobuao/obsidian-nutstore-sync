@@ -183,24 +183,60 @@ function getVaultEntries(app: App, rawPath: string) {
 	}
 }
 
-function collectTreeItems(folder: TFolder, depth: number) {
-	const toTreeNode = (child: TFolder | TFile): TreeNode => ({
+function collectTreeItems(folder: TFolder, depth: number, limit: number) {
+	const toTreeNode = (
+		child: TFolder | TFile,
+		remainingDepth: number,
+	): TreeNode => ({
 		name: child.name,
 		path: child.path,
 		type: child instanceof TFolder ? 'folder' : 'file',
-		...(child instanceof TFolder
+		...(child instanceof TFolder && remainingDepth > 1
 			? {
 					children: child.children.map((nested) =>
-						toTreeNode(nested as TFolder | TFile),
+						toTreeNode(nested as TFolder | TFile, remainingDepth - 1),
 					),
 				}
 			: {}),
 	})
 
-	return flattenTreeNodes(
-		folder.children.map((child) => toTreeNode(child as TFolder | TFile)),
+	const all = flattenTreeNodes(
+		folder.children.map((child) => toTreeNode(child as TFolder | TFile, depth)),
 		depth,
 	)
+	const total = all.length
+	const truncated = total > limit
+	const included = truncated ? all.slice(0, limit) : all
+	const excluded = truncated ? all.slice(limit) : []
+
+	const includedFolderPaths = new Set(
+		included.filter((i) => i.type === 'folder').map((i) => i.path),
+	)
+	const rootPath = folder.path
+	const cutFolderPaths = [
+		...new Set(
+			excluded
+				.map((i) => getParentFolderPath(i.path))
+				.filter((p) => p === rootPath || includedFolderPaths.has(p)),
+		),
+	]
+
+	const items = included
+		.map((item) => `${item.type === 'folder' ? 'd' : 'f'}:${item.path}`)
+		.join('\n')
+
+	return {
+		items,
+		total,
+		truncated,
+		...(truncated
+			? {
+					truncatedFiles: excluded.filter((i) => i.type === 'file').length,
+					truncatedFolders: excluded.filter((i) => i.type === 'folder').length,
+					cutFolderPaths,
+				}
+			: {}),
+	}
 }
 
 async function ensureParentFolder(app: App, filePath: string) {
@@ -355,10 +391,12 @@ export function createAITools(
 			inputSchema: z.object({
 				path: z.string().default('/'),
 				depth: positiveInteger('depth', 1),
+				limit: z.coerce.number().int().min(1).max(2000).default(2000),
 			}),
 			execute: async (params) => {
 				const rawPath = params.path
 				const depth = params.depth
+				const limit = params.limit
 				const path = normalizeVaultPath(rawPath)
 				const target = path
 					? app.vault.getAbstractFileByPath(path)
@@ -373,10 +411,27 @@ export function createAITools(
 					throw new Error(i18n.t('chatbox.errors.notFolder', { path: rawPath }))
 				}
 
-				return {
-					path: rawPath,
-					items: collectTreeItems(target, depth),
-				}
+				const {
+					items,
+					total,
+					truncated,
+					truncatedFiles,
+					truncatedFolders,
+					cutFolderPaths,
+				} = collectTreeItems(target, depth, limit)
+				const header = [
+					`path=${rawPath}`,
+					`total=${total}`,
+					`truncated=${truncated}`,
+					...(truncated
+						? [
+								`truncatedFiles=${truncatedFiles}`,
+								`truncatedFolders=${truncatedFolders}`,
+								`cutFolderPaths=${cutFolderPaths!.join(',')}`,
+							]
+						: []),
+				].join('\n')
+				return `${header}\n\n${items}`
 			},
 		},
 		{

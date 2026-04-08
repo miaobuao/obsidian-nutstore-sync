@@ -59,5 +59,5 @@ export interface AIToolDefinition {
 	execute: (
 		params: any,
 		context: AIToolExecutionContext,
-	) => Promise<Record<string, unknown>>
+	) => Promise<string | Record<string, unknown>>
 }
