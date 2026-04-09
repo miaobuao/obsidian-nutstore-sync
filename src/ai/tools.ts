@@ -33,7 +33,7 @@ const booleanValue = (field: string) =>
 			return value
 		},
 		z.boolean(i18n.t('chatbox.errors.toolFieldRequired', { field })),
-)
+	)
 
 function isAllowedBashCwd(pathValue: string) {
 	const normalized = pathPosix.normalize(
@@ -104,7 +104,10 @@ export function createAITools(
 				path: z
 					.string()
 					.trim()
-					.min(1, i18n.t('chatbox.errors.toolFieldRequired', { field: 'path' })),
+					.min(
+						1,
+						i18n.t('chatbox.errors.toolFieldRequired', { field: 'path' }),
+					),
 				oldText: z
 					.string()
 					.min(
@@ -162,7 +165,15 @@ export function createAITools(
 					rawScript: params.rawScript,
 				})
 
-				return `${result.stdout}${result.stderr}`
+				const truncateLine = (line: string) =>
+					line.length > 2000
+						? `${line.slice(0, 2000)}...[line truncated: ${line.length} chars total]`
+						: line
+
+				const processOutput = (text: string) =>
+					text.split('\n').map(truncateLine).join('\n')
+
+				return `${processOutput(result.stdout)}${processOutput(result.stderr)}`
 			},
 		},
 	]
@@ -176,7 +187,10 @@ export function createAITools(
 				task: z
 					.string()
 					.trim()
-					.min(1, i18n.t('chatbox.errors.toolFieldRequired', { field: 'task' })),
+					.min(
+						1,
+						i18n.t('chatbox.errors.toolFieldRequired', { field: 'task' }),
+					),
 				label: z.string().trim().optional(),
 			}),
 			execute: async (params, context) => {

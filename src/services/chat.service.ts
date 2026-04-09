@@ -392,6 +392,9 @@ export default class ChatService {
 		)
 		if (this.activeSessionId === sessionId) {
 			this.activeSessionId = this.sessionIndex[0]?.id
+			if (this.activeSessionId) {
+				await this.loadSessionById(this.activeSessionId)
+			}
 		}
 
 		this.loadedSessions.delete(sessionId)

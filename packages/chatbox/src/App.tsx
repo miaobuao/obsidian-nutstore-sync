@@ -320,7 +320,12 @@ function MessageCard(props: {
 						</>
 					</Show>
 					<div class="mt-3 text-xs text-[var(--text-muted)]">{t('result')}</div>
-					<ContentParts content={content()} renderMarkdown={props.renderMarkdown} />
+					<pre class="m-0 mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-2 bg-[var(--background-secondary)] p-2 text-xs leading-5">
+						{content()
+							?.filter((p) => p.type === 'text')
+							.map((p) => (p as { type: 'text'; text: string }).text)
+							.join('\n') || ''}
+					</pre>
 				</details>
 			}
 		>
