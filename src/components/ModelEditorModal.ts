@@ -30,6 +30,7 @@ export default class ModelEditorModal extends Modal {
 		new Setting(contentEl)
 			.setName(i18n.t('settings.ai.model.name'))
 			.setDesc(i18n.t('settings.ai.model.desc'))
+			.then((s) => s.settingEl.addClass('setting-required'))
 			.addText((text) =>
 				text.setValue(this.draft.name).onChange((value) => {
 					this.draft.name = value

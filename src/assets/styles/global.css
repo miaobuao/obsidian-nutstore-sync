@@ -102,3 +102,15 @@ input.success {
 .task-list-table tr:hover {
 	background-color: var(--background-modifier-hover);
 }
+
+.setting-required .setting-item-name::after {
+	content: ' *';
+	color: var(--text-error);
+}
+
+.setting-optional .setting-item-name::after {
+	content: ' (optional)';
+	color: var(--text-muted);
+	font-size: 0.85em;
+	font-weight: normal;
+}

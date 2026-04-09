@@ -36,6 +36,7 @@ export default class ProviderEditorModal extends Modal {
 		new Setting(contentEl)
 			.setName(i18n.t('settings.ai.provider.type.name'))
 			.setDesc(i18n.t('settings.ai.provider.type.desc'))
+			.then((s) => s.settingEl.addClass('setting-required'))
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption('openai', i18n.t('settings.ai.provider.type.openai'))
@@ -49,6 +50,7 @@ export default class ProviderEditorModal extends Modal {
 		new Setting(contentEl)
 			.setName(i18n.t('settings.ai.provider.name'))
 			.setDesc(i18n.t('settings.ai.provider.desc'))
+			.then((s) => s.settingEl.addClass('setting-required'))
 			.addText((text) =>
 				text.setValue(this.draft.name).onChange((value) => {
 					this.draft.name = value
@@ -58,6 +60,7 @@ export default class ProviderEditorModal extends Modal {
 		new Setting(contentEl)
 			.setName(i18n.t('settings.ai.provider.baseUrl.name'))
 			.setDesc(i18n.t('settings.ai.provider.baseUrl.desc'))
+			.then((s) => s.settingEl.addClass('setting-optional'))
 			.addText((text) =>
 				text
 					.setPlaceholder('https://api.openai.com/v1')
@@ -70,6 +73,7 @@ export default class ProviderEditorModal extends Modal {
 		new Setting(contentEl)
 			.setName(i18n.t('settings.ai.provider.apiKey.name'))
 			.setDesc(i18n.t('settings.ai.provider.apiKey.desc'))
+			.then((s) => s.settingEl.addClass('setting-required'))
 			.addText((text) => {
 				text.setValue(this.draft.apiKey).onChange((value) => {
 					this.draft.apiKey = value
@@ -80,6 +84,7 @@ export default class ProviderEditorModal extends Modal {
 		new Setting(contentEl)
 			.setName(i18n.t('settings.ai.provider.organization.name'))
 			.setDesc(i18n.t('settings.ai.provider.organization.desc'))
+			.then((s) => s.settingEl.addClass('setting-optional'))
 			.addText((text) =>
 				text.setValue(this.draft.organization || '').onChange((value) => {
 					this.draft.organization = value.trim() || undefined
@@ -89,6 +94,7 @@ export default class ProviderEditorModal extends Modal {
 		new Setting(contentEl)
 			.setName(i18n.t('settings.ai.provider.project.name'))
 			.setDesc(i18n.t('settings.ai.provider.project.desc'))
+			.then((s) => s.settingEl.addClass('setting-optional'))
 			.addText((text) =>
 				text.setValue(this.draft.project || '').onChange((value) => {
 					this.draft.project = value.trim() || undefined

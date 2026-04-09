@@ -24,13 +24,19 @@ export default class AISettings extends BaseSettings {
 			.addDropdown((dropdown) => {
 				dropdown.addOption('', i18n.t('settings.ai.none'))
 				for (const provider of this.plugin.settings.providers) {
-					dropdown.addOption(provider.id, provider.name || i18n.t('settings.ai.unnamedProvider'))
+					dropdown.addOption(
+						provider.id,
+						provider.name || i18n.t('settings.ai.unnamedProvider'),
+					)
 				}
 				dropdown
 					.setValue(this.plugin.settings.defaultProviderId || '')
 					.onChange(async (value) => {
 						this.plugin.settings.defaultProviderId = value || undefined
-						const provider = getProviderById(this.plugin.settings.providers, value)
+						const provider = getProviderById(
+							this.plugin.settings.providers,
+							value,
+						)
 						if (!getModelById(provider, this.plugin.settings.defaultModelId)) {
 							this.plugin.settings.defaultModelId = undefined
 						}
@@ -49,7 +55,10 @@ export default class AISettings extends BaseSettings {
 				)
 				dropdown.addOption('', i18n.t('settings.ai.none'))
 				for (const model of provider?.models || []) {
-					dropdown.addOption(model.id, model.name || i18n.t('settings.ai.unnamedModel'))
+					dropdown.addOption(
+						model.id,
+						model.name || i18n.t('settings.ai.unnamedModel'),
+					)
 				}
 				dropdown
 					.setValue(this.plugin.settings.defaultModelId || '')
@@ -70,7 +79,6 @@ export default class AISettings extends BaseSettings {
 			.addButton((button) =>
 				button
 					.setButtonText(i18n.t('settings.ai.providers.manage'))
-					.setCta()
 					.onClick(() => {
 						new ProvidersManagerModal(this.plugin, async () => {
 							await this.persist(false)
@@ -82,7 +90,9 @@ export default class AISettings extends BaseSettings {
 
 	private async persist(showNotice: boolean = true) {
 		try {
-			this.plugin.settings.providers = sanitizeProviders(this.plugin.settings.providers)
+			this.plugin.settings.providers = sanitizeProviders(
+				this.plugin.settings.providers,
+			)
 			const defaults = sanitizeDefaultSelections(
 				this.plugin.settings.providers,
 				this.plugin.settings.defaultProviderId,
