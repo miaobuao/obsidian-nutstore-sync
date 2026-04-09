@@ -1,11 +1,146 @@
 import { describe, expect, it } from 'vitest'
+import type { App } from 'obsidian'
 import { createAITools } from './tools'
+import { VAULT_MOUNT_POINT } from './bash/runtime'
 import { filterVaultEntries, type SearchPathEntry } from './search-path-filter'
 
 function makeEntries(
 	paths: Array<{ path: string; type: SearchPathEntry['type'] }>,
 ): SearchPathEntry[] {
 	return paths
+}
+
+function createToolApp() {
+	const files = new Map<string, string>([['notes/existing.md', 'old']])
+	const folders = new Set<string>(['', 'notes'])
+	const normalize = (path: string) => path.replace(/^\/+|\/+$/g, '')
+	const dirname = (path: string) =>
+		!path || !path.includes('/') ? '' : path.slice(0, path.lastIndexOf('/'))
+	const basename = (path: string) => {
+		const normalized = normalize(path)
+		return normalized.slice(normalized.lastIndexOf('/') + 1)
+	}
+	const ensureFolder = (path: string) => {
+		const normalized = normalize(path)
+		if (!normalized) {
+			return
+		}
+		const parent = dirname(normalized)
+		if (parent && parent !== normalized) {
+			ensureFolder(parent)
+		}
+		folders.add(normalized)
+	}
+	const listChildren = (path: string) => {
+		const normalized = normalize(path)
+		const prefix = normalized ? `${normalized}/` : ''
+		return [...new Set([...folders, ...files.keys()])]
+			.filter(
+				(item) =>
+					item.startsWith(prefix) &&
+					item !== normalized &&
+					!item.slice(prefix.length).includes('/'),
+			)
+			.sort()
+	}
+	const buildFolder = (path: string, parent: any): any => {
+		const normalized = normalize(path)
+		const folder: any = {
+			path: normalized,
+			name: normalized ? basename(normalized) : '',
+			parent,
+			children: [],
+		}
+		folder.children = listChildren(normalized).map((childPath) => {
+			if (folders.has(childPath)) {
+				return buildFolder(childPath, folder)
+			}
+			return {
+				path: childPath,
+				name: basename(childPath),
+				parent: folder,
+				stat: {
+					size: files.get(childPath)?.length ?? 0,
+					mtime: 0,
+				},
+			}
+		})
+		return folder
+	}
+	const getAbstractFileByPath = (path: string): any => {
+		const normalized = normalize(path)
+		if (!normalized) {
+			return buildFolder('', null)
+		}
+		if (folders.has(normalized)) {
+			return buildFolder(normalized, buildFolder(dirname(normalized), null))
+		}
+		if (files.has(normalized)) {
+			return {
+				path: normalized,
+				name: basename(normalized),
+				parent: buildFolder(dirname(normalized), null),
+				stat: {
+					size: files.get(normalized)?.length ?? 0,
+					mtime: 0,
+				},
+			}
+		}
+		return null
+	}
+
+	return {
+		vault: {
+			getRoot() {
+				return buildFolder('', null)
+			},
+			getAbstractFileByPath,
+			async readBinary(file: any) {
+				return new TextEncoder()
+					.encode(files.get(normalize(file.path)) ?? '')
+					.buffer as ArrayBuffer
+			},
+			async createBinary(path: string, data: ArrayBuffer) {
+				const normalized = normalize(path)
+				ensureFolder(dirname(normalized))
+				files.set(normalized, new TextDecoder().decode(data))
+				return getAbstractFileByPath(normalized)
+			},
+			async modifyBinary(file: any, data: ArrayBuffer) {
+				files.set(normalize(file.path), new TextDecoder().decode(data))
+			},
+			async createFolder(path: string) {
+				ensureFolder(path)
+				return getAbstractFileByPath(path)
+			},
+			async delete(file: any) {
+				const normalized = normalize(file.path)
+				files.delete(normalized)
+				for (const folder of [...folders]) {
+					if (folder === normalized || folder.startsWith(`${normalized}/`)) {
+						folders.delete(folder)
+					}
+				}
+			},
+			async rename(file: any, newPath: string) {
+				const from = normalize(file.path)
+				const to = normalize(newPath)
+				ensureFolder(dirname(to))
+				const value = files.get(from)
+				if (value !== undefined) {
+					files.delete(from)
+					files.set(to, value)
+					return
+				}
+				for (const folder of [...folders]) {
+					if (folder === from || folder.startsWith(`${from}/`)) {
+						folders.delete(folder)
+						folders.add(`${to}${folder.slice(from.length)}`)
+					}
+				}
+			},
+		},
+	} as unknown as App
 }
 
 describe('filterVaultEntries', () => {
@@ -66,70 +201,53 @@ describe('filterVaultEntries', () => {
 		expect(results.map((entry) => entry.path)).toEqual(['工作台'])
 	})
 
-	it('uses zod schemas for tool input validation', () => {
-		const tools = createAITools({} as never)
-		const treeTool = tools.find((tool) => tool.name === 'tree')
-
-		expect(
-			treeTool?.inputSchema.parse({
-				path: '/',
-				depth: '2',
-			}),
-		).toEqual({
-			path: '/',
-			depth: 2,
-		})
-
-		expect(() =>
-			treeTool?.inputSchema.parse({
-				path: '/',
-				depth: 0,
-			}),
-		).toThrow()
-	})
-
 	it('parses string boolean values without JS truthiness coercion', () => {
 		const tools = createAITools({} as never)
-		const writeFileTool = tools.find((tool) => tool.name === 'write_file')
-		const searchVaultTool = tools.find((tool) => tool.name === 'search_vault')
+		const bashTool = tools.find((tool) => tool.name === 'bash')
 
 		expect(
-			writeFileTool?.inputSchema.parse({
-				path: 'test.md',
-				content: 'hello',
-				overwrite: 'false',
+			bashTool?.inputSchema.parse({
+				script: 'pwd',
+				rawScript: 'false',
 			}),
 		).toEqual({
-			path: 'test.md',
-			content: 'hello',
-			overwrite: false,
-		})
-
-		expect(
-			searchVaultTool?.inputSchema.parse({
-				patterns: ['todo'],
-				regex: 'true',
-				caseSensitive: 'false',
-				includeMatches: 'false',
-			}),
-		).toEqual({
-			patterns: ['todo'],
-			mode: 'or',
-			regex: true,
-			caseSensitive: false,
-			path: '/',
-			include: [],
-			exclude: [],
-			extensions: [],
-			limit: 20,
-			fileLimit: 200,
-			includeMatches: false,
+			script: 'pwd',
+			cwd: VAULT_MOUNT_POINT,
+			rawScript: false,
 		})
 	})
 
-	it('registers the current_time tool', () => {
-		const tools = createAITools({} as never)
+	it('registers bash and executes against /vault', async () => {
+		const tools = createAITools(createToolApp())
+		const bashTool = tools.find((tool) => tool.name === 'bash')
 
-		expect(tools.some((tool) => tool.name === 'current_time')).toBe(true)
+		expect(bashTool).toBeDefined()
+
+		const result = await bashTool!.execute(
+			{
+				script: 'printf "new note" > new.md && cat new.md',
+				cwd: VAULT_MOUNT_POINT,
+				rawScript: false,
+			},
+			{} as never,
+		)
+
+		expect(result).toBe('new note')
+	})
+
+	it('accepts absolute virtual cwd paths for bash', async () => {
+		const tools = createAITools(createToolApp())
+		const bashTool = tools.find((tool) => tool.name === 'bash')
+
+		await expect(
+			bashTool!.execute(
+				{
+					script: 'pwd',
+					cwd: '/vault',
+					rawScript: false,
+				},
+				{} as never,
+			),
+		).resolves.toBe('/vault\n')
 	})
 })

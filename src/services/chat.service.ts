@@ -136,6 +136,7 @@ function createMainSystemPrompt(maxDepth: number) {
 	return [
 		'You are an Obsidian chat assistant with access to vault tools.',
 		'Use vault tools directly for focused file operations.',
+		'Use bash when shell-style workflows are more efficient; the vault is mounted at /vault.',
 		createVaultToolGuidance(),
 		`Use the spawn tool only for large independent tasks that should run in the background. Maximum task depth is ${maxDepth}.`,
 	].join(' ')
