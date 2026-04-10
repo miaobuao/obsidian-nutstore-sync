@@ -50,3 +50,16 @@
 	border-radius: 999px;
 }
 
+.chatbox-input {
+	height: 7rem;
+	padding: 0.75rem;
+	line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+	.chatbox-input {
+		height: 5.5rem;
+		padding: 0.625rem;
+		line-height: 1.4;
+	}
+}

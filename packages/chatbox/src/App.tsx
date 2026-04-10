@@ -1,4 +1,12 @@
-import { For, Match, Show, Switch, createEffect, createSignal, onCleanup } from 'solid-js'
+import {
+	For,
+	Match,
+	Show,
+	Switch,
+	createEffect,
+	createSignal,
+	onCleanup,
+} from 'solid-js'
 import { t } from './i18n'
 import {
 	ChatMessageContentPart,
@@ -23,9 +31,10 @@ function formatDuration(task: ChatTaskRecord) {
 	if (!('startedAt' in task) || typeof task.startedAt !== 'number') {
 		return ''
 	}
-	const end = 'finishedAt' in task && typeof task.finishedAt === 'number'
-		? task.finishedAt
-		: Date.now()
+	const end =
+		'finishedAt' in task && typeof task.finishedAt === 'number'
+			? task.finishedAt
+			: Date.now()
 	const totalSeconds = Math.max(0, Math.floor((end - task.startedAt) / 1000))
 	const minutes = Math.floor(totalSeconds / 60)
 	const seconds = totalSeconds % 60
@@ -35,11 +44,7 @@ function formatDuration(task: ChatTaskRecord) {
 	return `${seconds}s`
 }
 
-function formatUsage(
-	input?: number,
-	output?: number,
-	total?: number,
-) {
+function formatUsage(input?: number, output?: number, total?: number) {
 	const parts = []
 	if (typeof input === 'number') {
 		parts.push(`in ${input}`)
@@ -145,7 +150,12 @@ function MarkdownContent(props: {
 		el?.replaceChildren()
 	})
 
-	return <div ref={el} class="markdown-rendered mt-2 text-sm leading-6 text-[var(--text-normal)]" />
+	return (
+		<div
+			ref={el}
+			class="markdown-rendered mt-2 text-sm leading-6 text-[var(--text-normal)]"
+		/>
+	)
 }
 
 function ContentParts(props: {
@@ -160,21 +170,36 @@ function ContentParts(props: {
 						<Switch>
 							<Match when={part.type === 'text'}>
 								<MarkdownContent
-									markdown={(part as Extract<ChatMessageContentPart, { type: 'text' }>).text}
+									markdown={
+										(part as Extract<ChatMessageContentPart, { type: 'text' }>)
+											.text
+									}
 									renderMarkdown={props.renderMarkdown}
 								/>
 							</Match>
 							<Match when={part.type === 'image_url'}>
 								<img
 									class="max-h-80 max-w-full rounded-2 border border-[var(--background-modifier-border)] object-contain"
-									src={(part as Extract<ChatMessageContentPart, { type: 'image_url' }>).image_url.url}
+									src={
+										(
+											part as Extract<
+												ChatMessageContentPart,
+												{ type: 'image_url' }
+											>
+										).image_url.url
+									}
 									alt=""
 								/>
 							</Match>
 							<Match when={part.type === 'unknown'}>
 								<pre class="m-0 whitespace-pre-wrap break-words rounded-2 bg-[var(--background-secondary)] p-2 text-xs leading-5">
 									{JSON.stringify(
-										(part as Extract<ChatMessageContentPart, { type: 'unknown' }>).value,
+										(
+											part as Extract<
+												ChatMessageContentPart,
+												{ type: 'unknown' }
+											>
+										).value,
 										null,
 										2,
 									)}
@@ -223,10 +248,16 @@ function TaskCard(props: {
 		>
 			<div class="flex items-start justify-between gap-3">
 				<div class="min-w-0 flex-1">
-					<div class="font-medium text-[var(--text-normal)] truncate">{props.task.label}</div>
-					<div class="mt-1 text-xs text-[var(--text-muted)] break-words">{props.task.task}</div>
+					<div class="font-medium text-[var(--text-normal)] truncate">
+						{props.task.label}
+					</div>
+					<div class="mt-1 text-xs text-[var(--text-muted)] break-words">
+						{props.task.task}
+					</div>
 				</div>
-				<span class={`shrink-0 rounded-full px-2 py-1 text-xs ${statusClass(props.task.status)}`}>
+				<span
+					class={`shrink-0 rounded-full px-2 py-1 text-xs ${statusClass(props.task.status)}`}
+				>
 					{statusLabel(props.task.status)}
 				</span>
 			</div>
@@ -308,12 +339,16 @@ function MessageCard(props: {
 					}`}
 				>
 					<summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-xs text-[var(--text-muted)] marker:hidden">
-						<div class="font-medium text-[var(--text-normal)]">{roleLabel()}</div>
+						<div class="font-medium text-[var(--text-normal)]">
+							{roleLabel()}
+						</div>
 						<div>{formatTime(props.item.message.createdAt)}</div>
 					</summary>
 					<Show when={props.item.toolCall}>
 						<>
-							<div class="mt-3 text-xs text-[var(--text-muted)]">{t('params')}</div>
+							<div class="mt-3 text-xs text-[var(--text-muted)]">
+								{t('params')}
+							</div>
 							<pre class="m-0 mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-2 bg-[var(--background-secondary)] p-2 text-xs leading-5">
 								{props.item.toolCall?.function.arguments || '{}'}
 							</pre>
@@ -338,7 +373,10 @@ function MessageCard(props: {
 					<div class="font-medium text-[var(--text-normal)]">{roleLabel()}</div>
 					<div>{formatTime(props.item.message.createdAt)}</div>
 				</div>
-				<ContentParts content={content()} renderMarkdown={props.renderMarkdown} />
+				<ContentParts
+					content={content()}
+					renderMarkdown={props.renderMarkdown}
+				/>
 				<Show
 					when={
 						props.item.message.message.role === 'assistant' &&
@@ -348,9 +386,17 @@ function MessageCard(props: {
 					}
 				>
 					<div class="mt-3 flex flex-wrap gap-2 text-xs text-[var(--text-muted)]">
-						<Show when={props.item.message.meta?.providerName || props.item.message.meta?.modelName}>
+						<Show
+							when={
+								props.item.message.meta?.providerName ||
+								props.item.message.meta?.modelName
+							}
+						>
 							<span class="rounded-full bg-[var(--background-secondary)] px-2 py-1">
-								{[props.item.message.meta?.providerName, props.item.message.meta?.modelName]
+								{[
+									props.item.message.meta?.providerName,
+									props.item.message.meta?.modelName,
+								]
 									.filter(Boolean)
 									.join('/')}
 							</span>
@@ -405,7 +451,7 @@ function SessionHistoryItem(props: {
 					</div>
 				</div>
 				<button
-					class="shrink-0 rounded-2 border border-[var(--background-modifier-border)] px-2 py-1 text-xs text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-error)] focus:opacity-100"
+					class="shrink-0 rounded-2 border border-[var(--background-modifier-border)] px-2 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--background-modifier-hover)] hover:text-[var(--text-error)]"
 					type="button"
 					aria-label={t('deleteSession')}
 					onClick={(event) => {
@@ -421,9 +467,7 @@ function SessionHistoryItem(props: {
 	)
 }
 
-function FragmentDivider(props: {
-	item: ChatTimelineFragmentItem
-}) {
+function FragmentDivider(props: { item: ChatTimelineFragmentItem }) {
 	return (
 		<div class="relative py-2">
 			<div class="absolute inset-x-0 top-1/2 h-px bg-[var(--background-modifier-border)]" />
@@ -480,9 +524,7 @@ function RunStateCard(props: {
 	)
 }
 
-function PendingList(props: {
-	pendingMessages: AppProps['pendingMessages']
-}) {
+function PendingList(props: { pendingMessages: AppProps['pendingMessages'] }) {
 	return (
 		<Show when={props.pendingMessages.length > 0}>
 			<div class="rounded-3 border border-dashed border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-3">
@@ -509,21 +551,31 @@ function App(props: AppProps) {
 	const [historyOpen, setHistoryOpen] = createSignal(false)
 	const [tasksOpen, setTasksOpen] = createSignal(false)
 	const [modelPickerOpen, setModelPickerOpen] = createSignal(false)
-	const [sessionPendingDeleteId, setSessionPendingDeleteId] = createSignal<string>()
+	const [sessionPendingDeleteId, setSessionPendingDeleteId] =
+		createSignal<string>()
 	let messagesEl: HTMLDivElement | undefined
 	let historyEl: HTMLDivElement | undefined
 	let modelPickerEl: HTMLDivElement | undefined
 	let previousActiveSessionId = props.activeSessionId
 
-	const hasTasks = () => props.currentSessionTasks.length + props.otherSessionTasks.length > 0
-	const runningTaskCount = () => props.currentSessionTasks.filter((task) => task.status === 'running').length
-		+ props.otherSessionTasks.filter((task) => task.status === 'running').length
+	const hasTasks = () =>
+		props.currentSessionTasks.length + props.otherSessionTasks.length > 0
+	const runningTaskCount = () =>
+		props.currentSessionTasks.filter((task) => task.status === 'running')
+			.length +
+		props.otherSessionTasks.filter((task) => task.status === 'running').length
 	const isBusy = () => props.runState !== 'idle'
-	const selectedProvider = () => props.providers.find((provider) => provider.id === props.selectedProviderId)
+	const selectedProvider = () =>
+		props.providers.find((provider) => provider.id === props.selectedProviderId)
 	const modelPickerLabel = () => {
 		const provider = selectedProvider()
-		const selectedModel = provider?.models.find((model) => model.id === props.selectedModelId)
-		return [provider?.name, selectedModel?.name].filter(Boolean).join('/') || t('noModel')
+		const selectedModel = provider?.models.find(
+			(model) => model.id === props.selectedModelId,
+		)
+		return (
+			[provider?.name, selectedModel?.name].filter(Boolean).join('/') ||
+			t('noModel')
+		)
 	}
 
 	function scrollMessagesToBottom(behavior: ScrollBehavior = 'smooth') {
@@ -545,7 +597,8 @@ function App(props: AppProps) {
 		props.otherSessionTasks.length
 		props.pendingMessages.length
 		props.runState
-		const behavior = previousActiveSessionId !== activeSessionId ? 'auto' : 'smooth'
+		const behavior =
+			previousActiveSessionId !== activeSessionId ? 'auto' : 'smooth'
 		previousActiveSessionId = activeSessionId
 		scrollMessagesToBottom(behavior)
 	})
@@ -610,9 +663,15 @@ function App(props: AppProps) {
 					>
 						{t('history')}
 					</button>
-					<div class="min-w-0 flex-1 truncate text-sm font-semibold">{props.title || t('newChat')}</div>
+					<div class="min-w-0 flex-1 truncate text-sm font-semibold">
+						{props.title || t('newChat')}
+					</div>
 					<Show when={hasTasks()}>
-						<button class="mod-cta" type="button" onClick={() => setTasksOpen((value) => !value)}>
+						<button
+							class="mod-cta"
+							type="button"
+							onClick={() => setTasksOpen((value) => !value)}
+						>
 							{t('tasks')} ({runningTaskCount()})
 						</button>
 					</Show>
@@ -629,18 +688,26 @@ function App(props: AppProps) {
 						</button>
 						<Show when={modelPickerOpen()}>
 							<div class="absolute right-0 top-12 z-10 w-72 rounded-3 border border-[var(--background-modifier-border)] bg-[var(--background-primary)] p-3 shadow-lg">
-								<div class="mb-2 text-xs text-[var(--text-muted)]">{t('provider')}</div>
+								<div class="mb-2 text-xs text-[var(--text-muted)]">
+									{t('provider')}
+								</div>
 								<select
 									class="w-full"
 									value={props.selectedProviderId || ''}
-									onChange={(event) => props.onSelectProvider(event.currentTarget.value)}
+									onChange={(event) =>
+										props.onSelectProvider(event.currentTarget.value)
+									}
 								>
 									<option value="">{t('noProvider')}</option>
 									<For each={props.providers}>
-										{(provider) => <option value={provider.id}>{provider.name}</option>}
+										{(provider) => (
+											<option value={provider.id}>{provider.name}</option>
+										)}
 									</For>
 								</select>
-								<div class="mb-2 mt-3 text-xs text-[var(--text-muted)]">{t('model')}</div>
+								<div class="mb-2 mt-3 text-xs text-[var(--text-muted)]">
+									{t('model')}
+								</div>
 								<select
 									class="w-full"
 									value={props.selectedModelId || ''}
@@ -705,9 +772,16 @@ function App(props: AppProps) {
 					</Show>
 				</div>
 
-				<div ref={messagesEl} class="flex-1 overflow-y-auto px-3 scrollbar-default">
+				<div
+					ref={messagesEl}
+					class="flex-1 overflow-y-auto px-3 scrollbar-default"
+				>
 					<Show
-						when={props.timeline.length > 0 || props.pendingMessages.length > 0 || isBusy()}
+						when={
+							props.timeline.length > 0 ||
+							props.pendingMessages.length > 0 ||
+							isBusy()
+						}
 						fallback={
 							<div class="flex h-full items-center justify-center text-sm text-[var(--text-muted)]">
 								{t('empty')}
@@ -732,7 +806,10 @@ function App(props: AppProps) {
 									</Switch>
 								)}
 							</For>
-							<RunStateCard runState={props.runState} onStop={props.onStopActiveRun} />
+							<RunStateCard
+								runState={props.runState}
+								onStop={props.onStopActiveRun}
+							/>
 							<PendingList pendingMessages={props.pendingMessages} />
 						</div>
 					</Show>
@@ -740,7 +817,7 @@ function App(props: AppProps) {
 
 				<div class="shrink-0 border-t border-[var(--background-modifier-border)] px-3 py-3">
 					<textarea
-						class="h-28 w-full resize-none rounded-3 border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-3 text-sm leading-6 outline-none"
+						class="chatbox-input w-full resize-none rounded-3 border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] text-sm outline-none"
 						placeholder={t('inputPlaceholder')}
 						value={input()}
 						onInput={(event) => setInput(event.currentTarget.value)}
@@ -778,7 +855,12 @@ function App(props: AppProps) {
 								{t('compressContext')}
 							</button>
 						</div>
-						<button class="mod-cta" type="button" disabled={!input().trim()} onClick={() => void submit()}>
+						<button
+							class="mod-cta"
+							type="button"
+							disabled={!input().trim()}
+							onClick={() => void submit()}
+						>
 							{isBusy() ? t('queueSend') : t('send')}
 						</button>
 					</div>
