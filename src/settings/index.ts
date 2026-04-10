@@ -44,6 +44,7 @@ export interface NutstoreSettings {
 	providers: AIProviderConfig[]
 	defaultProviderId?: string
 	defaultModelId?: string
+	configDirSyncMode?: 'none' | 'bookmarks' | 'all'
 }
 
 let pluginInstance: NutstorePlugin | null = null

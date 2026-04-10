@@ -8,10 +8,12 @@ import './assets/styles/global.css'
 
 import { toBase64 } from 'js-base64'
 import { normalizePath, Notice, Plugin } from 'obsidian'
+import { sanitizeDefaultSelections, sanitizeProviders } from './ai/config'
 import { SyncRibbonManager } from './components/SyncRibbonManager'
 import { emitCancelSync } from './events'
 import { emitSsoReceive } from './events/sso-receive'
 import i18n from './i18n'
+import ChatService from './services/chat.service'
 import CommandService from './services/command.service'
 import EventsService from './services/events.service'
 import I18nService from './services/i18n.service'
@@ -22,19 +24,17 @@ import ScheduledSyncService from './services/scheduled-sync.service'
 import { StatusService } from './services/status.service'
 import SyncExecutorService from './services/sync-executor.service'
 import { WebDAVService } from './services/webdav.service'
-import ChatService from './services/chat.service'
 import {
 	NutstoreSettings,
 	NutstoreSettingTab,
 	setPluginInstance,
 	SyncMode,
 } from './settings'
-import ChatboxView, { CHATBOX_VIEW_TYPE } from './views/chatbox.view'
-import { sanitizeDefaultSelections, sanitizeProviders } from './ai/config'
 import { ConflictStrategy } from './sync/tasks/conflict-resolve.task'
 import { decryptOAuthResponse } from './utils/decrypt-ticket-response'
 import { GlobMatchOptions } from './utils/glob-match'
 import { stdRemotePath } from './utils/std-remote-path'
+import ChatboxView, { CHATBOX_VIEW_TYPE } from './views/chatbox.view'
 
 export default class NutstorePlugin extends Plugin {
 	public isSyncing: boolean = false
@@ -63,10 +63,7 @@ export default class NutstorePlugin extends Plugin {
 		await this.loadSettings()
 		await this.chatService.initialize()
 		this.addSettingTab(new NutstoreSettingTab(this.app, this))
-		this.registerView(
-			CHATBOX_VIEW_TYPE,
-			(leaf) => new ChatboxView(leaf, this),
-		)
+		this.registerView(CHATBOX_VIEW_TYPE, (leaf) => new ChatboxView(leaf, this))
 
 		this.registerObsidianProtocolHandler('nutstore-sync/sso', async (data) => {
 			if (data?.s) {
@@ -104,6 +101,24 @@ export default class NutstorePlugin extends Plugin {
 				},
 			} satisfies GlobMatchOptions
 		}
+		const exclusionRules = [
+			'**/.git',
+			'**/.github',
+			'**/.gitlab',
+			'**/.svn',
+			'**/node_modules',
+			'**/.DS_Store',
+			'**/__MACOSX',
+			'**/desktop.ini',
+			'**/Thumbs.db',
+			'**/.trash',
+			'**/~$*.doc',
+			'**/~$*.docx',
+			'**/~$*.ppt',
+			'**/~$*.pptx',
+			'**/~$*.xls',
+			'**/~$*.xlsx',
+		].map(createGlobMathOptions)
 		const DEFAULT_SETTINGS: NutstoreSettings = {
 			account: '',
 			credential: '',
@@ -117,12 +132,7 @@ export default class NutstorePlugin extends Plugin {
 			confirmBeforeDeleteInAutoSync: true,
 			syncMode: SyncMode.LOOSE,
 			filterRules: {
-				exclusionRules: [
-					'**/.git',
-					'**/.DS_Store',
-					'**/.trash',
-					this.app.vault.configDir,
-				].map(createGlobMathOptions),
+				exclusionRules,
 				inclusionRules: [],
 			},
 			skipLargeFiles: {
@@ -135,6 +145,7 @@ export default class NutstorePlugin extends Plugin {
 			providers: [],
 			defaultProviderId: undefined,
 			defaultModelId: undefined,
+			configDirSyncMode: 'none',
 		}
 
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
