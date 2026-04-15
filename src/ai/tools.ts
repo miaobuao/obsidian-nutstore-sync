@@ -99,7 +99,7 @@ export function createAITools(
 		{
 			name: 'edit_file',
 			description:
-				'Edit a vault text file by replacing one exact, uniquely matched text block with new text.',
+				'Edit a vault text file by replacing one exact, uniquely matched text block with new text. The path can be a vault-relative path (e.g. notes/file.md) or an absolute virtual path (e.g. /vault/notes/file.md).',
 			inputSchema: z.object({
 				path: z
 					.string()
@@ -120,7 +120,15 @@ export function createAITools(
 				const path = params.path
 				const oldText = params.oldText
 				const newText = params.newText
-				const normalizedPath = normalizePath(path)
+				if (path.startsWith('/') && !path.startsWith(`${VAULT_MOUNT_POINT}/`)) {
+					throw new Error(
+						`edit_file can only access files inside the vault. Use a vault-relative path (e.g. notes/file.md) or an absolute virtual path under ${VAULT_MOUNT_POINT}/ (e.g. ${VAULT_MOUNT_POINT}/notes/file.md).`,
+					)
+				}
+				const strippedPath = path.startsWith(`${VAULT_MOUNT_POINT}/`)
+					? path.slice(VAULT_MOUNT_POINT.length)
+					: path
+				const normalizedPath = normalizePath(strippedPath)
 				const target = app.vault.getAbstractFileByPath(normalizedPath)
 
 				if (!target) {

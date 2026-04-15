@@ -77,6 +77,9 @@ export interface ChatboxProps extends ChatboxViewModel {
 	onSendMessage: (text: string) => Promise<void>
 	onStopActiveRun?: () => void
 	onCancelTask?: (taskId: string) => void
+	onDeleteMessage?: (messageId: string) => void
+	onRegenerateMessage?: (messageId: string) => void
+	onRecallMessage?: (messageId: string) => void
 	renderMarkdown?: (
 		el: HTMLElement,
 		markdown: string,

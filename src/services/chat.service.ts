@@ -126,9 +126,10 @@ function deriveTitle(session: Pick<ChatSession, 'fragments'>) {
 
 function createVaultToolGuidance() {
 	return [
-		'Choose tools based on the user intent instead of repeating the same lookup strategy.',
-		'When an initial lookup returns no results, broaden the search method before concluding that information is missing.',
-		'For requests about locating notes or files, prefer iterative discovery and verification over early failure.',
+		'For ambiguous user requests, you may broaden exploration when needed to improve answer quality.',
+		'Base answers on evidence from tool results, and cite key file paths or outputs.',
+		'Avoid unbounded exploration, but do not stop when evidence is still weak or conflicting.',
+		'Stop when evidence is sufficient for a grounded answer, or when further tool use is clearly repetitive.',
 	].join(' ')
 }
 
@@ -340,6 +341,15 @@ export default class ChatService {
 			},
 			onCancelTask: (taskId: string) => {
 				this.cancelTask(taskId)
+			},
+			onDeleteMessage: (messageId: string) => {
+				this.deleteMessage(messageId)
+			},
+			onRegenerateMessage: async (messageId: string) => {
+				await this.regenerateMessage(messageId)
+			},
+			onRecallMessage: (messageId: string) => {
+				this.recallMessage(messageId)
 			},
 		}
 	}
@@ -678,6 +688,111 @@ export default class ChatService {
 		}
 
 		void this.stopSessionRun(session)
+	}
+
+	deleteMessage(messageId: string) {
+		const session = this.getLoadedActiveSession()
+		if (!session) {
+			return
+		}
+		const runtime = this.getRuntime(session.id)
+		if (runtime.runState !== 'idle') {
+			return
+		}
+		const fragment = this.getActiveFragment(session)
+		const idx = fragment.messages.findIndex((record) => record.id === messageId)
+		if (idx === -1) {
+			return
+		}
+		const target = fragment.messages[idx]
+		if (target.message.role === 'user') {
+			// Delete this user message and everything that follows until the next user message
+			// (covers assistant replies, tool calls, and tool result messages in any chain depth)
+			let endIdx = idx + 1
+			while (
+				endIdx < fragment.messages.length &&
+				fragment.messages[endIdx].message.role !== 'user'
+			) {
+				endIdx++
+			}
+			fragment.messages.splice(idx, endIdx - idx)
+		} else if (target.message.role === 'tool') {
+			const { tool_call_id: toolCallId } = target.message
+			// Remove the matching tool call from the nearest preceding assistant message
+			for (let i = idx - 1; i >= 0; i--) {
+				const record = fragment.messages[i]
+				if (record.message.role === 'user') break
+				if (
+					record.message.role === 'assistant' &&
+					record.message.tool_calls?.some((tc) => tc.id === toolCallId)
+				) {
+					record.message = {
+						...record.message,
+						tool_calls: record.message.tool_calls.filter(
+							(tc) => tc.id !== toolCallId,
+						),
+					}
+					break
+				}
+			}
+			fragment.messages.splice(idx, 1)
+		} else {
+			fragment.messages.splice(idx, 1)
+		}
+		void this.persistSession(session)
+		this.notify()
+	}
+
+	recallMessage(messageId: string) {
+		const session = this.getLoadedActiveSession()
+		if (!session) {
+			return
+		}
+		const runtime = this.getRuntime(session.id)
+		if (runtime.runState !== 'idle') {
+			return
+		}
+		const fragment = this.getActiveFragment(session)
+		const idx = fragment.messages.findIndex((record) => record.id === messageId)
+		if (idx === -1) {
+			return
+		}
+		// Delete the target message and all subsequent messages in the same fragment
+		fragment.messages.splice(idx)
+		void this.persistSession(session)
+		this.notify()
+	}
+
+	async regenerateMessage(messageId: string) {
+		const session = this.getLoadedActiveSession()
+		if (!session || !this.validateSessionSelection(session)) {
+			return
+		}
+		const runtime = this.getRuntime(session.id)
+		if (runtime.runState !== 'idle' || runtime.processing) {
+			return
+		}
+		const fragment = this.getActiveFragment(session)
+		const idx = fragment.messages.findIndex(
+			(record) => record.id === messageId,
+		)
+		if (idx === -1) {
+			return
+		}
+		// Save messages after the target so we can restore them after regeneration
+		const messagesAfter = fragment.messages.slice(idx + 1)
+		fragment.messages = fragment.messages.slice(0, idx)
+		runtime.runState = 'thinking'
+		await this.persistSession(session)
+		this.notify()
+		await this.startSessionProcessor(session.id)
+		// Re-append the saved messages to achieve in-place replacement
+		if (messagesAfter.length > 0) {
+			const updatedFragment = this.getActiveFragment(session)
+			updatedFragment.messages = [...updatedFragment.messages, ...messagesAfter]
+			await this.persistSession(session)
+			this.notify()
+		}
 	}
 
 	private async stopSessionRun(session: ChatSession) {
