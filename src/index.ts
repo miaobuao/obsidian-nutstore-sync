@@ -142,21 +142,22 @@ export default class NutstorePlugin extends Plugin {
 			startupSyncDelaySeconds: 0,
 			autoSyncIntervalSeconds: 300,
 			language: undefined,
-			providers: [],
-			defaultProviderId: undefined,
-			defaultModelId: undefined,
+			ai: {
+				providers: [],
+				defaultModel: undefined,
+			},
 			configDirSyncMode: 'none',
 		}
 
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
-		this.settings.providers = sanitizeProviders(this.settings.providers)
-		const defaults = sanitizeDefaultSelections(
-			this.settings.providers,
-			this.settings.defaultProviderId,
-			this.settings.defaultModelId,
+		this.settings.ai ??= { providers: [], defaultModel: undefined }
+		this.settings.ai.providers = sanitizeProviders(
+			this.settings.ai.providers ?? [],
 		)
-		this.settings.defaultProviderId = defaults.defaultProviderId
-		this.settings.defaultModelId = defaults.defaultModelId
+		this.settings.ai.defaultModel = sanitizeDefaultSelections(
+			this.settings.ai.providers,
+			this.settings.ai.defaultModel,
+		)
 	}
 
 	async saveSettings() {

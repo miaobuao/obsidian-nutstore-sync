@@ -39,10 +39,10 @@ export function TaskCard(props: {
 			<div class="flex items-start justify-between gap-3">
 				<div class="min-w-0 flex-1">
 					<div class="font-medium text-[var(--text-normal)] truncate">
-						{props.task.label}
+						{props.task.title}
 					</div>
 					<div class="mt-1 text-xs text-[var(--text-muted)] break-words">
-						{props.task.task}
+						{props.task.prompt}
 					</div>
 				</div>
 				<span

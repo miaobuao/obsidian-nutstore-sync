@@ -39,10 +39,10 @@ export default class ProviderEditorModal extends Modal {
 			.then((s) => s.settingEl.addClass('setting-required'))
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption('openai', i18n.t('settings.ai.provider.type.openai'))
+					.addOption('openai-chat', i18n.t('settings.ai.provider.type.openai'))
 					.setValue(this.draft.type)
 					.setDisabled(!this.isNew)
-					.onChange((value: 'openai') => {
+					.onChange((value: 'openai-chat') => {
 						this.draft.type = value
 					}),
 			)
@@ -106,19 +106,17 @@ export default class ProviderEditorModal extends Modal {
 			.setName(i18n.t('settings.ai.models.name'))
 			.setDesc(i18n.t('settings.ai.models.desc'))
 			.addButton((button) =>
-				button
-					.setButtonText(i18n.t('settings.ai.models.add'))
-					.onClick(() => {
-						new ModelEditorModal(
-							this.plugin,
-							createModelDraft(),
-							async (model) => {
-								this.draft.models.push(model)
-								this.render()
-							},
-							true,
-						).open()
-					}),
+				button.setButtonText(i18n.t('settings.ai.models.add')).onClick(() => {
+					new ModelEditorModal(
+						this.plugin,
+						createModelDraft(),
+						async (model) => {
+							this.draft.models.push(model)
+							this.render()
+						},
+						true,
+					).open()
+				}),
 			)
 
 		if (this.draft.models.length === 0) {

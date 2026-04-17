@@ -37,8 +37,8 @@ export default class ProvidersManagerModal extends Modal {
 							this.plugin,
 							createProviderDraft(),
 							async (provider) => {
-								this.plugin.settings.providers = [
-									...this.plugin.settings.providers,
+								this.plugin.settings.ai.providers = [
+									...this.plugin.settings.ai.providers,
 									provider,
 								]
 								await this.onChanged()
@@ -49,7 +49,7 @@ export default class ProvidersManagerModal extends Modal {
 					}),
 			)
 
-		if (this.plugin.settings.providers.length === 0) {
+		if (this.plugin.settings.ai.providers.length === 0) {
 			contentEl.createDiv({
 				cls: 'setting-item-description',
 				text: i18n.t('settings.ai.providers.empty'),
@@ -57,11 +57,11 @@ export default class ProvidersManagerModal extends Modal {
 			return
 		}
 
-		for (const provider of this.plugin.settings.providers) {
+		for (const provider of this.plugin.settings.ai.providers) {
 			new Setting(contentEl)
 				.setName(provider.name || i18n.t('settings.ai.unnamedProvider'))
 				.setDesc(
-					provider.type === 'openai'
+					provider.type === 'openai-chat'
 						? provider.baseUrl || i18n.t('settings.ai.providers.openaiDefault')
 						: i18n.t('settings.ai.providers.noBaseUrl'),
 				)
@@ -73,8 +73,8 @@ export default class ProvidersManagerModal extends Modal {
 								this.plugin,
 								provider,
 								async (savedProvider) => {
-									this.plugin.settings.providers =
-										this.plugin.settings.providers.map((item) =>
+									this.plugin.settings.ai.providers =
+										this.plugin.settings.ai.providers.map((item) =>
 											item.id === savedProvider.id ? savedProvider : item,
 										)
 									await this.onChanged()
@@ -109,9 +109,10 @@ export default class ProvidersManagerModal extends Modal {
 
 	private async deleteProvider(provider: AIProviderConfig) {
 		try {
-			this.plugin.settings.providers = this.plugin.settings.providers.filter(
-				(item) => item.id !== provider.id,
-			)
+			this.plugin.settings.ai.providers =
+				this.plugin.settings.ai.providers.filter(
+					(item) => item.id !== provider.id,
+				)
 			await this.onChanged()
 			new Notice(i18n.t('settings.ai.modals.provider.deleted'))
 			this.render()

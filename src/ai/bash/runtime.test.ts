@@ -211,7 +211,8 @@ function createMockVault(
 				return null
 			}
 			const parentPath = store.dirname(normalized)
-			const parent = parentPath === normalized ? null : buildFolder(parentPath, null)
+			const parent =
+				parentPath === normalized ? null : buildFolder(parentPath, null)
 			if (stat.type === 'folder') {
 				return buildFolder(normalized, parent)
 			}

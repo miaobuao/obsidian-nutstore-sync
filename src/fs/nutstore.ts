@@ -86,7 +86,8 @@ export class NutstoreFileSystem implements AbstractFileSystem {
 
 		const settings = this.options.filterRules ? undefined : await useSettings()
 		const filterRules = this.options.filterRules ?? settings?.filterRules
-		const configDir = this.options.filterRules?.configDir ?? this.options.vault.configDir
+		const configDir =
+			this.options.filterRules?.configDir ?? this.options.vault.configDir
 		const configDirSyncMode =
 			this.options.filterRules?.configDirSyncMode ??
 			settings?.configDirSyncMode ??
@@ -95,7 +96,9 @@ export class NutstoreFileSystem implements AbstractFileSystem {
 		const inclusions = this.buildRules(filterRules?.inclusionRules)
 
 		const includedStats = stats.filter((stat) => {
-			if (!isPathAllowedByConfigDirMode(stat.path, configDir, configDirSyncMode)) {
+			if (
+				!isPathAllowedByConfigDirMode(stat.path, configDir, configDirSyncMode)
+			) {
 				return false
 			}
 			return needIncludeFromGlobRules(stat.path, inclusions, exclusions)

@@ -515,7 +515,10 @@ function App(props: AppProps) {
 					</Show>
 				</div>
 
-				<div ref={splitLayoutEl} class="flex min-h-0 flex-1 flex-col overflow-hidden">
+				<div
+					ref={splitLayoutEl}
+					class="flex min-h-0 flex-1 flex-col overflow-hidden"
+				>
 					{/* Messages */}
 					<div
 						ref={messagesEl}

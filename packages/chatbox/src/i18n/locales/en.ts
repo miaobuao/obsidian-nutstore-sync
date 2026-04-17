@@ -2,7 +2,8 @@ const en = {
 	history: 'History',
 	deleteSession: 'Delete',
 	deleteSessionTitle: 'Delete Session',
-	deleteSessionMessage: 'Delete this session permanently? This action cannot be undone.',
+	deleteSessionMessage:
+		'Delete this session permanently? This action cannot be undone.',
 	cancel: 'Cancel',
 	confirmDelete: 'Delete',
 	newChat: 'New Chat',

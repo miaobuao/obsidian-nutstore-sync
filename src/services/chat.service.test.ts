@@ -60,23 +60,24 @@ function createPlugin() {
 	return {
 		app: {},
 		settings: {
-			providers: [
-				{
-					id: 'provider-1',
-					name: 'Provider',
-					type: 'openai' as const,
-					baseUrl: 'https://example.com/v1',
-					apiKey: 'key',
-					models: [
-						{
-							id: 'model-1',
-							name: 'model-a',
-						},
-					],
-				},
-			],
-			defaultProviderId: 'provider-1',
-			defaultModelId: 'model-1',
+			ai: {
+				providers: [
+					{
+						id: 'provider-1',
+						name: 'Provider',
+						type: 'openai-chat' as const,
+						baseUrl: 'https://example.com/v1',
+						apiKey: 'key',
+						models: [
+							{
+								id: 'model-1',
+								name: 'model-a',
+							},
+						],
+					},
+				],
+				defaultModel: { providerId: 'provider-1', modelId: 'model-1' },
+			},
 		},
 	}
 }
@@ -85,36 +86,37 @@ function createPluginWithTwoProviders() {
 	return {
 		app: {},
 		settings: {
-			providers: [
-				{
-					id: 'provider-1',
-					name: 'Provider 1',
-					type: 'openai' as const,
-					baseUrl: 'https://example.com/v1',
-					apiKey: 'key',
-					models: [
-						{
-							id: 'model-1',
-							name: 'model-a',
-						},
-					],
-				},
-				{
-					id: 'provider-2',
-					name: 'Provider 2',
-					type: 'openai' as const,
-					baseUrl: 'https://example.org/v1',
-					apiKey: 'key',
-					models: [
-						{
-							id: 'model-2',
-							name: 'model-b',
-						},
-					],
-				},
-			],
-			defaultProviderId: 'provider-1',
-			defaultModelId: 'model-1',
+			ai: {
+				providers: [
+					{
+						id: 'provider-1',
+						name: 'Provider 1',
+						type: 'openai-chat' as const,
+						baseUrl: 'https://example.com/v1',
+						apiKey: 'key',
+						models: [
+							{
+								id: 'model-1',
+								name: 'model-a',
+							},
+						],
+					},
+					{
+						id: 'provider-2',
+						name: 'Provider 2',
+						type: 'openai-chat' as const,
+						baseUrl: 'https://example.org/v1',
+						apiKey: 'key',
+						models: [
+							{
+								id: 'model-2',
+								name: 'model-b',
+							},
+						],
+					},
+				],
+				defaultModel: { providerId: 'provider-1', modelId: 'model-1' },
+			},
 		},
 	}
 }
@@ -272,17 +274,16 @@ describe('ChatService fragment workflows', () => {
 			service
 				.getViewProps()
 				.pendingMessages.map((item: ChatPendingMessage) => item.text),
-		).toEqual([
-			'Second message',
-			'Third message',
-		])
+		).toEqual(['Second message', 'Third message'])
 
 		first.resolve('Reply to first message')
 		await firstSend
 
 		const session = getActiveSession(service)
 		const fragment = session.fragments[0]
-		const userMessages = fragment.messages.filter((item: any) => item.message.role === 'user')
+		const userMessages = fragment.messages.filter(
+			(item: any) => item.message.role === 'user',
+		)
 		expect(userMessages).toHaveLength(2)
 		expect(userMessages[1].message.content?.[0]).toEqual({
 			type: 'text',
@@ -409,11 +410,13 @@ describe('ChatService fragment workflows', () => {
 			const session = getActiveSession(service)
 			expect(session.fragments).toHaveLength(1)
 			expect(session.activeFragmentId).toBe(session.fragments[0].id)
-				expect(service.getViewProps().pendingMessages).toHaveLength(0)
-				const userMessages = session.fragments[0].messages.filter(
-					(item: any) => item.message.role === 'user',
-				)
-				expect(userMessages.map((item: any) => item.message.content?.[0])).toEqual([
+			expect(service.getViewProps().pendingMessages).toHaveLength(0)
+			const userMessages = session.fragments[0].messages.filter(
+				(item: any) => item.message.role === 'user',
+			)
+			expect(
+				userMessages.map((item: any) => item.message.content?.[0]),
+			).toEqual([
 				{ type: 'text', text: 'Original message' },
 				{ type: 'text', text: 'Queued after failure' },
 			])
@@ -465,10 +468,12 @@ describe('ChatService fragment workflows', () => {
 			(session: ChatSessionHistoryItem) => session.id !== secondSessionId,
 		)!
 		const activeSession = getActiveSession(reloadedService)
-		expect(activeSession.fragments[0].messages[0].message.content?.[0]).toEqual({
-			type: 'text',
-			text: 'Second session message',
-		})
+		expect(activeSession.fragments[0].messages[0].message.content?.[0]).toEqual(
+			{
+				type: 'text',
+				text: 'Second session message',
+			},
+		)
 
 		await reloadedService.switchSession(inactiveSession.id)
 		const switched = getLoadedSession(reloadedService, inactiveSession.id)
@@ -535,7 +540,9 @@ describe('ChatService fragment workflows', () => {
 		const props = service.getViewProps()
 		expect(props.activeSessionId).toBeTruthy()
 		expect(props.sessionHistory).toHaveLength(1)
-		expect(getActiveSession(service).fragments[0].messages[0].message.content?.[0]).toEqual({
+		expect(
+			getActiveSession(service).fragments[0].messages[0].message.content?.[0],
+		).toEqual({
 			type: 'text',
 			text: 'Recreated session',
 		})
@@ -558,8 +565,8 @@ describe('ChatService fragment workflows', () => {
 		await service.createSession()
 
 		const created = getActiveSession(service)
-		expect(created.providerId).toBe('provider-2')
-		expect(created.modelId).toBe('model-2')
+		expect(created.model?.providerId).toBe('provider-2')
+		expect(created.model?.modelId).toBe('model-2')
 	})
 
 	it('deletes a thinking session after stopping the active run', async () => {
@@ -634,8 +641,8 @@ describe('ChatService fragment workflows', () => {
 				sessionId,
 				depth: 1,
 				maxDepth: 2,
-				label: 'Background work',
-				task: 'Do something',
+				title: 'Background work',
+				prompt: 'Do something',
 				status: 'running',
 				createdAt: 1,
 				startedAt: 2,

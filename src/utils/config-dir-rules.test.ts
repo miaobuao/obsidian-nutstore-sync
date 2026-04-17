@@ -56,11 +56,15 @@ describe('isPathAllowedByConfigDirMode', () => {
 				'bookmarks',
 			),
 		).toBe(false)
-		expect(isPathAllowedByConfigDirMode('.obsidian', '.obsidian', 'bookmarks')).toBe(
-			false,
-		)
 		expect(
-			isPathAllowedByConfigDirMode('notes/workspace.json', '.obsidian', 'bookmarks'),
+			isPathAllowedByConfigDirMode('.obsidian', '.obsidian', 'bookmarks'),
+		).toBe(false)
+		expect(
+			isPathAllowedByConfigDirMode(
+				'notes/workspace.json',
+				'.obsidian',
+				'bookmarks',
+			),
 		).toBe(true)
 	})
 })
@@ -92,7 +96,10 @@ describe('computeEffectiveFilterRules', () => {
 					options: { caseSensitive: true },
 				},
 				{ expr: '.obsidian/plugins/**/.git', options: { caseSensitive: true } },
-				{ expr: '.obsidian/plugins/**/.git/**', options: { caseSensitive: true } },
+				{
+					expr: '.obsidian/plugins/**/.git/**',
+					options: { caseSensitive: true },
+				},
 				{
 					expr: '.obsidian/plugins/**/.pnpm-store',
 					options: { caseSensitive: true },
@@ -114,7 +121,10 @@ describe('computeEffectiveFilterRules', () => {
 					options: { caseSensitive: true },
 				},
 				{ expr: '.obsidian/plugins/**/.git', options: { caseSensitive: true } },
-				{ expr: '.obsidian/plugins/**/.git/**', options: { caseSensitive: true } },
+				{
+					expr: '.obsidian/plugins/**/.git/**',
+					options: { caseSensitive: true },
+				},
 				{
 					expr: '.obsidian/plugins/**/.pnpm-store',
 					options: { caseSensitive: true },
@@ -135,10 +145,18 @@ describe('computeEffectiveFilterRules', () => {
 		const inclusion = [new GlobMatch('**/*.json', { caseSensitive: false })]
 		const exclusion = [new GlobMatch('.obsidian', { caseSensitive: false })]
 		expect(
-			needIncludeFromGlobRules('.obsidian/workspace.json', inclusion, exclusion),
+			needIncludeFromGlobRules(
+				'.obsidian/workspace.json',
+				inclusion,
+				exclusion,
+			),
 		).toBe(true)
 		expect(
-			isPathAllowedByConfigDirMode('.obsidian/workspace.json', '.obsidian', 'none'),
+			isPathAllowedByConfigDirMode(
+				'.obsidian/workspace.json',
+				'.obsidian',
+				'none',
+			),
 		).toBe(false)
 	})
 })

@@ -21,13 +21,16 @@ describe('obsidianFetch', () => {
 			json: { ok: true },
 		})
 
-		const response = await obsidianFetch('https://example.com/v1/chat/completions', {
-			method: 'POST',
-			headers: {
-				authorization: 'Bearer key',
+		const response = await obsidianFetch(
+			'https://example.com/v1/chat/completions',
+			{
+				method: 'POST',
+				headers: {
+					authorization: 'Bearer key',
+				},
+				body: JSON.stringify({ hello: 'world' }),
 			},
-			body: JSON.stringify({ hello: 'world' }),
-		})
+		)
 
 		expect(requestUrl).toHaveBeenCalledWith({
 			url: 'https://example.com/v1/chat/completions',

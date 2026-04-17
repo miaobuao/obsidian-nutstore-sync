@@ -1,6 +1,11 @@
 import { Bash } from 'just-bash/browser'
 import type { App } from 'obsidian'
-import { listVaultPaths, MountedVaultFs, ObsidianVaultFs, VAULT_MOUNT_POINT } from './fs'
+import {
+	listVaultPaths,
+	MountedVaultFs,
+	ObsidianVaultFs,
+	VAULT_MOUNT_POINT,
+} from './fs'
 
 export interface VaultBashExecOptions {
 	cwd?: string

@@ -31,7 +31,8 @@ export class LocalVaultFileSystem implements AbstractFileSystem {
 	async walk() {
 		const settings = this.options.filterRules ? undefined : await useSettings()
 		const filterRules = this.options.filterRules ?? settings?.filterRules
-		const configDir = this.options.filterRules?.configDir ?? this.options.vault.configDir
+		const configDir =
+			this.options.filterRules?.configDir ?? this.options.vault.configDir
 		const configDirSyncMode =
 			this.options.filterRules?.configDirSyncMode ??
 			settings?.configDirSyncMode ??
@@ -44,7 +45,9 @@ export class LocalVaultFileSystem implements AbstractFileSystem {
 			this.options.vault.getRoot().path,
 		)
 		const includedStats = stats.filter((stat) => {
-			if (!isPathAllowedByConfigDirMode(stat.path, configDir, configDirSyncMode)) {
+			if (
+				!isPathAllowedByConfigDirMode(stat.path, configDir, configDirSyncMode)
+			) {
 				return false
 			}
 			return needIncludeFromGlobRules(stat.path, inclusions, exclusions)

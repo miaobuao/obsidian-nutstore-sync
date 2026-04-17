@@ -41,9 +41,10 @@ export interface NutstoreSettings {
 	startupSyncDelaySeconds: number
 	autoSyncIntervalSeconds: number
 	language?: 'zh' | 'en'
-	providers: AIProviderConfig[]
-	defaultProviderId?: string
-	defaultModelId?: string
+	ai: {
+		providers: AIProviderConfig[]
+		defaultModel?: { providerId: string; modelId: string }
+	}
 	configDirSyncMode?: 'none' | 'bookmarks' | 'all'
 }
 

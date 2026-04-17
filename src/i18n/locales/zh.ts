@@ -226,12 +226,17 @@ export default {
 			bookmarks: '仅同步书签',
 			all: '同步全部（实验性）',
 			bookmarksTitle: '启用书签同步',
-			bookmarksDesc: '仅同步 {{configDir}}/bookmarks.json，其他配置文件不受影响。',
+			bookmarksDesc:
+				'仅同步 {{configDir}}/bookmarks.json，其他配置文件不受影响。',
 			warnTitle: '启用完整配置目录同步？',
-			warnSyncs: '同步内容：插件设置（data.json）、插件二进制（main.js）、主题、代码片段等所有配置文件。',
-			warnExcludes: '自动排除：{{configDir}}/plugins/**/node_modules、{{configDir}}/plugins/**/.git 和 {{configDir}}/plugins/**/.pnpm-store。',
-			warnConflict: '冲突处理：两端同一文件均有修改时，保留修改时间较新的版本，另一端的修改将被覆盖。',
-			warnRisk: '风险：多台设备同时运行 Obsidian 容易引发冲突；插件设置变更后可能需要重启 Obsidian 才能生效。',
+			warnSyncs:
+				'同步内容：插件设置（data.json）、插件二进制（main.js）、主题、代码片段等所有配置文件。',
+			warnExcludes:
+				'自动排除：{{configDir}}/plugins/**/node_modules、{{configDir}}/plugins/**/.git 和 {{configDir}}/plugins/**/.pnpm-store。',
+			warnConflict:
+				'冲突处理：两端同一文件均有修改时，保留修改时间较新的版本，另一端的修改将被覆盖。',
+			warnRisk:
+				'风险：多台设备同时运行 Obsidian 容易引发冲突；插件设置变更后可能需要重启 Obsidian 才能生效。',
 			confirm: '启用',
 			cancel: '取消',
 		},
@@ -480,7 +485,8 @@ export default {
 			invalidRegex: '第 {{index}} 个 pattern 的正则无效：{{pattern}}',
 			sessionNotFound: '目标会话已不存在',
 			taskDepthExceeded: '任务拆分深度已达到上限',
-			taskConcurrencyLimit: '当前会话已有过多后台任务在运行，限制为 {{limit}} 个',
+			taskConcurrencyLimit:
+				'当前会话已有过多后台任务在运行，限制为 {{limit}} 个',
 			taskSessionUnavailable: '任务对应的会话或模型配置已不可用',
 		},
 	},

@@ -48,8 +48,8 @@ function isAllowedBashCwd(pathValue: string) {
 
 interface SpawnToolHandler {
 	(params: {
-		task: string
-		label?: string
+		prompt: string
+		title?: string
 		parentTaskId?: string
 		depth: number
 		maxDepth: number
@@ -203,8 +203,8 @@ export function createAITools(
 			}),
 			execute: async (params, context) => {
 				return options.spawnTask!({
-					task: params.task,
-					label: params.label,
+					prompt: params.task,
+					title: params.label,
 					parentTaskId: context.parentTaskId,
 					depth: context.depth + 1,
 					maxDepth: context.maxDepth,

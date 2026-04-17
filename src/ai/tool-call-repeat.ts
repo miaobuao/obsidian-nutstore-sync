@@ -52,7 +52,6 @@ export function updateToolCallRepeatState(
 	return {
 		lastSignature: signature,
 		consecutiveCount,
-		isRepeatedTooManyTimes:
-			consecutiveCount >= REPEATED_TOOL_CALL_THRESHOLD,
+		isRepeatedTooManyTimes: consecutiveCount >= REPEATED_TOOL_CALL_THRESHOLD,
 	}
 }

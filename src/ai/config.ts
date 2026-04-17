@@ -1,10 +1,10 @@
+import createId from '~/utils/create-id'
 import {
 	AIModelConfig,
 	AIProviderConfig,
 	AIProviderType,
 	OpenAIProviderConfig,
 } from './types'
-import createId from '~/utils/create-id'
 
 function normalizeModel(model: Partial<AIModelConfig>): AIModelConfig | null {
 	return {
@@ -23,7 +23,7 @@ function normalizeOpenAIProvider(
 	return {
 		id: provider.id?.trim() || createId('provider'),
 		name: provider.name?.trim() || '',
-		type: 'openai',
+		type: 'openai-chat',
 		apiKey: provider.apiKey || '',
 		baseUrl: provider.baseUrl?.trim() || undefined,
 		organization: provider.organization?.trim() || undefined,
@@ -32,17 +32,20 @@ function normalizeOpenAIProvider(
 	}
 }
 
-export function normalizeProviderType(
-	value?: string,
-): AIProviderType {
-	return value === 'openai' ? value : 'openai'
+export function normalizeProviderType(value?: string): AIProviderType {
+	if (value === 'openai') return 'openai-chat'
+	return value === 'openai-chat' ? value : 'openai-chat'
 }
 
 function normalizeProvider(
 	provider: Partial<AIProviderConfig>,
 ): AIProviderConfig | null {
-	switch (normalizeProviderType(typeof provider.type === 'string' ? provider.type : undefined)) {
-		case 'openai':
+	switch (
+		normalizeProviderType(
+			typeof provider.type === 'string' ? provider.type : undefined,
+		)
+	) {
+		case 'openai-chat':
 			return normalizeOpenAIProvider(provider)
 	}
 }
@@ -57,42 +60,38 @@ export function sanitizeProviders(
 
 export function sanitizeDefaultSelections(
 	providers: AIProviderConfig[],
-	defaultProviderId?: string,
-	defaultModelId?: string,
-) {
-	const provider = providers.find((item) => item.id === defaultProviderId)
-	const model = provider?.models.find((item) => item.id === defaultModelId)
-
-	return {
-		defaultProviderId: provider?.id,
-		defaultModelId: model?.id,
-	}
+	defaultModel?: { providerId: string; modelId: string },
+): { providerId: string; modelId: string } | undefined {
+	if (!defaultModel) return undefined
+	const provider = providers.find((item) => item.id === defaultModel.providerId)
+	const model = provider?.models.find(
+		(item) => item.id === defaultModel.modelId,
+	)
+	if (!provider || !model) return undefined
+	return { providerId: provider.id, modelId: model.id }
 }
 
 export function resolveInitialSelection(
 	providers: AIProviderConfig[],
-	defaultProviderId?: string,
-	defaultModelId?: string,
+	defaultModel?: { providerId: string; modelId: string },
 ) {
-	const defaults = sanitizeDefaultSelections(
-		providers,
-		defaultProviderId,
-		defaultModelId,
-	)
+	const validated = sanitizeDefaultSelections(providers, defaultModel)
 	return {
-		providerId: defaults.defaultProviderId,
-		modelId: defaults.defaultModelId,
+		providerId: validated?.providerId,
+		modelId: validated?.modelId,
 	}
 }
 
-export function createProviderDraft(type: AIProviderType = 'openai'): AIProviderConfig {
+export function createProviderDraft(
+	type: AIProviderType = 'openai-chat',
+): AIProviderConfig {
 	const providerId = createId('provider')
 	switch (type) {
-		case 'openai':
+		case 'openai-chat':
 			return {
 				id: providerId,
-				name: 'New OpenAI Provider',
-				type: 'openai',
+				name: 'Provider',
+				type: 'openai-chat',
 				apiKey: '',
 				baseUrl: undefined,
 				organization: undefined,
@@ -113,9 +112,16 @@ export function getProviderById(
 	providers: AIProviderConfig[],
 	providerId?: string,
 ) {
-	return providerId ? providers.find((item) => item.id === providerId) : undefined
+	return providerId
+		? providers.find((item) => item.id === providerId)
+		: undefined
 }
 
-export function getModelById(provider: AIProviderConfig | undefined, modelId?: string) {
-	return modelId ? provider?.models.find((item) => item.id === modelId) : undefined
+export function getModelById(
+	provider: AIProviderConfig | undefined,
+	modelId?: string,
+) {
+	return modelId
+		? provider?.models.find((item) => item.id === modelId)
+		: undefined
 }

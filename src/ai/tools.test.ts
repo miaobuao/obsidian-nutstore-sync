@@ -96,8 +96,7 @@ function createToolApp() {
 			},
 			getAbstractFileByPath,
 			async readBinary(file: any) {
-				return new TextEncoder()
-					.encode(files.get(normalize(file.path)) ?? '')
+				return new TextEncoder().encode(files.get(normalize(file.path)) ?? '')
 					.buffer as ArrayBuffer
 			},
 			async createBinary(path: string, data: ArrayBuffer) {
@@ -180,7 +179,9 @@ describe('filterVaultEntries', () => {
 			defaultMarkdownOnly: false,
 		})
 
-		expect(results.map((entry) => entry.path)).toEqual(['NS_Memo/public/任务.md'])
+		expect(results.map((entry) => entry.path)).toEqual([
+			'NS_Memo/public/任务.md',
+		])
 	})
 
 	it('matches folder paths against include patterns when searching folders', () => {

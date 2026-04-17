@@ -45,7 +45,7 @@ export function MessageCard(props: {
 			fallback={
 				<details
 					class={`rounded-3 border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-3 ${
-						props.item.message.meta?.isError ? 'border-[var(--text-error)]' : ''
+						props.item.message.isError ? 'border-[var(--text-error)]' : ''
 					}`}
 				>
 					<summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-xs text-[var(--text-muted)] marker:hidden">
@@ -110,7 +110,7 @@ export function MessageCard(props: {
 		>
 			<div
 				class={`rounded-3 p-3 border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] ${
-					props.item.message.meta?.isError ? 'border-[var(--text-error)]' : ''
+					props.item.message.isError ? 'border-[var(--text-error)]' : ''
 				}`}
 			>
 				<div class="flex items-center justify-between gap-3 text-xs text-[var(--text-muted)]">
@@ -135,9 +135,7 @@ export function MessageCard(props: {
 									class="cursor-pointer p-1 size-6 text-[var(--text-muted)] hover:text-[var(--text-error)] !border-none !bg-transparent !shadow-none"
 									type="button"
 									title={t('deleteMessage')}
-									onClick={() =>
-										props.onDeleteMessage?.(props.item.message.id)
-									}
+									onClick={() => props.onDeleteMessage?.(props.item.message.id)}
 								>
 									<svg
 										width="14"
@@ -157,14 +155,17 @@ export function MessageCard(props: {
 									</svg>
 								</button>
 							</Show>
-							<Show when={props.item.message.message.role === 'user' && props.onRecallMessage}>
+							<Show
+								when={
+									props.item.message.message.role === 'user' &&
+									props.onRecallMessage
+								}
+							>
 								<button
 									class="cursor-pointer p-1 size-6 text-[var(--text-muted)] hover:text-[var(--text-normal)] !border-none !bg-transparent !shadow-none"
 									type="button"
 									title={t('recallMessage')}
-									onClick={() =>
-										props.onRecallMessage?.(props.item.message.id)
-									}
+									onClick={() => props.onRecallMessage?.(props.item.message.id)}
 								>
 									<svg
 										width="14"
@@ -182,7 +183,12 @@ export function MessageCard(props: {
 									</svg>
 								</button>
 							</Show>
-							<Show when={props.item.message.message.role === 'assistant' && props.onRegenerateMessage}>
+							<Show
+								when={
+									props.item.message.message.role === 'assistant' &&
+									props.onRegenerateMessage
+								}
+							>
 								<button
 									class="cursor-pointer p-1 size-6 text-[var(--text-muted)] hover:text-[var(--text-normal)] !border-none !bg-transparent !shadow-none"
 									type="button"
@@ -210,7 +216,11 @@ export function MessageCard(props: {
 								</button>
 							</Show>
 						</div>
-						<Show when={props.item.message.message.role === 'assistant' && usageText()}>
+						<Show
+							when={
+								props.item.message.message.role === 'assistant' && usageText()
+							}
+						>
 							<div class="text-[10px] text-[var(--text-faint)]">
 								{usageText()}
 							</div>

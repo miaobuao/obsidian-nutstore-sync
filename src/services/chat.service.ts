@@ -14,13 +14,13 @@ import { createAITools } from '~/ai/tools'
 import {
 	AIMessage,
 	AIMessageContentPart,
+	AIMessageRecord,
 	AIProviderConfig,
+	AISession,
+	AITaskRecord,
 	AIToolCall,
 	AIToolDefinition,
 	AIToolExecutionContext,
-	ChatMessageRecord,
-	ChatSession,
-	ChatTaskRecord,
 } from '~/ai/types'
 import {
 	ChatFragment,
@@ -111,7 +111,7 @@ function getAssistantToolCalls(message: ChatMessage) {
 	return message.role === 'assistant' ? message.tool_calls : undefined
 }
 
-function deriveTitle(session: Pick<ChatSession, 'fragments'>) {
+function deriveTitle(session: Pick<AISession, 'fragments'>) {
 	for (const fragment of session.fragments) {
 		const firstUser = fragment.messages.find(
 			(item) => item.message.role === 'user',
@@ -155,11 +155,11 @@ function createSubagentSystemPrompt(canSpawn: boolean) {
 		.join(' ')
 }
 
-function createSessionPlaceholder(item: ChatSessionIndexItem): ChatSession {
+function createSessionPlaceholder(item: ChatSessionIndexItem): AISession {
 	return {
 		id: item.id,
-		title: item.title,
 		createdAt: item.createdAt,
+		updatedAt: item.updatedAt,
 		fragments: [],
 		activeFragmentId: '',
 		tasks: [],
@@ -167,7 +167,7 @@ function createSessionPlaceholder(item: ChatSessionIndexItem): ChatSession {
 }
 
 export default class ChatService {
-	private readonly loadedSessions = new Map<string, ChatSession>()
+	private readonly loadedSessions = new Map<string, AISession>()
 	private sessionIndex: ChatSessionIndexItem[] = []
 	private readonly deletedSessionIds = new Set<string>()
 	private pendingProviderId?: string
@@ -177,10 +177,7 @@ export default class ChatService {
 	private readonly runtimeBySessionId = new Map<string, SessionRuntimeState>()
 	private readonly taskModelSelection = new Map<
 		string,
-		{
-			providerId?: string
-			modelId?: string
-		}
+		{ providerId: string; modelId: string } | undefined
 	>()
 	private readonly pendingTaskCompletions = new Map<
 		string,
@@ -256,29 +253,26 @@ export default class ChatService {
 			? this.getRuntime(activeSession.id)
 			: { runState: 'idle' as const, pendingMessages: [] }
 		const fallbackSelection = resolveInitialSelection(
-			this.plugin.settings.providers,
-			this.plugin.settings.defaultProviderId,
-			this.plugin.settings.defaultModelId,
+			this.plugin.settings.ai.providers,
+			this.plugin.settings.ai.defaultModel,
 		)
 		const emptyStateSelection = this.getEmptyStateSelection()
 		const providerIdForView = activeSession
-			? activeSession.providerId
+			? activeSession.model?.providerId
 			: emptyStateSelection.providerId || fallbackSelection.providerId
 		const modelIdForView = activeSession
-			? activeSession.modelId
+			? activeSession.model?.modelId
 			: emptyStateSelection.modelId || fallbackSelection.modelId
 		const selectedProvider = getProviderById(
-			this.plugin.settings.providers,
+			this.plugin.settings.ai.providers,
 			providerIdForView,
 		)
 		const selectedModel = getModelById(selectedProvider, modelIdForView)
 
 		return {
 			title:
-				activeSession?.title ||
 				this.sessionIndex.find((item) => item.id === this.activeSessionId)
-					?.title ||
-				i18n.t('chatbox.newChat'),
+					?.title || i18n.t('chatbox.newChat'),
 			sessionHistory: this.sessionIndex.map((item) => ({
 				...item,
 			})),
@@ -290,7 +284,7 @@ export default class ChatService {
 						.sort((left, right) => right.createdAt - left.createdAt)
 				: [],
 			otherSessionTasks: this.collectOtherSessionTasks(),
-			providers: this.plugin.settings.providers.map<ChatProviderOption>(
+			providers: this.plugin.settings.ai.providers.map<ChatProviderOption>(
 				(provider) => ({
 					id: provider.id,
 					name: provider.name || i18n.t('settings.ai.unnamedProvider'),
@@ -363,7 +357,7 @@ export default class ChatService {
 		const session = this.createEmptySession()
 		this.loadedSessions.set(session.id, session)
 		this.activeSessionId = session.id
-		this.upsertSessionIndexItem(session, true)
+		this.upsertSessionIndexItem(session, i18n.t('chatbox.newChat'), true)
 		this.getRuntime(session.id)
 		await this.persistSession(session)
 		await this.persistMetaAndIndex()
@@ -426,7 +420,7 @@ export default class ChatService {
 			}
 
 			const provider = getProviderById(
-				this.plugin.settings.providers,
+				this.plugin.settings.ai.providers,
 				providerId,
 			)
 			if (!provider) {
@@ -443,20 +437,24 @@ export default class ChatService {
 			return
 		}
 		if (!providerId) {
-			session.providerId = undefined
-			session.modelId = undefined
+			session.model = undefined
 			void this.persistSession(session)
 			this.notify()
 			return
 		}
 
-		const provider = getProviderById(this.plugin.settings.providers, providerId)
+		const provider = getProviderById(
+			this.plugin.settings.ai.providers,
+			providerId,
+		)
 		if (!provider) {
 			return
 		}
 
-		session.providerId = provider.id
-		session.modelId = provider.models[0]?.id
+		const firstModelId = provider.models[0]?.id
+		session.model = firstModelId
+			? { providerId: provider.id, modelId: firstModelId }
+			: undefined
 		void this.persistSession(session)
 		this.notify()
 	}
@@ -471,7 +469,7 @@ export default class ChatService {
 			}
 
 			const provider = getProviderById(
-				this.plugin.settings.providers,
+				this.plugin.settings.ai.providers,
 				this.pendingProviderId,
 			)
 			const model = getModelById(provider, modelId)
@@ -488,22 +486,22 @@ export default class ChatService {
 			return
 		}
 		if (!modelId) {
-			session.modelId = undefined
+			session.model = undefined
 			void this.persistSession(session)
 			this.notify()
 			return
 		}
 
 		const provider = getProviderById(
-			this.plugin.settings.providers,
-			session.providerId,
+			this.plugin.settings.ai.providers,
+			session.model?.providerId,
 		)
 		const model = getModelById(provider, modelId)
-		if (!model) {
+		if (!model || !provider) {
 			return
 		}
 
-		session.modelId = model.id
+		session.model = { providerId: provider.id, modelId: model.id }
 		void this.persistSession(session)
 		this.notify()
 	}
@@ -528,9 +526,12 @@ export default class ChatService {
 			return
 		}
 
-		this.appendUserMessage(this.getActiveFragment(session), normalizedText)
-		session.title = deriveTitle(session)
-		this.upsertSessionIndexItem(session)
+		this.appendUserMessage(
+			this.getActiveFragment(session),
+			normalizedText,
+			session,
+		)
+		this.upsertSessionIndexItem(session, deriveTitle(session))
 		runtime.runState = 'thinking'
 		await this.persistSession(session)
 		await this.persistMetaAndIndex()
@@ -589,6 +590,7 @@ export default class ChatService {
 							},
 						],
 						tools: [],
+						...session.inferenceParams,
 					})
 
 					if (this.deletedSessionIds.has(session.id) || runtime.stopRequested) {
@@ -598,18 +600,18 @@ export default class ChatService {
 					const summary =
 						messageToText(response.message).trim() || COMPRESSION_PROMPT
 					const targetFragment = this.createFragment(session)
-					this.appendUserMessage(targetFragment, summary)
-					session.title = deriveTitle(session)
-					this.upsertSessionIndexItem(session)
+					targetFragment.summary = summary
+					this.appendUserMessage(targetFragment, summary, session)
+					this.upsertSessionIndexItem(session, deriveTitle(session))
 					await this.persistSession(session)
 					await this.persistMetaAndIndex()
 				}
 			} catch (error) {
 				const provider = getProviderById(
-					this.plugin.settings.providers,
-					session.providerId,
+					this.plugin.settings.ai.providers,
+					session.model?.providerId,
 				)
-				const model = getModelById(provider, session.modelId)
+				const model = getModelById(provider, session.model?.modelId)
 				this.reportFatalError(
 					session,
 					error instanceof Error
@@ -663,10 +665,8 @@ export default class ChatService {
 				toCancelledTask(
 					task,
 					task.id === taskId ? 'user_cancelled' : 'ancestor_cancelled',
-					i18n.t('chatbox.task.cancelledSummary', {
-						task: task.label,
-					}),
 					Date.now(),
+					i18n.t('chatbox.task.cancelledSummary', { task: task.title }),
 				),
 			)
 			this.resolveTaskCompletion(task.id, this.buildTaskToolPayload(task))
@@ -773,9 +773,7 @@ export default class ChatService {
 			return
 		}
 		const fragment = this.getActiveFragment(session)
-		const idx = fragment.messages.findIndex(
-			(record) => record.id === messageId,
-		)
+		const idx = fragment.messages.findIndex((record) => record.id === messageId)
 		if (idx === -1) {
 			return
 		}
@@ -795,7 +793,7 @@ export default class ChatService {
 		}
 	}
 
-	private async stopSessionRun(session: ChatSession) {
+	private async stopSessionRun(session: AISession) {
 		const runtime = this.getRuntime(session.id)
 		if (
 			runtime.runState !== 'thinking' &&
@@ -832,7 +830,8 @@ export default class ChatService {
 						!!item &&
 						typeof item.id === 'string' &&
 						typeof item.title === 'string' &&
-						typeof item.createdAt === 'number',
+						typeof item.createdAt === 'number' &&
+						typeof item.updatedAt === 'number',
 				)
 			: []
 
@@ -863,7 +862,7 @@ export default class ChatService {
 		this.loadedSessions.set(sessionId, session)
 		const runtime = this.getRuntime(sessionId)
 		runtime.pendingMessages = []
-		this.upsertSessionIndexItem(session)
+		this.upsertSessionIndexItem(session, deriveTitle(session))
 		if (changed) {
 			await this.persistSession(session)
 			await this.persistMetaAndIndex()
@@ -871,7 +870,7 @@ export default class ChatService {
 		return session
 	}
 
-	private async persistSession(session: ChatSession) {
+	private async persistSession(session: AISession) {
 		if (this.deletedSessionIds.has(session.id)) {
 			return
 		}
@@ -892,7 +891,7 @@ export default class ChatService {
 		])
 	}
 
-	private rehydrateSession(session: ChatSession) {
+	private rehydrateSession(session: AISession) {
 		const rehydrated = this.normalizeSession(session)
 		let changed = this.sanitizeSessionSelection(rehydrated)
 
@@ -905,10 +904,8 @@ export default class ChatService {
 				toCancelledTask(
 					task,
 					INTERRUPTED_TASK_CANCEL_REASON,
-					i18n.t('chatbox.task.cancelledSummary', {
-						task: task.label,
-					}),
 					Date.now(),
+					i18n.t('chatbox.task.cancelledSummary', { task: task.title }),
 				),
 			)
 			changed = true
@@ -920,18 +917,23 @@ export default class ChatService {
 		}
 	}
 
-	private normalizeSession(session: ChatSession): ChatSession {
-		const normalized: ChatSession = {
+	private normalizeSession(session: AISession): AISession {
+		const normalized: AISession = {
 			id: session.id,
 			createdAt: session.createdAt,
-			title: session.title || i18n.t('chatbox.newChat'),
-			providerId: session.providerId,
-			modelId: session.modelId,
+			updatedAt: session.updatedAt || session.createdAt,
+			model: session.model ? { ...session.model } : undefined,
+			systemPrompt: session.systemPrompt,
+			inferenceParams: session.inferenceParams
+				? { ...session.inferenceParams }
+				: undefined,
 			fragments:
 				Array.isArray(session.fragments) && session.fragments.length > 0
 					? session.fragments.map((fragment) => ({
 							id: fragment.id,
 							createdAt: fragment.createdAt,
+							updatedAt: fragment.updatedAt || fragment.createdAt,
+							summary: fragment.summary,
 							messages: Array.isArray(fragment.messages)
 								? fragment.messages.map((message) => ({
 										...message,
@@ -953,6 +955,7 @@ export default class ChatService {
 							{
 								id: createId('fragment'),
 								createdAt: Date.now(),
+								updatedAt: Date.now(),
 								messages: [],
 							},
 						],
@@ -970,9 +973,6 @@ export default class ChatService {
 			normalized.activeFragmentId =
 				normalized.fragments[normalized.fragments.length - 1].id
 		}
-		if (!normalized.title.trim()) {
-			normalized.title = deriveTitle(normalized)
-		}
 		return normalized
 	}
 
@@ -984,14 +984,22 @@ export default class ChatService {
 		)
 	}
 
-	private upsertSessionIndexItem(session: ChatSession, prepend = false) {
+	private upsertSessionIndexItem(
+		session: AISession,
+		title?: string,
+		prepend = false,
+	) {
 		if (this.deletedSessionIds.has(session.id)) {
 			return
 		}
+		const existingTitle =
+			this.sessionIndex.find((e) => e.id === session.id)?.title ??
+			i18n.t('chatbox.newChat')
 		const item: ChatSessionIndexItem = {
 			id: session.id,
-			title: session.title,
+			title: title ?? existingTitle,
 			createdAt: session.createdAt,
+			updatedAt: session.updatedAt,
 		}
 		const existingIndex = this.sessionIndex.findIndex(
 			(entry) => entry.id === session.id,
@@ -1012,7 +1020,7 @@ export default class ChatService {
 		this.sessionIndex = nextIndex
 	}
 
-	private buildTimeline(session: ChatSession): ChatboxProps['timeline'] {
+	private buildTimeline(session: AISession): ChatboxProps['timeline'] {
 		const flattenedMessages = session.fragments.flatMap(
 			(fragment) => fragment.messages,
 		)
@@ -1141,8 +1149,9 @@ export default class ChatService {
 				const response = await generateAssistantTurn({
 					provider,
 					model: model.name,
-					messages: this.buildMessagesForFragment(fragment),
+					messages: this.buildMessagesForFragment(fragment, session),
 					tools,
+					...session.inferenceParams,
 				})
 
 				if (this.deletedSessionIds.has(session.id)) {
@@ -1154,8 +1163,7 @@ export default class ChatService {
 				if (runtime.stopRequested) {
 					fragment.messages.push(
 						this.createMessageRecord(response.message, {
-							...response.meta,
-							modelId: model.id,
+							meta: { ...response.meta, modelId: model.id },
 						}),
 					)
 					this.finishStoppedSessionRun(session, fragment)
@@ -1165,10 +1173,11 @@ export default class ChatService {
 
 				fragment.messages.push(
 					this.createMessageRecord(response.message, {
-						...response.meta,
-						modelId: model.id,
+						meta: { ...response.meta, modelId: model.id },
 					}),
 				)
+				fragment.updatedAt = Date.now()
+				session.updatedAt = Date.now()
 				await this.persistSession(session)
 				this.notify()
 
@@ -1233,10 +1242,10 @@ export default class ChatService {
 				return
 			}
 			const activeProvider = getProviderById(
-				this.plugin.settings.providers,
-				session.providerId,
+				this.plugin.settings.ai.providers,
+				session.model?.providerId,
 			)
-			const activeModel = getModelById(activeProvider, session.modelId)
+			const activeModel = getModelById(activeProvider, session.model?.modelId)
 			this.reportFatalError(
 				session,
 				error instanceof Error
@@ -1255,7 +1264,7 @@ export default class ChatService {
 		}
 	}
 
-	private flushPendingMessages(session: ChatSession) {
+	private flushPendingMessages(session: AISession) {
 		const runtime = this.getRuntime(session.id)
 		if (runtime.pendingMessages.length === 0) {
 			return false
@@ -1272,9 +1281,8 @@ export default class ChatService {
 		}
 
 		const fragment = this.getActiveFragment(session)
-		this.appendUserMessage(fragment, mergedText)
-		session.title = deriveTitle(session)
-		this.upsertSessionIndexItem(session)
+		this.appendUserMessage(fragment, mergedText, session)
+		this.upsertSessionIndexItem(session, deriveTitle(session))
 		void this.persistSession(session)
 		void this.persistMetaAndIndex()
 		this.notify()
@@ -1301,10 +1309,12 @@ export default class ChatService {
 		}
 	}
 
-	private createFragment(session: ChatSession): ChatFragment {
+	private createFragment(session: AISession): ChatFragment {
+		const now = Date.now()
 		const fragment: ChatFragment = {
 			id: createId('fragment'),
-			createdAt: Date.now(),
+			createdAt: now,
+			updatedAt: now,
 			messages: [],
 		}
 		session.fragments = [...session.fragments, fragment]
@@ -1312,14 +1322,23 @@ export default class ChatService {
 		return fragment
 	}
 
-	private getActiveFragment(session: ChatSession) {
+	private getActiveFragment(session: AISession) {
 		return (
 			session.fragments.find((item) => item.id === session.activeFragmentId) ||
 			session.fragments[session.fragments.length - 1]
 		)
 	}
 
-	private appendUserMessage(fragment: ChatFragment, text: string) {
+	private appendUserMessage(
+		fragment: ChatFragment,
+		text: string,
+		session?: AISession,
+	) {
+		const now = Date.now()
+		fragment.updatedAt = now
+		if (session) {
+			session.updatedAt = now
+		}
 		fragment.messages.push(
 			this.createMessageRecord({
 				role: 'user',
@@ -1328,10 +1347,7 @@ export default class ChatService {
 		)
 	}
 
-	private finishStoppedSessionRun(
-		session: ChatSession,
-		fragment: ChatFragment,
-	) {
+	private finishStoppedSessionRun(session: AISession, fragment: ChatFragment) {
 		const runtime = this.getRuntime(session.id)
 		this.removeUnmatchedToolCalls(fragment)
 		runtime.stopRequested = false
@@ -1339,10 +1355,7 @@ export default class ChatService {
 		this.notify()
 	}
 
-	private cancelAllNonTerminalTasks(
-		session: ChatSession,
-		cancelReason: string,
-	) {
+	private cancelAllNonTerminalTasks(session: AISession, cancelReason: string) {
 		let changed = false
 		for (const task of session.tasks) {
 			if (this.isTaskTerminal(task)) {
@@ -1353,10 +1366,8 @@ export default class ChatService {
 				toCancelledTask(
 					task,
 					cancelReason,
-					i18n.t('chatbox.task.cancelledSummary', {
-						task: task.label,
-					}),
 					Date.now(),
+					i18n.t('chatbox.task.cancelledSummary', { task: task.title }),
 				),
 			)
 			this.resolveTaskCompletion(task.id, this.buildTaskToolPayload(task))
@@ -1366,13 +1377,13 @@ export default class ChatService {
 		return changed
 	}
 
-	private cleanupSessionTaskTracking(session: ChatSession) {
+	private cleanupSessionTaskTracking(session: AISession) {
 		for (const task of session.tasks) {
 			this.cleanupTaskTracking(task.id)
 		}
 	}
 
-	private async runTask(task: ChatTaskRecord) {
+	private async runTask(task: AITaskRecord) {
 		const session = this.loadedSessions.get(task.sessionId)
 		const selection = this.taskModelSelection.get(task.id)
 		if (!session || !selection?.providerId || !selection.modelId) {
@@ -1431,8 +1442,8 @@ export default class ChatService {
 	}
 
 	private async runBackgroundTaskLoop(
-		task: ChatTaskRecord,
-		session: ChatSession,
+		task: AITaskRecord,
+		session: AISession,
 		provider: AIProviderConfig,
 		model: { id: string; name: string },
 	): Promise<AgentRunResult> {
@@ -1451,7 +1462,7 @@ export default class ChatService {
 			},
 			{
 				role: 'user',
-				content: toTextParts(task.task),
+				content: toTextParts(task.prompt),
 			},
 		]
 		let sourceCount = 0
@@ -1473,6 +1484,7 @@ export default class ChatService {
 				model: model.name,
 				messages,
 				tools,
+				...session.inferenceParams,
 			})
 			messages.push(response.message)
 
@@ -1532,10 +1544,10 @@ export default class ChatService {
 			message: {
 				role: 'tool' as const,
 				content: toTextParts(
-				typeof results[index].payload === 'string'
-					? results[index].payload
-					: JSON.stringify(results[index].payload, null, 2),
-			),
+					typeof results[index].payload === 'string'
+						? results[index].payload
+						: JSON.stringify(results[index].payload, null, 2),
+				),
 				name: toolCall.function.name,
 				tool_call_id: toolCall.id,
 			},
@@ -1577,14 +1589,14 @@ export default class ChatService {
 	): Promise<Record<string, unknown>> {
 		try {
 			const params = JSON.parse(rawArgs) as Record<string, unknown>
-			const taskText = this.requireToolString(params.task, 'task')
-			const label =
+			const promptText = this.requireToolString(params.task, 'task')
+			const title =
 				typeof params.label === 'string' && params.label.trim()
 					? params.label.trim()
 					: undefined
 			return this.spawnTask({
-				task: taskText,
-				label,
+				prompt: promptText,
+				title,
 				parentTaskId: context.parentTaskId,
 				depth: context.depth + 1,
 				maxDepth: context.maxDepth,
@@ -1611,8 +1623,8 @@ export default class ChatService {
 	}
 
 	private spawnTask(params: {
-		task: string
-		label?: string
+		prompt: string
+		title?: string
 		parentTaskId?: string
 		depth: number
 		maxDepth: number
@@ -1649,20 +1661,17 @@ export default class ChatService {
 			parentTaskId: params.parentTaskId,
 			depth: params.depth,
 			maxDepth: params.maxDepth,
-			label: params.label || params.task.slice(0, 48),
-			task: params.task,
+			title: params.title || params.prompt.slice(0, 48),
+			prompt: params.prompt,
 			createdAt: Date.now(),
 		}
-		const task: ChatTaskRecord = shouldQueue
+		const task: AITaskRecord = shouldQueue
 			? createQueuedTask(taskBase)
 			: createRunningTask(taskBase, Date.now())
 		const deferred = this.createDeferredTaskCompletion()
 
 		session.tasks = [task, ...session.tasks]
-		this.taskModelSelection.set(task.id, {
-			providerId: session.providerId,
-			modelId: session.modelId,
-		})
+		this.taskModelSelection.set(task.id, session.model)
 		this.pendingTaskCompletions.set(task.id, deferred)
 		void this.persistSession(session)
 		this.notify()
@@ -1677,7 +1686,7 @@ export default class ChatService {
 	}
 
 	private finishTaskAsCompleted(
-		task: ChatTaskRecord,
+		task: AITaskRecord,
 		summary: string,
 		sourceCount: number,
 	) {
@@ -1706,7 +1715,7 @@ export default class ChatService {
 	}
 
 	private finishTaskAsFailed(
-		task: ChatTaskRecord,
+		task: AITaskRecord,
 		message: string,
 		failureStage?: string,
 		sourceCount?: number,
@@ -1716,14 +1725,7 @@ export default class ChatService {
 		}
 		mutateTaskRecord(
 			task,
-			toFailedTask(
-				task,
-				message,
-				message,
-				Date.now(),
-				failureStage,
-				sourceCount,
-			),
+			toFailedTask(task, message, Date.now(), failureStage, sourceCount),
 		)
 		const session = this.loadedSessions.get(task.sessionId)
 		if (session) {
@@ -1737,17 +1739,15 @@ export default class ChatService {
 		}
 	}
 
-	private finishTaskAsCancelled(task: ChatTaskRecord, cancelReason: string) {
+	private finishTaskAsCancelled(task: AITaskRecord, cancelReason: string) {
 		if (task.status === 'queued' || task.status === 'running') {
 			mutateTaskRecord(
 				task,
 				toCancelledTask(
 					task,
 					cancelReason,
-					i18n.t('chatbox.task.cancelledSummary', {
-						task: task.label,
-					}),
 					Date.now(),
+					i18n.t('chatbox.task.cancelledSummary', { task: task.title }),
 				),
 			)
 		}
@@ -1763,11 +1763,11 @@ export default class ChatService {
 		}
 	}
 
-	private countRunningTasksForSession(session: ChatSession) {
+	private countRunningTasksForSession(session: AISession) {
 		return session.tasks.filter((item) => item.status === 'running').length
 	}
 
-	private startQueuedTasksForSession(session: ChatSession) {
+	private startQueuedTasksForSession(session: AISession) {
 		if (this.deletedSessionIds.has(session.id)) {
 			return
 		}
@@ -1794,7 +1794,7 @@ export default class ChatService {
 	}
 
 	private createToolsForContext(
-		session: ChatSession,
+		session: AISession,
 		depth: number,
 		maxDepth: number,
 		parentTaskId?: string,
@@ -1805,8 +1805,8 @@ export default class ChatService {
 			spawnTask: async (params) => ({
 				task_id: null,
 				parent_task_id: parentTaskId || params.parentTaskId || null,
-				label: params.label || params.task.slice(0, 48),
-				task: params.task,
+				label: params.title || params.prompt.slice(0, 48),
+				task: params.prompt,
 				status: 'running',
 				depth: params.depth,
 				max_depth: params.maxDepth,
@@ -1845,11 +1845,16 @@ export default class ChatService {
 		return result
 	}
 
-	private buildMessagesForFragment(fragment: ChatFragment): AIMessage[] {
+	private buildMessagesForFragment(
+		fragment: ChatFragment,
+		session: AISession,
+	): AIMessage[] {
 		return [
 			{
 				role: 'system',
-				content: toTextParts(createMainSystemPrompt(MAX_TASK_DEPTH)),
+				content: toTextParts(
+					session.systemPrompt || createMainSystemPrompt(MAX_TASK_DEPTH),
+				),
 			},
 			...fragment.messages.map((item) => item.message),
 		]
@@ -1897,12 +1902,12 @@ export default class ChatService {
 		})
 	}
 
-	private buildTaskToolPayload(task: ChatTaskRecord) {
+	private buildTaskToolPayload(task: AITaskRecord) {
 		return {
 			task_id: task.id,
 			parent_task_id: task.parentTaskId ?? null,
-			label: task.label,
-			task: task.task,
+			label: task.title,
+			task: task.prompt,
 			status: task.status,
 			result_summary:
 				task.status === 'completed' ? (task.summary ?? null) : null,
@@ -1927,8 +1932,8 @@ export default class ChatService {
 
 	private buildImmediateTaskFailurePayload(
 		params: {
-			task: string
-			label?: string
+			prompt: string
+			title?: string
 			parentTaskId?: string
 			depth: number
 			maxDepth: number
@@ -1939,8 +1944,8 @@ export default class ChatService {
 		return {
 			task_id: null,
 			parent_task_id: params.parentTaskId ?? null,
-			label: params.label || params.task.slice(0, 48),
-			task: params.task,
+			label: params.title || params.prompt.slice(0, 48),
+			task: params.prompt,
 			status: 'failed',
 			result_summary: null,
 			error_summary: message,
@@ -1993,13 +1998,13 @@ export default class ChatService {
 		return value.trim()
 	}
 
-	private isTaskTerminal(task: ChatTaskRecord) {
+	private isTaskTerminal(task: AITaskRecord) {
 		return isTerminalTask(task)
 	}
 
 	private isTaskDescendantOf(
-		session: ChatSession,
-		task: ChatTaskRecord,
+		session: AISession,
+		task: AITaskRecord,
 		ancestorTaskId: string,
 	): boolean {
 		let currentParentId = task.parentTaskId
@@ -2014,10 +2019,10 @@ export default class ChatService {
 		return false
 	}
 
-	private getProviderOrThrow(session: ChatSession) {
+	private getProviderOrThrow(session: AISession) {
 		const provider = getProviderById(
-			this.plugin.settings.providers,
-			session.providerId,
+			this.plugin.settings.ai.providers,
+			session.model?.providerId,
 		)
 		if (!provider) {
 			throw new Error(i18n.t('chatbox.errors.noProvider'))
@@ -2027,7 +2032,10 @@ export default class ChatService {
 	}
 
 	private getProviderByIdOrThrow(providerId: string) {
-		const provider = getProviderById(this.plugin.settings.providers, providerId)
+		const provider = getProviderById(
+			this.plugin.settings.ai.providers,
+			providerId,
+		)
 		if (!provider) {
 			throw new Error(i18n.t('chatbox.errors.noProvider'))
 		}
@@ -2035,8 +2043,8 @@ export default class ChatService {
 		return provider
 	}
 
-	private getModelOrThrow(provider: AIProviderConfig, session: ChatSession) {
-		const model = getModelById(provider, session.modelId)
+	private getModelOrThrow(provider: AIProviderConfig, session: AISession) {
+		const model = getModelById(provider, session.model?.modelId)
 		if (!model) {
 			throw new Error(i18n.t('chatbox.errors.noModel'))
 		}
@@ -2051,20 +2059,21 @@ export default class ChatService {
 		return model
 	}
 
-	private createEmptySession(): ChatSession {
+	private createEmptySession(): AISession {
 		const { providerId, modelId } = this.getInitialSelectionForNewSession()
+		const now = Date.now()
 		const fragment: ChatFragment = {
 			id: createId('fragment'),
-			createdAt: Date.now(),
+			createdAt: now,
+			updatedAt: now,
 			messages: [],
 		}
 
 		return {
 			id: createId('session'),
-			createdAt: Date.now(),
-			title: i18n.t('chatbox.newChat'),
-			providerId,
-			modelId,
+			createdAt: now,
+			updatedAt: now,
+			model: providerId && modelId ? { providerId, modelId } : undefined,
 			fragments: [fragment],
 			activeFragmentId: fragment.id,
 			tasks: [],
@@ -2073,36 +2082,40 @@ export default class ChatService {
 
 	private createMessageRecord(
 		message: AIMessage,
-		meta?: ChatMessageRecord['meta'],
-	): ChatMessageRecord {
+		options?: { meta?: AIMessageRecord['meta']; isError?: boolean },
+	): AIMessageRecord {
 		return {
 			id: createId('message'),
 			createdAt: Date.now(),
 			message,
-			meta,
+			meta: options?.meta,
+			isError: options?.isError,
 		}
 	}
 
-	private sanitizeSessionSelection(session: ChatSession) {
+	private sanitizeSessionSelection(session: AISession) {
 		const provider = getProviderById(
-			this.plugin.settings.providers,
-			session.providerId,
+			this.plugin.settings.ai.providers,
+			session.model?.providerId,
 		)
 		if (!provider) {
-			if (!session.providerId && !session.modelId) {
+			if (!session.model) {
 				return false
 			}
-			session.providerId = undefined
-			session.modelId = undefined
+			session.model = undefined
 			return true
 		}
 
 		const nextModelId =
-			getModelById(provider, session.modelId)?.id || provider.models[0]?.id
+			getModelById(provider, session.model?.modelId)?.id ||
+			provider.models[0]?.id
+		const nextModel = nextModelId
+			? { providerId: provider.id, modelId: nextModelId }
+			: undefined
 		const changed =
-			session.providerId !== provider.id || session.modelId !== nextModelId
-		session.providerId = provider.id
-		session.modelId = nextModelId
+			session.model?.providerId !== provider.id ||
+			session.model?.modelId !== nextModelId
+		session.model = nextModel
 		return changed
 	}
 
@@ -2116,13 +2129,15 @@ export default class ChatService {
 
 	private getEmptyStateSelection() {
 		const defaults = resolveInitialSelection(
-			this.plugin.settings.providers,
-			this.plugin.settings.defaultProviderId,
-			this.plugin.settings.defaultModelId,
+			this.plugin.settings.ai.providers,
+			this.plugin.settings.ai.defaultModel,
 		)
 		const provider =
-			getProviderById(this.plugin.settings.providers, this.pendingProviderId) ||
-			getProviderById(this.plugin.settings.providers, defaults.providerId)
+			getProviderById(
+				this.plugin.settings.ai.providers,
+				this.pendingProviderId,
+			) ||
+			getProviderById(this.plugin.settings.ai.providers, defaults.providerId)
 		const model =
 			getModelById(provider, this.pendingModelId) ||
 			getModelById(provider, defaults.modelId) ||
@@ -2155,7 +2170,7 @@ export default class ChatService {
 		}
 	}
 
-	private validateSessionSelection(session: ChatSession) {
+	private validateSessionSelection(session: AISession) {
 		try {
 			const provider = this.getProviderOrThrow(session)
 			this.getModelOrThrow(provider, session)
@@ -2170,9 +2185,9 @@ export default class ChatService {
 	}
 
 	private reportFatalError(
-		session: ChatSession,
+		session: AISession,
 		message: string,
-		meta?: ChatMessageRecord['meta'],
+		meta?: AIMessageRecord['meta'],
 		fragment: ChatFragment = this.getActiveFragment(session),
 	) {
 		logger.error(message)
@@ -2183,10 +2198,7 @@ export default class ChatService {
 					role: 'assistant',
 					content: toTextParts(message),
 				},
-				{
-					...meta,
-					isError: true,
-				},
+				{ meta, isError: true },
 			),
 		)
 		this.notify()

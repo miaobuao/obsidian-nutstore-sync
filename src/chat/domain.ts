@@ -45,15 +45,18 @@ import type {
 export interface ChatFragment {
 	id: string
 	createdAt: number
+	updatedAt: number
+	summary?: string
 	messages: ChatMessageRecord[]
 }
 
 export interface ChatSession {
 	id: string
 	createdAt: number
-	title: string
-	providerId?: string
-	modelId?: string
+	updatedAt: number
+	model?: { providerId: string; modelId: string }
+	systemPrompt?: string
+	inferenceParams?: { temperature?: number; maxTokens?: number }
 	fragments: ChatFragment[]
 	activeFragmentId: string
 	tasks: ChatTaskRecord[]
@@ -63,13 +66,14 @@ export interface ChatSessionIndexItem {
 	id: string
 	title: string
 	createdAt: number
+	updatedAt: number
 }
 
 export function cloneUsage(usage?: ChatUsage) {
 	return usage
 		? {
-			...usage,
-		}
+				...usage,
+			}
 		: undefined
 }
 
@@ -96,26 +100,29 @@ export function cloneMessage(message: ChatMessage): ChatMessage {
 				text: part.text,
 			} satisfies ChatTextPart
 		}) as ChatMessage['content'],
-		tool_calls: 'tool_calls' in message && message.tool_calls
-			? message.tool_calls.map((toolCall) => ({
-				...toolCall,
-				function: {
-					...toolCall.function,
-				},
-			}))
-			: undefined,
+		tool_calls:
+			'tool_calls' in message && message.tool_calls
+				? message.tool_calls.map((toolCall) => ({
+						...toolCall,
+						function: {
+							...toolCall.function,
+						},
+					}))
+				: undefined,
 	} as ChatMessage
 }
 
-export function cloneMessageRecord(record: ChatMessageRecord): ChatMessageRecord {
+export function cloneMessageRecord(
+	record: ChatMessageRecord,
+): ChatMessageRecord {
 	return {
 		...record,
 		message: cloneMessage(record.message),
 		meta: record.meta
 			? {
-				...record.meta,
-				usage: cloneUsage(record.meta.usage),
-			}
+					...record.meta,
+					usage: cloneUsage(record.meta.usage),
+				}
 			: undefined,
 	}
 }
@@ -129,6 +136,10 @@ export function cloneTask(task: ChatTaskRecord): ChatTaskRecord {
 export function cloneSession(session: ChatSession): ChatSession {
 	return {
 		...session,
+		model: session.model ? { ...session.model } : undefined,
+		inferenceParams: session.inferenceParams
+			? { ...session.inferenceParams }
+			: undefined,
 		fragments: session.fragments.map((fragment) => ({
 			...fragment,
 			messages: fragment.messages.map(cloneMessageRecord),
@@ -152,7 +163,10 @@ export function createQueuedTask(task: ChatTaskBase): QueuedChatTask {
 	}
 }
 
-export function createRunningTask(task: ChatTaskBase, startedAt: number): RunningChatTask {
+export function createRunningTask(
+	task: ChatTaskBase,
+	startedAt: number,
+): RunningChatTask {
 	return {
 		...task,
 		status: 'running',
@@ -160,7 +174,10 @@ export function createRunningTask(task: ChatTaskBase, startedAt: number): Runnin
 	}
 }
 
-export function toRunningTask(task: QueuedChatTask, startedAt: number): RunningChatTask {
+export function toRunningTask(
+	task: QueuedChatTask,
+	startedAt: number,
+): RunningChatTask {
 	return {
 		...task,
 		status: 'running',
@@ -186,7 +203,6 @@ export function toCompletedTask(
 export function toFailedTask(
 	task: QueuedChatTask | RunningChatTask,
 	error: string,
-	summary: string,
 	finishedAt: number,
 	failureStage?: string,
 	sourceCount?: number,
@@ -195,7 +211,6 @@ export function toFailedTask(
 		...task,
 		status: 'failed',
 		error,
-		summary,
 		finishedAt,
 		failureStage,
 		...(task.status === 'running' ? { startedAt: task.startedAt } : {}),
@@ -206,15 +221,15 @@ export function toFailedTask(
 export function toCancelledTask(
 	task: QueuedChatTask | RunningChatTask,
 	cancelReason: string,
-	summary: string,
 	finishedAt: number,
+	summary?: string,
 ): CancelledChatTask {
 	return {
 		...task,
 		status: 'cancelled',
 		cancelReason,
-		summary,
 		finishedAt,
+		summary,
 		...(task.status === 'running' ? { startedAt: task.startedAt } : {}),
 	}
 }
@@ -230,7 +245,7 @@ export function mutateTaskRecord(target: ChatTaskRecord, next: ChatTaskRecord) {
 		'cancelReason',
 		'sourceCount',
 	] as const) {
-		delete ((target as unknown) as Record<string, unknown>)[key]
+		delete (target as unknown as Record<string, unknown>)[key]
 	}
 	Object.assign(target, next)
 	return target

@@ -229,12 +229,17 @@ export default {
 			bookmarks: 'Sync bookmarks only',
 			all: 'Sync all (experimental)',
 			bookmarksTitle: 'Enable bookmark sync',
-			bookmarksDesc: 'Only {{configDir}}/bookmarks.json will be synced. Other config files are not affected.',
+			bookmarksDesc:
+				'Only {{configDir}}/bookmarks.json will be synced. Other config files are not affected.',
 			warnTitle: 'Enable full config directory sync?',
-			warnSyncs: 'What syncs: plugin settings (data.json), plugin binaries (main.js), themes, snippets, and all other config files.',
-			warnExcludes: 'Auto-excluded: {{configDir}}/plugins/**/node_modules, {{configDir}}/plugins/**/.git, and {{configDir}}/plugins/**/.pnpm-store.',
-			warnConflict: 'Conflict resolution: when both sides have changes, the more recently modified version wins and the other side is overwritten.',
-			warnRisk: 'Risks: running Obsidian on multiple devices simultaneously increases conflict risk; config changes may require restarting Obsidian to take effect.',
+			warnSyncs:
+				'What syncs: plugin settings (data.json), plugin binaries (main.js), themes, snippets, and all other config files.',
+			warnExcludes:
+				'Auto-excluded: {{configDir}}/plugins/**/node_modules, {{configDir}}/plugins/**/.git, and {{configDir}}/plugins/**/.pnpm-store.',
+			warnConflict:
+				'Conflict resolution: when both sides have changes, the more recently modified version wins and the other side is overwritten.',
+			warnRisk:
+				'Risks: running Obsidian on multiple devices simultaneously increases conflict risk; config changes may require restarting Obsidian to take effect.',
 			confirm: 'Enable',
 			cancel: 'Cancel',
 		},
@@ -345,13 +350,15 @@ export default {
 			folderButFile: 'Expected folder but found file: {{path}}',
 			notFound: 'Not found: {{path}}',
 			localPathNotFound: 'Local path not found: {{path}}',
-			mergeNotSupported: 'This file type is currently not supported for merging',
+			mergeNotSupported:
+				'This file type is currently not supported for merging',
 			failedToAutoMerge: 'Failed to auto merge',
 			failedToUploadMerged: 'Failed to upload merged content',
 			conflictsMarkedInFile: 'Conflicts found and marked in file',
 			requestsTooFrequent:
 				'Requests too frequent, please wait a few minutes and try again',
-			accountNotConfigured: 'Nutstore account not configured. Please configure your account in settings first.',
+			accountNotConfigured:
+				'Nutstore account not configured. Please configure your account in settings first.',
 		},
 		requestsTooFrequent:
 			'Requests too frequent, plugin will resume sync at {{time}}',
@@ -475,15 +482,18 @@ export default {
 			noChoices: 'Provider returned no choices',
 			unknownTool: 'Unknown tool: {{name}}',
 			toolFieldRequired: '{{field}} is required',
-			invalidPositiveInteger: '{{field}} must be an integer greater than or equal to 1',
+			invalidPositiveInteger:
+				'{{field}} must be an integer greater than or equal to 1',
 			folderNotFound: 'Folder not found: {{path}}',
 			notFolder: 'Path is not a folder: {{path}}',
 			fileNotFound: 'File not found: {{path}}',
 			notFile: 'Path is not a file: {{path}}',
-			fileExists: 'File already exists: {{path}}. Set overwrite to true to replace it.',
+			fileExists:
+				'File already exists: {{path}}. Set overwrite to true to replace it.',
 			parentPathNotFolder: 'Parent path is not a folder: {{path}}',
 			editMatchNotFound: 'Exact text to replace was not found in the file.',
-			editMatchNotUnique: 'Exact text to replace must match exactly once in the file.',
+			editMatchNotUnique:
+				'Exact text to replace must match exactly once in the file.',
 			invalidRegex: 'Invalid regex in pattern {{index}}: {{pattern}}',
 			sessionNotFound: 'The target session no longer exists',
 			taskDepthExceeded: 'The task depth limit has been reached',

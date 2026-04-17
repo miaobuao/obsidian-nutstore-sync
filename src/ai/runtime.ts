@@ -4,9 +4,9 @@ import { getProviderResolver } from './providers/registry'
 import {
 	AIMessage,
 	AIMessageContentPart,
+	AIMessageMeta,
 	AIProviderConfig,
 	AIToolDefinition,
-	ChatMessageMeta,
 } from './types'
 
 export interface GenerateAssistantTurnRequest {
@@ -14,11 +14,13 @@ export interface GenerateAssistantTurnRequest {
 	model: string
 	messages: AIMessage[]
 	tools: AIToolDefinition[]
+	temperature?: number
+	maxTokens?: number
 }
 
 export interface GenerateAssistantTurnResult {
 	message: AIMessage
-	meta: ChatMessageMeta
+	meta: AIMessageMeta
 }
 
 function toTextParts(text?: string | null): AIMessageContentPart[] | null {
@@ -35,7 +37,10 @@ function toModelMessages(messages: AIMessage[]): ModelMessage[] {
 				return {
 					role: 'system',
 					content: message.content
-						.filter((part): part is Extract<AIMessageContentPart, { type: 'text' }> => part.type === 'text')
+						.filter(
+							(part): part is Extract<AIMessageContentPart, { type: 'text' }> =>
+								part.type === 'text',
+						)
 						.map((part) => part.text)
 						.join('\n'),
 				}
@@ -63,12 +68,12 @@ function toModelMessages(messages: AIMessage[]): ModelMessage[] {
 						type: 'text' as const,
 						text: part.type === 'text' ? part.text : JSON.stringify(part),
 					})),
-					...((message.tool_calls || []).map((toolCall) => ({
+					...(message.tool_calls || []).map((toolCall) => ({
 						type: 'tool-call' as const,
 						toolCallId: toolCall.id,
 						toolName: toolCall.function.name,
 						input: JSON.parse(toolCall.function.arguments || '{}'),
-					}))),
+					})),
 				]
 				return {
 					role: 'assistant',
@@ -86,7 +91,14 @@ function toModelMessages(messages: AIMessage[]): ModelMessage[] {
 							output: {
 								type: 'text' as const,
 								value: message.content
-									.filter((part): part is Extract<AIMessageContentPart, { type: 'text' }> => part.type === 'text')
+									.filter(
+										(
+											part,
+										): part is Extract<
+											AIMessageContentPart,
+											{ type: 'text' }
+										> => part.type === 'text',
+									)
 									.map((part) => part.text)
 									.join('\n'),
 							},
@@ -146,10 +158,12 @@ export async function generateAssistantTurn(
 		request.model,
 	)
 	const result = await generateText({
-		model: model as never,
+		model,
 		messages: toModelMessages(request.messages),
 		tools: toAISDKTools(request.tools),
 		stopWhen: stepCountIs(1),
+		temperature: request.temperature,
+		maxOutputTokens: request.maxTokens,
 	})
 
 	return {

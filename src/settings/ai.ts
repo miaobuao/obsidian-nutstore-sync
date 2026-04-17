@@ -23,22 +23,29 @@ export default class AISettings extends BaseSettings {
 			.setDesc(i18n.t('settings.ai.defaultProvider.desc'))
 			.addDropdown((dropdown) => {
 				dropdown.addOption('', i18n.t('settings.ai.none'))
-				for (const provider of this.plugin.settings.providers) {
+				for (const provider of this.plugin.settings.ai.providers) {
 					dropdown.addOption(
 						provider.id,
 						provider.name || i18n.t('settings.ai.unnamedProvider'),
 					)
 				}
 				dropdown
-					.setValue(this.plugin.settings.defaultProviderId || '')
+					.setValue(this.plugin.settings.ai.defaultModel?.providerId || '')
 					.onChange(async (value) => {
-						this.plugin.settings.defaultProviderId = value || undefined
-						const provider = getProviderById(
-							this.plugin.settings.providers,
-							value,
-						)
-						if (!getModelById(provider, this.plugin.settings.defaultModelId)) {
-							this.plugin.settings.defaultModelId = undefined
+						if (!value) {
+							this.plugin.settings.ai.defaultModel = undefined
+						} else {
+							const provider = getProviderById(
+								this.plugin.settings.ai.providers,
+								value,
+							)
+							const currentModelId =
+								this.plugin.settings.ai.defaultModel?.modelId
+							const model =
+								getModelById(provider, currentModelId) || provider?.models[0]
+							this.plugin.settings.ai.defaultModel = model
+								? { providerId: value, modelId: model.id }
+								: undefined
 						}
 						await this.persist()
 						this.display()
@@ -50,8 +57,8 @@ export default class AISettings extends BaseSettings {
 			.setDesc(i18n.t('settings.ai.defaultModel.desc'))
 			.addDropdown((dropdown) => {
 				const provider = getProviderById(
-					this.plugin.settings.providers,
-					this.plugin.settings.defaultProviderId,
+					this.plugin.settings.ai.providers,
+					this.plugin.settings.ai.defaultModel?.providerId,
 				)
 				dropdown.addOption('', i18n.t('settings.ai.none'))
 				for (const model of provider?.models || []) {
@@ -61,10 +68,18 @@ export default class AISettings extends BaseSettings {
 					)
 				}
 				dropdown
-					.setValue(this.plugin.settings.defaultModelId || '')
+					.setValue(this.plugin.settings.ai.defaultModel?.modelId || '')
 					.setDisabled(!provider)
 					.onChange(async (value) => {
-						this.plugin.settings.defaultModelId = value || undefined
+						const providerId = this.plugin.settings.ai.defaultModel?.providerId
+						if (providerId && value) {
+							this.plugin.settings.ai.defaultModel = {
+								providerId,
+								modelId: value,
+							}
+						} else {
+							this.plugin.settings.ai.defaultModel = undefined
+						}
 						await this.persist()
 					})
 			})
@@ -73,7 +88,7 @@ export default class AISettings extends BaseSettings {
 			.setName(i18n.t('settings.ai.providers.name'))
 			.setDesc(
 				i18n.t('settings.ai.providers.summary', {
-					count: this.plugin.settings.providers.length,
+					count: this.plugin.settings.ai.providers.length,
 				}),
 			)
 			.addButton((button) =>
@@ -90,16 +105,13 @@ export default class AISettings extends BaseSettings {
 
 	private async persist(showNotice: boolean = true) {
 		try {
-			this.plugin.settings.providers = sanitizeProviders(
-				this.plugin.settings.providers,
+			this.plugin.settings.ai.providers = sanitizeProviders(
+				this.plugin.settings.ai.providers,
 			)
-			const defaults = sanitizeDefaultSelections(
-				this.plugin.settings.providers,
-				this.plugin.settings.defaultProviderId,
-				this.plugin.settings.defaultModelId,
+			this.plugin.settings.ai.defaultModel = sanitizeDefaultSelections(
+				this.plugin.settings.ai.providers,
+				this.plugin.settings.ai.defaultModel,
 			)
-			this.plugin.settings.defaultProviderId = defaults.defaultProviderId
-			this.plugin.settings.defaultModelId = defaults.defaultModelId
 			await this.plugin.saveSettings()
 			if (showNotice) {
 				new Notice(i18n.t('settings.ai.saved'))

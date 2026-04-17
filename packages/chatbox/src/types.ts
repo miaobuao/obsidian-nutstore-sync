@@ -47,7 +47,6 @@ export interface ChatMessageMeta {
 	modelId?: string
 	modelName?: string
 	usage?: ChatUsage
-	isError?: boolean
 }
 
 export interface ChatSystemMessage {
@@ -94,6 +93,7 @@ export interface ChatMessageRecord {
 	createdAt: number
 	message: ChatMessage
 	meta?: ChatMessageMeta
+	isError?: boolean
 }
 
 export interface ChatTaskBase {
@@ -102,8 +102,8 @@ export interface ChatTaskBase {
 	parentTaskId?: string
 	depth: number
 	maxDepth: number
-	label: string
-	task: string
+	title: string
+	prompt: string
 	createdAt: number
 }
 
@@ -128,7 +128,7 @@ export interface FailedChatTask extends ChatTaskBase {
 	status: 'failed'
 	finishedAt: number
 	error: string
-	summary: string
+	summary?: string
 	failureStage?: string
 	startedAt?: number
 	sourceCount?: number
@@ -138,7 +138,7 @@ export interface CancelledChatTask extends ChatTaskBase {
 	status: 'cancelled'
 	finishedAt: number
 	cancelReason: string
-	summary: string
+	summary?: string
 	startedAt?: number
 }
 
@@ -170,6 +170,7 @@ export interface ChatSessionHistoryItem {
 	id: string
 	title: string
 	createdAt: number
+	updatedAt: number
 }
 
 export interface ChatTimelineFragmentItem {

@@ -29,6 +29,7 @@ export interface ChatSessionHistoryItem {
 	id: string
 	title: string
 	createdAt: number
+	updatedAt: number
 }
 
 export interface ChatTimelineFragmentItem {

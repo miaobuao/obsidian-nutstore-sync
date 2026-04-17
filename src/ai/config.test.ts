@@ -5,7 +5,7 @@ describe('ai config', () => {
 	it('creates an openai provider draft', () => {
 		const draft = createProviderDraft()
 
-		expect(draft.type).toBe('openai')
+		expect(draft.type).toBe('openai-chat')
 		expect(draft.models).toEqual([])
 	})
 
@@ -14,7 +14,7 @@ describe('ai config', () => {
 			{
 				id: 'provider-1',
 				name: ' Provider ',
-				type: 'openai',
+				type: 'openai-chat',
 				apiKey: 'key',
 				baseUrl: ' https://example.com/v1 ',
 				models: [{ id: 'model-1', name: ' gpt-4.1 ' }],
@@ -25,7 +25,7 @@ describe('ai config', () => {
 			{
 				id: 'provider-1',
 				name: 'Provider',
-				type: 'openai',
+				type: 'openai-chat',
 				apiKey: 'key',
 				baseUrl: 'https://example.com/v1',
 				organization: undefined,

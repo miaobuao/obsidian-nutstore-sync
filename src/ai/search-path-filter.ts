@@ -86,7 +86,8 @@ export function filterVaultEntries<TEntry extends SearchPathEntry>(
 		if (options.type !== 'all' && entry.type !== options.type) {
 			return false
 		}
-		const candidatePath = entry.type === 'folder' ? `${entry.path}/` : entry.path
+		const candidatePath =
+			entry.type === 'folder' ? `${entry.path}/` : entry.path
 		if (!matchesIncludedSearchGlob(candidatePath, inclusionRules)) {
 			return false
 		}

@@ -19,10 +19,7 @@ const CONFIG_DIR_SYSTEM_EXCLUSION_SUFFIXES = [
 ] as const
 
 function normalizePathForCheck(rawPath: string) {
-	return rawPath
-		.replace(/\\/g, '/')
-		.replace(/^\/+/, '')
-		.replace(/\/+$/, '')
+	return rawPath.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
 }
 
 function isSameOrSubPath(path: string, baseDir: string) {
@@ -62,7 +59,9 @@ export function getConfigDirSystemTraversalRules(
 	)
 }
 
-export function getConfigDirSystemFilterRules(configDir: string): GlobMatchOptions[] {
+export function getConfigDirSystemFilterRules(
+	configDir: string,
+): GlobMatchOptions[] {
 	return getConfigDirSystemTraversalRules(configDir).flatMap((rule) => [
 		makeCaseSensitiveRule(rule.expr),
 		makeCaseSensitiveRule(`${rule.expr}/**`),

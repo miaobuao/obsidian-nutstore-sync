@@ -10,7 +10,7 @@ import type {
 } from '~/chat/domain'
 import type { z } from 'zod'
 
-export type AIProviderType = 'openai'
+export type AIProviderType = 'openai-chat'
 
 export interface AIModelConfig {
 	id: string
@@ -24,7 +24,7 @@ export interface AIProviderConfigBase {
 }
 
 export interface OpenAIProviderConfig extends AIProviderConfigBase {
-	type: 'openai'
+	type: 'openai-chat'
 	apiKey: string
 	baseUrl?: string
 	organization?: string
@@ -35,18 +35,21 @@ export type AIProviderConfig = OpenAIProviderConfig
 
 export type AIUsage = DomainChatUsage
 export type AITextPart = Extract<DomainChatMessageContentPart, { type: 'text' }>
-export type AIImageUrlPart = Extract<DomainChatMessageContentPart, { type: 'image_url' }>
+export type AIImageUrlPart = Extract<
+	DomainChatMessageContentPart,
+	{ type: 'image_url' }
+>
 export type AIMessageContentPart = DomainChatMessageContentPart
 export type AIToolCall = DomainChatToolCall
 export type AIMessage = DomainChatMessage
 export type AITaskStatus = DomainChatTaskRecord['status']
-export type ChatMessageMeta = DomainChatMessageMeta
-export type ChatMessageRecord = DomainChatMessageRecord
-export type ChatSession = DomainChatSession
-export type ChatTaskRecord = DomainChatTaskRecord
+export type AIMessageMeta = DomainChatMessageMeta
+export type AIMessageRecord = DomainChatMessageRecord
+export type AISession = DomainChatSession
+export type AITaskRecord = DomainChatTaskRecord
 
 export interface AIToolExecutionContext {
-	session: ChatSession
+	session: AISession
 	depth: number
 	maxDepth: number
 	parentTaskId?: string
