@@ -56,6 +56,50 @@
 	line-height: 1.5;
 }
 
+.chatbox-input-pane {
+	display: flex;
+	flex-direction: column;
+}
+
+.chatbox-resizer {
+	flex-shrink: 0;
+	cursor: ns-resize;
+	padding-bottom: 4px;
+	padding-top: 4px;
+	touch-action: none;
+	user-select: none;
+}
+
+.chatbox-resizer-line {
+	height: 1px;
+	background: var(--background-modifier-border);
+	transition: background-color 120ms ease;
+}
+
+.chatbox-resizer:hover .chatbox-resizer-line,
+.chatbox-resizer.is-resizing .chatbox-resizer-line {
+	background: var(--interactive-accent);
+}
+
+.chatbox-resize-active,
+.chatbox-resize-active * {
+	cursor: ns-resize !important;
+	user-select: none !important;
+}
+
+@media (pointer: fine) and (min-width: 1024px) {
+	.chatbox-input-pane--resizable {
+		border-top-width: 0;
+	}
+
+	.chatbox-input-pane--resizable .chatbox-input {
+		flex: 1 1 auto;
+		height: auto;
+		min-height: 4rem;
+		min-width: 0;
+	}
+}
+
 @media (max-width: 768px) {
 	.chatbox-input {
 		height: 5.5rem;

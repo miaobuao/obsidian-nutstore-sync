@@ -20,8 +20,18 @@ import { PendingList } from './components/PendingList'
 import { FragmentDivider } from './components/FragmentDivider'
 import { SessionHistoryItem } from './components/SessionHistoryItem'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { PaneResizer } from './components/PaneResizer'
 
 export type AppProps = ChatboxProps
+
+const DESKTOP_RESIZE_MEDIA_QUERY = '(pointer: fine) and (min-width: 1024px)'
+const INPUT_HEIGHT_STORAGE_KEY = 'nutstore-sync.chatbox.desktop-input-height'
+const DEFAULT_DESKTOP_INPUT_HEIGHT = 184
+const DESKTOP_INPUT_MIN_HEIGHT = 120
+const DESKTOP_INPUT_ABSOLUTE_MIN_HEIGHT = 72
+const DESKTOP_MESSAGES_MIN_HEIGHT = 200
+const RESIZER_HITBOX_HEIGHT = 10
+const DESKTOP_INPUT_MAX_VIEWPORT_RATIO = 0.6
 
 function App(props: AppProps) {
 	const [input, setInput] = createSignal('')
@@ -49,10 +59,16 @@ function App(props: AppProps) {
 	const [recallConfirmSkipped, setRecallConfirmSkipped] = createSignal(false)
 	const [recallConfirmSkipChecked, setRecallConfirmSkipChecked] =
 		createSignal(false)
+	const [desktopResizeEnabled, setDesktopResizeEnabled] = createSignal(false)
+	const [inputPaneHeight, setInputPaneHeight] = createSignal<number>()
 	let messagesEl: HTMLDivElement | undefined
+	let splitLayoutEl: HTMLDivElement | undefined
+	let inputPaneEl: HTMLDivElement | undefined
 	let historyEl: HTMLDivElement | undefined
 	let modelPickerEl: HTMLDivElement | undefined
 	let previousActiveSessionId = props.activeSessionId
+	let defaultDesktopInputHeight = DEFAULT_DESKTOP_INPUT_HEIGHT
+	let dragStartHeight = 0
 
 	const hasTasks = () =>
 		props.currentSessionTasks.length + props.otherSessionTasks.length > 0
@@ -72,6 +88,89 @@ function App(props: AppProps) {
 			[provider?.name, selectedModel?.name].filter(Boolean).join('/') ||
 			t('noModel')
 		)
+	}
+
+	function readStoredInputPaneHeight() {
+		try {
+			const raw = window.localStorage.getItem(INPUT_HEIGHT_STORAGE_KEY)
+			if (!raw) {
+				return undefined
+			}
+			const value = Number(raw)
+			return Number.isFinite(value) ? value : undefined
+		} catch {
+			return undefined
+		}
+	}
+
+	function persistInputPaneHeight(height: number) {
+		try {
+			window.localStorage.setItem(
+				INPUT_HEIGHT_STORAGE_KEY,
+				String(Math.round(height)),
+			)
+		} catch {
+			// Ignore storage errors, resize should still work.
+		}
+	}
+
+	function getMaxInputPaneHeight() {
+		const viewportMax = Math.floor(
+			window.innerHeight * DESKTOP_INPUT_MAX_VIEWPORT_RATIO,
+		)
+		const splitHeight = splitLayoutEl?.getBoundingClientRect().height ?? 0
+		if (splitHeight <= 0) {
+			return Math.max(DESKTOP_INPUT_MIN_HEIGHT, viewportMax)
+		}
+		const messagesBound = Math.floor(
+			splitHeight - DESKTOP_MESSAGES_MIN_HEIGHT - RESIZER_HITBOX_HEIGHT,
+		)
+		const maxHeight = Math.min(messagesBound, viewportMax)
+		return Math.max(DESKTOP_INPUT_ABSOLUTE_MIN_HEIGHT, maxHeight)
+	}
+
+	function clampInputPaneHeight(height: number) {
+		const maxHeight = getMaxInputPaneHeight()
+		const minHeight = Math.min(DESKTOP_INPUT_MIN_HEIGHT, maxHeight)
+		return Math.round(Math.min(Math.max(height, minHeight), maxHeight))
+	}
+
+	function applyInputPaneHeight(height: number, persist = false) {
+		const next = clampInputPaneHeight(height)
+		setInputPaneHeight(next)
+		if (persist) {
+			persistInputPaneHeight(next)
+		}
+		return next
+	}
+
+	function resetInputPaneHeight() {
+		if (!desktopResizeEnabled()) {
+			return
+		}
+		applyInputPaneHeight(defaultDesktopInputHeight, true)
+	}
+
+	function onInputPaneResizeStart() {
+		if (!desktopResizeEnabled()) {
+			return
+		}
+		dragStartHeight =
+			inputPaneHeight() ?? clampInputPaneHeight(defaultDesktopInputHeight)
+	}
+
+	function onInputPaneResize(deltaY: number) {
+		if (!desktopResizeEnabled()) {
+			return
+		}
+		applyInputPaneHeight(dragStartHeight + deltaY)
+	}
+
+	function onInputPaneResizeEnd() {
+		const height = inputPaneHeight()
+		if (typeof height === 'number') {
+			persistInputPaneHeight(height)
+		}
 	}
 
 	function scrollMessagesToBottom(behavior: ScrollBehavior = 'smooth') {
@@ -124,6 +223,50 @@ function App(props: AppProps) {
 
 		document.addEventListener('pointerdown', onPointerDown)
 		onCleanup(() => document.removeEventListener('pointerdown', onPointerDown))
+	})
+
+	createEffect(() => {
+		const mediaQuery = window.matchMedia(DESKTOP_RESIZE_MEDIA_QUERY)
+		const update = () => setDesktopResizeEnabled(mediaQuery.matches)
+		update()
+		mediaQuery.addEventListener('change', update)
+		onCleanup(() => mediaQuery.removeEventListener('change', update))
+	})
+
+	createEffect(() => {
+		if (!desktopResizeEnabled() || !inputPaneEl) {
+			return
+		}
+		defaultDesktopInputHeight =
+			Math.round(inputPaneEl.getBoundingClientRect().height) ||
+			DEFAULT_DESKTOP_INPUT_HEIGHT
+		const storedHeight = readStoredInputPaneHeight()
+		applyInputPaneHeight(storedHeight ?? defaultDesktopInputHeight)
+	})
+
+	createEffect(() => {
+		if (desktopResizeEnabled()) {
+			return
+		}
+		setInputPaneHeight(undefined)
+	})
+
+	createEffect(() => {
+		if (!desktopResizeEnabled()) {
+			return
+		}
+		const onResize = () => {
+			const height = inputPaneHeight()
+			if (typeof height !== 'number') {
+				return
+			}
+			const clampedHeight = clampInputPaneHeight(height)
+			if (clampedHeight !== height) {
+				applyInputPaneHeight(clampedHeight, true)
+			}
+		}
+		window.addEventListener('resize', onResize)
+		onCleanup(() => window.removeEventListener('resize', onResize))
 	})
 
 	async function submit() {
@@ -372,102 +515,125 @@ function App(props: AppProps) {
 					</Show>
 				</div>
 
-				{/* Messages */}
-				<div
-					ref={messagesEl}
-					class="flex-1 overflow-y-auto px-3 scrollbar-default"
-				>
-					<Show
-						when={
-							props.timeline.length > 0 ||
-							props.pendingMessages.length > 0 ||
-							isBusy()
-						}
-						fallback={
-							<div class="flex h-full items-center justify-center text-sm text-[var(--text-muted)]">
-								{t('empty')}
+				<div ref={splitLayoutEl} class="flex min-h-0 flex-1 flex-col overflow-hidden">
+					{/* Messages */}
+					<div
+						ref={messagesEl}
+						class="min-h-0 flex-1 overflow-y-auto px-3 scrollbar-default"
+					>
+						<Show
+							when={
+								props.timeline.length > 0 ||
+								props.pendingMessages.length > 0 ||
+								isBusy()
+							}
+							fallback={
+								<div class="flex h-full items-center justify-center text-sm text-[var(--text-muted)]">
+									{t('empty')}
+								</div>
+							}
+						>
+							<div class="flex flex-col gap-3">
+								<For each={props.timeline}>
+									{(item) => (
+										<Switch>
+											<Match when={item.kind === 'fragment'}>
+												<FragmentDivider
+													item={item as ChatTimelineFragmentItem}
+												/>
+											</Match>
+											<Match when={item.kind === 'message'}>
+												<MessageCard
+													item={item as ChatTimelineMessageItem}
+													renderMarkdown={props.renderMarkdown}
+													onDeleteMessage={requestDeleteMessage}
+													onRegenerateMessage={requestRegenerateMessage}
+													onRecallMessage={requestRecallMessage}
+												/>
+											</Match>
+										</Switch>
+									)}
+								</For>
+								<RunStateCard
+									runState={props.runState}
+									onStop={props.onStopActiveRun}
+								/>
+								<PendingList pendingMessages={props.pendingMessages} />
 							</div>
+						</Show>
+					</div>
+
+					<Show when={desktopResizeEnabled()}>
+						<PaneResizer
+							onResizeStart={onInputPaneResizeStart}
+							onResize={onInputPaneResize}
+							onResizeEnd={onInputPaneResizeEnd}
+							onDblClick={resetInputPaneHeight}
+						/>
+					</Show>
+
+					{/* Input */}
+					<div
+						ref={inputPaneEl}
+						class={`chatbox-input-pane shrink-0 px-3 py-3 ${
+							desktopResizeEnabled()
+								? 'chatbox-input-pane--resizable'
+								: 'border-t border-[var(--background-modifier-border)]'
+						}`}
+						style={
+							desktopResizeEnabled() && typeof inputPaneHeight() === 'number'
+								? { height: `${inputPaneHeight()}px` }
+								: undefined
 						}
 					>
-						<div class="flex flex-col gap-3">
-							<For each={props.timeline}>
-								{(item) => (
-									<Switch>
-										<Match when={item.kind === 'fragment'}>
-											<FragmentDivider
-												item={item as ChatTimelineFragmentItem}
-											/>
-										</Match>
-										<Match when={item.kind === 'message'}>
-											<MessageCard
-												item={item as ChatTimelineMessageItem}
-												renderMarkdown={props.renderMarkdown}
-												onDeleteMessage={requestDeleteMessage}
-												onRegenerateMessage={requestRegenerateMessage}
-												onRecallMessage={requestRecallMessage}
-											/>
-										</Match>
-									</Switch>
-								)}
-							</For>
-							<RunStateCard
-								runState={props.runState}
-								onStop={props.onStopActiveRun}
-							/>
-							<PendingList pendingMessages={props.pendingMessages} />
-						</div>
-					</Show>
-				</div>
-
-				{/* Input */}
-				<div class="shrink-0 border-t border-[var(--background-modifier-border)] px-3 py-3">
-					<textarea
-						class="chatbox-input w-full resize-none rounded-3 border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] text-sm outline-none"
-						placeholder={t('inputPlaceholder')}
-						value={input()}
-						onInput={(event) => setInput(event.currentTarget.value)}
-						onCompositionStart={() => setIsComposing(true)}
-						onCompositionEnd={() => setIsComposing(false)}
-						onKeyDown={(event) => {
-							if (
-								event.key === 'Enter' &&
-								!event.shiftKey &&
-								!isComposing() &&
-								!event.isComposing &&
-								event.keyCode !== 229
-							) {
-								event.preventDefault()
-								void submit()
-							}
-						}}
-					/>
-					<div class="mt-3 flex items-center justify-between gap-3">
-						<div class="flex flex-wrap items-center gap-2">
+						<textarea
+							class="chatbox-input w-full resize-none rounded-3 border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] text-sm outline-none"
+							placeholder={t('inputPlaceholder')}
+							value={input()}
+							onInput={(event) => setInput(event.currentTarget.value)}
+							onCompositionStart={() => setIsComposing(true)}
+							onCompositionEnd={() => setIsComposing(false)}
+							onKeyDown={(event) => {
+								if (
+									event.key === 'Enter' &&
+									!event.shiftKey &&
+									!isComposing() &&
+									!event.isComposing &&
+									event.keyCode !== 229
+								) {
+									event.preventDefault()
+									void submit()
+								}
+							}}
+						/>
+						<div class="mt-3 flex items-center justify-between gap-3">
+							<div class="flex flex-wrap items-center gap-2">
+								<button
+									class="chatbox-tag-button"
+									type="button"
+									disabled={!props.canCreateFragment}
+									onClick={() => props.onNewFragment()}
+								>
+									{t('newFragment')}
+								</button>
+								<button
+									class="chatbox-tag-button"
+									type="button"
+									disabled={!props.canCompress}
+									onClick={() => void props.onCompressContext()}
+								>
+									{t('compressContext')}
+								</button>
+							</div>
 							<button
-								class="chatbox-tag-button"
+								class="mod-cta"
 								type="button"
-								disabled={!props.canCreateFragment}
-								onClick={() => props.onNewFragment()}
+								disabled={!input().trim()}
+								onClick={() => void submit()}
 							>
-								{t('newFragment')}
-							</button>
-							<button
-								class="chatbox-tag-button"
-								type="button"
-								disabled={!props.canCompress}
-								onClick={() => void props.onCompressContext()}
-							>
-								{t('compressContext')}
+								{isBusy() ? t('queueSend') : t('send')}
 							</button>
 						</div>
-						<button
-							class="mod-cta"
-							type="button"
-							disabled={!input().trim()}
-							onClick={() => void submit()}
-						>
-							{isBusy() ? t('queueSend') : t('send')}
-						</button>
 					</div>
 				</div>
 			</div>
