@@ -135,6 +135,7 @@ export default {
 					name: 'Provider type',
 					desc: 'Runtime provider implementation',
 					openai: 'OpenAI',
+					invalid: 'Unknown type: {{value}} (select a valid type)',
 				},
 				name: 'Provider name',
 				desc: 'Label shown in the chatbox',
@@ -188,6 +189,9 @@ export default {
 			},
 			errors: {
 				saveFailed: 'Failed to save AI settings',
+				saveFailedWithReason: 'Failed to save AI settings: {{reason}}',
+				invalidProvidersConfig:
+					'AI provider configuration is invalid. Please fix it in settings. Details: {{reason}}',
 			},
 		},
 		logout: {

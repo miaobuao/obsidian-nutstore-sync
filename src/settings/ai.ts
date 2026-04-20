@@ -19,6 +19,24 @@ export default class AISettings extends BaseSettings {
 			.setHeading()
 
 		new Setting(this.containerEl)
+			.setName(i18n.t('settings.ai.providers.name'))
+			.setDesc(
+				i18n.t('settings.ai.providers.summary', {
+					count: this.plugin.settings.ai.providers.length,
+				}),
+			)
+			.addButton((button) =>
+				button
+					.setButtonText(i18n.t('settings.ai.providers.manage'))
+					.onClick(() => {
+						new ProvidersManagerModal(this.plugin, async () => {
+							await this.persist(false)
+							this.display()
+						}).open()
+					}),
+			)
+
+		new Setting(this.containerEl)
 			.setName(i18n.t('settings.ai.defaultProvider.name'))
 			.setDesc(i18n.t('settings.ai.defaultProvider.desc'))
 			.addDropdown((dropdown) => {
@@ -83,24 +101,6 @@ export default class AISettings extends BaseSettings {
 						await this.persist()
 					})
 			})
-
-		new Setting(this.containerEl)
-			.setName(i18n.t('settings.ai.providers.name'))
-			.setDesc(
-				i18n.t('settings.ai.providers.summary', {
-					count: this.plugin.settings.ai.providers.length,
-				}),
-			)
-			.addButton((button) =>
-				button
-					.setButtonText(i18n.t('settings.ai.providers.manage'))
-					.onClick(() => {
-						new ProvidersManagerModal(this.plugin, async () => {
-							await this.persist(false)
-							this.display()
-						}).open()
-					}),
-			)
 	}
 
 	private async persist(showNotice: boolean = true) {
@@ -118,7 +118,14 @@ export default class AISettings extends BaseSettings {
 			}
 		} catch (error) {
 			logger.error(error)
-			new Notice(i18n.t('settings.ai.errors.saveFailed'))
+			new Notice(
+				error instanceof Error
+					? i18n.t('settings.ai.errors.saveFailedWithReason', {
+							reason: error.message,
+						})
+					: i18n.t('settings.ai.errors.saveFailed'),
+				10000,
+			)
 		}
 	}
 }

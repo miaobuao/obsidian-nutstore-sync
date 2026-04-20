@@ -1,7 +1,7 @@
 import { cloneDeep } from 'lodash-es'
 import { Modal, Notice, Setting } from 'obsidian'
 import { createModelDraft } from '~/ai/config'
-import { AIModelConfig, AIProviderConfig } from '~/ai/types'
+import { AIModelConfig, AIProviderConfig, OpenAIChatProviderType } from '~/ai/types'
 import i18n from '~/i18n'
 import logger from '~/utils/logger'
 import type NutstorePlugin from '..'
@@ -27,6 +27,14 @@ export default class ProviderEditorModal extends Modal {
 	private render() {
 		const { contentEl } = this
 		contentEl.empty()
+		const currentType = this.draft.type as string
+		const typeOptions: Array<{ value: OpenAIChatProviderType; label: string }> = [
+			{
+				value: 'openai-chat',
+				label: i18n.t('settings.ai.provider.type.openai'),
+			},
+		]
+		const hasValidType = typeOptions.some((option) => option.value === currentType)
 		contentEl.createEl('h2', {
 			text: this.isNew
 				? i18n.t('settings.ai.modals.provider.createTitle')
@@ -37,15 +45,27 @@ export default class ProviderEditorModal extends Modal {
 			.setName(i18n.t('settings.ai.provider.type.name'))
 			.setDesc(i18n.t('settings.ai.provider.type.desc'))
 			.then((s) => s.settingEl.addClass('setting-required'))
-			.addDropdown((dropdown) =>
+			.addDropdown((dropdown) => {
+				for (const option of typeOptions) {
+					dropdown.addOption(option.value, option.label)
+				}
+
+				if (!hasValidType) {
+					dropdown.addOption(
+						currentType,
+						i18n.t('settings.ai.provider.type.invalid', {
+							value: currentType,
+						}),
+					)
+				}
+
 				dropdown
-					.addOption('openai-chat', i18n.t('settings.ai.provider.type.openai'))
-					.setValue(this.draft.type)
-					.setDisabled(!this.isNew)
-					.onChange((value: 'openai-chat') => {
-						this.draft.type = value
-					}),
-			)
+					.setValue(currentType)
+					.setDisabled(!this.isNew && hasValidType)
+					.onChange((value) => {
+						this.draft.type = value as OpenAIChatProviderType
+					})
+			})
 
 		new Setting(contentEl)
 			.setName(i18n.t('settings.ai.provider.name'))

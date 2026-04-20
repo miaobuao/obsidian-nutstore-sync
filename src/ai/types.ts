@@ -8,30 +8,47 @@ import type {
 	ChatToolCall as DomainChatToolCall,
 	ChatUsage as DomainChatUsage,
 } from '~/chat/domain'
-import type { z } from 'zod'
+import { z } from 'zod'
 
-export type AIProviderType = 'openai-chat'
+export const openAIChatProviderTypeSchema = z.literal('openai-chat')
+export type OpenAIChatProviderType = z.infer<typeof openAIChatProviderTypeSchema>
+export type AIProviderType = OpenAIChatProviderType
 
-export interface AIModelConfig {
-	id: string
-	name: string
-}
+export const aiModelConfigSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+})
+export const aiModelInputSchema = aiModelConfigSchema.partial()
+export type AIModelConfig = z.infer<typeof aiModelConfigSchema>
+export type AIModelInput = z.infer<typeof aiModelInputSchema>
 
-export interface AIProviderConfigBase {
-	id: string
-	name: string
-	models: AIModelConfig[]
-}
-
-export interface OpenAIProviderConfig extends AIProviderConfigBase {
-	type: 'openai-chat'
-	apiKey: string
-	baseUrl?: string
-	organization?: string
-	project?: string
-}
+export const openAIProviderConfigSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	models: z.array(aiModelConfigSchema),
+	type: openAIChatProviderTypeSchema,
+	apiKey: z.string(),
+	baseUrl: z.string().optional(),
+	organization: z.string().optional(),
+	project: z.string().optional(),
+})
+export const openAIProviderInputSchema = openAIProviderConfigSchema
+	.partial()
+	.extend({
+		type: openAIChatProviderTypeSchema,
+		models: z.array(aiModelInputSchema).optional(),
+	})
+export const aiProviderConfigSchema = z.discriminatedUnion('type', [
+	openAIProviderConfigSchema,
+])
+export const aiProviderInputSchema = z.discriminatedUnion('type', [
+	openAIProviderInputSchema,
+])
+export type OpenAIProviderConfig = z.infer<typeof openAIProviderConfigSchema>
+export type OpenAIProviderInput = z.infer<typeof openAIProviderInputSchema>
 
 export type AIProviderConfig = OpenAIProviderConfig
+export type AIProviderInput = z.infer<typeof aiProviderInputSchema>
 
 export type AIUsage = DomainChatUsage
 export type AITextPart = Extract<DomainChatMessageContentPart, { type: 'text' }>

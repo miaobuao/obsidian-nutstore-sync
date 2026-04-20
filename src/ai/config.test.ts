@@ -34,4 +34,17 @@ describe('ai config', () => {
 			},
 		])
 	})
+
+	it('throws when provider type is missing', () => {
+		expect(() =>
+			sanitizeProviders([
+				{
+					id: 'provider-1',
+					name: 'Provider',
+					apiKey: 'key',
+					models: [],
+				},
+			]),
+		).toThrow(/Invalid AI provider/)
+	})
 })

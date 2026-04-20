@@ -33,6 +33,7 @@ import {
 import { ConflictStrategy } from './sync/tasks/conflict-resolve.task'
 import { decryptOAuthResponse } from './utils/decrypt-ticket-response'
 import { GlobMatchOptions } from './utils/glob-match'
+import logger from './utils/logger'
 import { stdRemotePath } from './utils/std-remote-path'
 import ChatboxView, { CHATBOX_VIEW_TYPE } from './views/chatbox.view'
 
@@ -151,13 +152,29 @@ export default class NutstorePlugin extends Plugin {
 
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
 		this.settings.ai ??= { providers: [], defaultModel: undefined }
-		this.settings.ai.providers = sanitizeProviders(
-			this.settings.ai.providers ?? [],
-		)
-		this.settings.ai.defaultModel = sanitizeDefaultSelections(
-			this.settings.ai.providers,
-			this.settings.ai.defaultModel,
-		)
+		let providersValid = true
+		try {
+			this.settings.ai.providers = sanitizeProviders(
+				this.settings.ai.providers ?? [],
+			)
+		} catch (error) {
+			logger.error(error)
+			const detail =
+				error instanceof Error ? error.message : 'Unknown validation error'
+			new Notice(
+				i18n.t('settings.ai.errors.invalidProvidersConfig', {
+					reason: detail,
+				}),
+				10000,
+			)
+			providersValid = false
+		}
+		this.settings.ai.defaultModel = providersValid
+			? sanitizeDefaultSelections(
+					this.settings.ai.providers,
+					this.settings.ai.defaultModel,
+				)
+			: undefined
 	}
 
 	async saveSettings() {

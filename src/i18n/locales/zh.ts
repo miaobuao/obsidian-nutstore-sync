@@ -111,6 +111,7 @@ export default {
 					name: 'Provider 类型',
 					desc: '底层运行时 Provider',
 					openai: 'OpenAI',
+					invalid: '未知类型：{{value}}（请选择合法类型）',
 				},
 				name: 'Provider 名称',
 				desc: '用于在 Chatbox 中显示的名称',
@@ -164,6 +165,9 @@ export default {
 			},
 			errors: {
 				saveFailed: 'AI 设置保存失败',
+				saveFailedWithReason: 'AI 设置保存失败：{{reason}}',
+				invalidProvidersConfig:
+					'AI Provider 配置无效，请在设置中修正。详情：{{reason}}',
 			},
 		},
 		confirmBeforeSync: {

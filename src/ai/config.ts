@@ -1,12 +1,26 @@
 import createId from '~/utils/create-id'
+import { z } from 'zod'
 import {
 	AIModelConfig,
 	AIProviderConfig,
+	AIProviderInput,
 	AIProviderType,
+	aiProviderInputSchema,
+	AIModelInput,
+	OpenAIProviderInput,
 	OpenAIProviderConfig,
 } from './types'
 
-function normalizeModel(model: Partial<AIModelConfig>): AIModelConfig | null {
+function formatSchemaIssues(error: z.ZodError): string {
+	return error.issues
+		.map((issue) => {
+			const path = issue.path.length > 0 ? issue.path.join('.') : '(root)'
+			return `${path}: ${issue.message}`
+		})
+		.join('; ')
+}
+
+function normalizeModel(model: AIModelInput): AIModelConfig {
 	return {
 		id: model.id?.trim() || createId('model'),
 		name: model.name?.trim() || '',
@@ -14,16 +28,14 @@ function normalizeModel(model: Partial<AIModelConfig>): AIModelConfig | null {
 }
 
 function normalizeOpenAIProvider(
-	provider: Partial<OpenAIProviderConfig>,
-): OpenAIProviderConfig | null {
-	const models = (provider.models || [])
-		.map((model) => normalizeModel(model))
-		.filter((model): model is AIModelConfig => !!model)
+	provider: OpenAIProviderInput,
+): OpenAIProviderConfig {
+	const models = (provider.models || []).map((model) => normalizeModel(model))
 
 	return {
 		id: provider.id?.trim() || createId('provider'),
 		name: provider.name?.trim() || '',
-		type: 'openai-chat',
+		type: provider.type,
 		apiKey: provider.apiKey || '',
 		baseUrl: provider.baseUrl?.trim() || undefined,
 		organization: provider.organization?.trim() || undefined,
@@ -32,30 +44,30 @@ function normalizeOpenAIProvider(
 	}
 }
 
-export function normalizeProviderType(value?: string): AIProviderType {
-	if (value === 'openai') return 'openai-chat'
-	return value === 'openai-chat' ? value : 'openai-chat'
-}
-
 function normalizeProvider(
 	provider: Partial<AIProviderConfig>,
-): AIProviderConfig | null {
-	switch (
-		normalizeProviderType(
-			typeof provider.type === 'string' ? provider.type : undefined,
+	index: number,
+): AIProviderConfig {
+	const parsed = aiProviderInputSchema.safeParse(provider)
+	if (!parsed.success) {
+		throw new Error(
+			`Invalid AI provider at index ${index}: ${formatSchemaIssues(parsed.error)}`,
 		)
-	) {
+	}
+
+	const typedProvider: AIProviderInput = parsed.data
+	switch (typedProvider.type) {
 		case 'openai-chat':
-			return normalizeOpenAIProvider(provider)
+			return normalizeOpenAIProvider(typedProvider)
 	}
 }
 
 export function sanitizeProviders(
 	providers: Partial<AIProviderConfig>[] | undefined,
 ): AIProviderConfig[] {
-	return (providers || [])
-		.map((provider) => normalizeProvider(provider))
-		.filter((provider): provider is AIProviderConfig => !!provider)
+	return (providers || []).map((provider, index) =>
+		normalizeProvider(provider, index),
+	)
 }
 
 export function sanitizeDefaultSelections(
