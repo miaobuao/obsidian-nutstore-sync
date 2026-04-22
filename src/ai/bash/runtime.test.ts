@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { App, Vault } from 'obsidian'
+import type { PermissionRequest } from '~/ai/permission-guard'
 import { createVaultBash, execVaultBash, VAULT_MOUNT_POINT } from './runtime'
-import { listVaultPaths, MountedVaultFs, ObsidianVaultFs } from './fs'
+import {
+	listVaultPaths,
+	MountedVaultFs,
+	ObsidianVaultFs,
+	ReversibleOpRecorder,
+} from './fs'
 
 interface MockEntryFile {
 	type: 'file'
@@ -233,8 +239,14 @@ function createMockVault(
 			store.writeBinary(path, data)
 			return vault.getAbstractFileByPath(path)
 		},
+		async cachedRead(file: MockFile) {
+			return new TextDecoder().decode(store.readBinary(file.path))
+		},
 		async modifyBinary(file: MockFile, data: ArrayBuffer) {
 			store.writeBinary(file.path, data)
+		},
+		async modify(file: MockFile, content: string) {
+			store.writeBinary(file.path, new TextEncoder().encode(content).buffer)
 		},
 		async createFolder(path: string) {
 			store.ensureFolder(path)
@@ -247,6 +259,9 @@ function createMockVault(
 				return
 			}
 			store.remove(file.path)
+		},
+		async trash(file: MockFile | MockFolder) {
+			return vault.delete(file as never)
 		},
 		async rename(file: MockFile | MockFolder, newPath: string) {
 			store.rename(file.path, newPath)
@@ -332,5 +347,206 @@ describe('vault bash runtime', () => {
 		expect(await mounted.readFile('/scratch.txt')).toBe('temp')
 		expect(await mounted.readFile(`${VAULT_MOUNT_POINT}/note.md`)).toBe('hello')
 		expect(await mounted.readdir('/')).toEqual(['scratch.txt', 'vault'])
+	})
+
+	it('records reversible ops for writes, deletes, copies, and moves', async () => {
+		const { vault } = createMockVault(
+			{
+				'docs/existing.md': 'before',
+				'docs/nested/a.txt': 'A',
+			},
+			['docs', 'docs/nested'],
+		)
+		const recorder = new ReversibleOpRecorder()
+		const fs = new ObsidianVaultFs(
+			vault,
+			['/', '/docs', '/docs/existing.md', '/docs/nested', '/docs/nested/a.txt'],
+			undefined,
+			recorder,
+		)
+
+		await fs.writeFile('/docs/new.md', 'new')
+		await fs.writeFile('/docs/existing.md', 'after')
+		await fs.mkdir('/docs/deep/child', { recursive: true })
+		await fs.rm('/docs/nested', { recursive: true })
+		await fs.cp('/docs', '/docs-copy', { recursive: true })
+		await fs.mv('/docs/new.md', '/moved/new.md')
+
+		expect(recorder.getOperations()).toEqual([
+			{
+				vaultPath: 'docs/new.md',
+				operation: 'create',
+				before: { kind: 'file' },
+			},
+			{
+				vaultPath: 'docs/existing.md',
+				operation: 'update',
+				before: {
+					kind: 'file',
+					contentBase64: Buffer.from('before').toString('base64'),
+				},
+			},
+			{
+				vaultPath: 'docs/deep',
+				operation: 'create',
+				before: { kind: 'dir' },
+			},
+			{
+				vaultPath: 'docs/deep/child',
+				operation: 'create',
+				before: { kind: 'dir' },
+			},
+			{
+				vaultPath: 'docs/nested/a.txt',
+				operation: 'delete',
+				before: {
+					kind: 'file',
+					contentBase64: Buffer.from('A').toString('base64'),
+				},
+			},
+			{
+				vaultPath: 'docs/nested',
+				operation: 'delete',
+				before: { kind: 'dir' },
+			},
+			{
+				vaultPath: 'docs-copy',
+				operation: 'create',
+				before: { kind: 'dir' },
+			},
+			{
+				vaultPath: 'docs-copy/deep',
+				operation: 'create',
+				before: { kind: 'dir' },
+			},
+			{
+				vaultPath: 'docs-copy/deep/child',
+				operation: 'create',
+				before: { kind: 'dir' },
+			},
+			{
+				vaultPath: 'docs-copy/existing.md',
+				operation: 'create',
+				before: { kind: 'file' },
+			},
+			{
+				vaultPath: 'docs-copy/new.md',
+				operation: 'create',
+				before: { kind: 'file' },
+			},
+			{
+				vaultPath: 'moved',
+				operation: 'create',
+				before: { kind: 'dir' },
+			},
+			{
+				vaultPath: 'docs/new.md',
+				operation: 'delete',
+				before: {
+					kind: 'file',
+					contentBase64: Buffer.from('new').toString('base64'),
+				},
+			},
+			{
+				vaultPath: 'moved/new.md',
+				operation: 'create',
+				before: { kind: 'file' },
+			},
+		])
+	})
+
+	it('checks cp destination and mv source plus destination in permission guard', async () => {
+		const { vault } = createMockVault(
+			{
+				'docs/source.md': 'source',
+			},
+			['docs'],
+		)
+		const requests: PermissionRequest[] = []
+		const fs = new ObsidianVaultFs(
+			vault,
+			['/', '/docs', '/docs/source.md'],
+			async (request) => {
+				requests.push(request)
+			},
+		)
+
+		await fs.cp('/docs/source.md', '/docs/copied.md')
+		await fs.mv('/docs/copied.md', '/docs/moved.md')
+
+		expect(requests).toEqual([
+			{
+				type: 'fs',
+				fs: {
+					kind: 'copy',
+					src: '/vault/docs/source.md',
+					dest: '/vault/docs/copied.md',
+				},
+			},
+			{
+				type: 'fs',
+				fs: {
+					kind: 'move',
+					src: '/vault/docs/copied.md',
+					dest: '/vault/docs/moved.md',
+				},
+			},
+		])
+	})
+
+	it('records overwritten target content for cp and mv', async () => {
+		const { vault } = createMockVault(
+			{
+				'docs/src-copy.md': 'copy-source',
+				'docs/src-move.md': 'move-source',
+				'docs/dest-copy.md': 'copy-dest-before',
+				'docs/dest-move.md': 'move-dest-before',
+			},
+			['docs'],
+		)
+		const recorder = new ReversibleOpRecorder()
+		const fs = new ObsidianVaultFs(
+			vault,
+			[
+				'/',
+				'/docs',
+				'/docs/src-copy.md',
+				'/docs/src-move.md',
+				'/docs/dest-copy.md',
+				'/docs/dest-move.md',
+			],
+			undefined,
+			recorder,
+		)
+
+		await fs.cp('/docs/src-copy.md', '/docs/dest-copy.md')
+		await fs.mv('/docs/src-move.md', '/docs/dest-move.md')
+
+		expect(recorder.getOperations()).toEqual([
+			{
+				vaultPath: 'docs/dest-copy.md',
+				operation: 'update',
+				before: {
+					kind: 'file',
+					contentBase64: Buffer.from('copy-dest-before').toString('base64'),
+				},
+			},
+			{
+				vaultPath: 'docs/src-move.md',
+				operation: 'delete',
+				before: {
+					kind: 'file',
+					contentBase64: Buffer.from('move-source').toString('base64'),
+				},
+			},
+			{
+				vaultPath: 'docs/dest-move.md',
+				operation: 'update',
+				before: {
+					kind: 'file',
+					contentBase64: Buffer.from('move-dest-before').toString('base64'),
+				},
+			},
+		])
 	})
 })

@@ -44,6 +44,7 @@ export interface NutstoreSettings {
 	ai: {
 		providers: AIProviderConfig[]
 		defaultModel?: { providerId: string; modelId: string }
+		yolo?: boolean
 	}
 	configDirSyncMode?: 'none' | 'bookmarks' | 'all'
 }

@@ -7,20 +7,20 @@ import {
 	createSignal,
 	onCleanup,
 } from 'solid-js'
+import { ConfirmDialog } from './components/ConfirmDialog'
+import { FragmentDivider } from './components/FragmentDivider'
+import { MessageCard } from './components/MessageCard'
+import { PaneResizer } from './components/PaneResizer'
+import { PendingList } from './components/PendingList'
+import { RunStateCard } from './components/RunStateCard'
+import { SessionHistoryItem } from './components/SessionHistoryItem'
+import { TasksPanel } from './components/TasksPanel'
 import { t } from './i18n'
 import type {
 	ChatTimelineFragmentItem,
 	ChatTimelineMessageItem,
 	ChatboxProps,
 } from './types'
-import { MessageCard } from './components/MessageCard'
-import { TasksPanel } from './components/TasksPanel'
-import { RunStateCard } from './components/RunStateCard'
-import { PendingList } from './components/PendingList'
-import { FragmentDivider } from './components/FragmentDivider'
-import { SessionHistoryItem } from './components/SessionHistoryItem'
-import { ConfirmDialog } from './components/ConfirmDialog'
-import { PaneResizer } from './components/PaneResizer'
 
 export type AppProps = ChatboxProps
 
@@ -43,22 +43,10 @@ function App(props: AppProps) {
 		createSignal<string>()
 	const [pendingDeleteMessage, setPendingDeleteMessage] =
 		createSignal<ChatTimelineMessageItem>()
-	const [deleteConfirmSkipped, setDeleteConfirmSkipped] = createSignal(
-		new Set<string>(),
-	)
-	const [deleteConfirmSkipChecked, setDeleteConfirmSkipChecked] =
-		createSignal(false)
 	const [pendingRegenerateMessage, setPendingRegenerateMessage] =
 		createSignal<ChatTimelineMessageItem>()
-	const [regenerateConfirmSkipped, setRegenerateConfirmSkipped] =
-		createSignal(false)
-	const [regenerateConfirmSkipChecked, setRegenerateConfirmSkipChecked] =
-		createSignal(false)
 	const [pendingRecallMessage, setPendingRecallMessage] =
 		createSignal<ChatTimelineMessageItem>()
-	const [recallConfirmSkipped, setRecallConfirmSkipped] = createSignal(false)
-	const [recallConfirmSkipChecked, setRecallConfirmSkipChecked] =
-		createSignal(false)
 	const [desktopResizeEnabled, setDesktopResizeEnabled] = createSignal(false)
 	const [inputPaneHeight, setInputPaneHeight] = createSignal<number>()
 	let messagesEl: HTMLDivElement | undefined
@@ -295,28 +283,18 @@ function App(props: AppProps) {
 						i.kind === 'message' && i.message.id === messageId,
 				)
 				if (!item) return
-				if (deleteConfirmSkipped().has(item.message.message.role)) {
-					props.onDeleteMessage?.(messageId)
-				} else {
-					setDeleteConfirmSkipChecked(false)
-					setPendingDeleteMessage(item)
-				}
+				setPendingDeleteMessage(item)
 			}
 		: undefined
 
 	const requestRegenerateMessage = props.onRegenerateMessage
 		? (messageId: string) => {
-				if (regenerateConfirmSkipped()) {
-					props.onRegenerateMessage?.(messageId)
-				} else {
-					const item = props.timeline.find(
-						(i): i is ChatTimelineMessageItem =>
-							i.kind === 'message' && i.message.id === messageId,
-					)
-					if (!item) return
-					setRegenerateConfirmSkipChecked(false)
-					setPendingRegenerateMessage(item)
-				}
+				const item = props.timeline.find(
+					(i): i is ChatTimelineMessageItem =>
+						i.kind === 'message' && i.message.id === messageId,
+				)
+				if (!item) return
+				setPendingRegenerateMessage(item)
 			}
 		: undefined
 
@@ -327,40 +305,32 @@ function App(props: AppProps) {
 						i.kind === 'message' && i.message.id === messageId,
 				)
 				if (!item) return
-				if (recallConfirmSkipped()) {
-					doRecallMessage(item)
-				} else {
-					setRecallConfirmSkipChecked(false)
-					setPendingRecallMessage(item)
-				}
+				setPendingRecallMessage(item)
 			}
 		: undefined
 
-	function doRecallMessage(item: ChatTimelineMessageItem) {
+	async function doRecallMessage(
+		item: ChatTimelineMessageItem,
+		options?: { restoreFiles?: boolean },
+	) {
 		const text = (item.message.message.content ?? [])
 			.filter((p) => p.type === 'text')
 			.map((p) => (p as { type: 'text'; text: string }).text)
 			.join('\n')
 		setInput(text)
-		props.onRecallMessage?.(item.message.id)
+		await props.onRecallMessage?.(item.message.id, options)
 	}
 
-	function confirmRecallMessage() {
+	async function confirmRecallMessage() {
 		const item = pendingRecallMessage()
 		if (!item) return
-		if (recallConfirmSkipChecked()) {
-			setRecallConfirmSkipped(true)
-		}
 		setPendingRecallMessage(undefined)
-		doRecallMessage(item)
+		await doRecallMessage(item)
 	}
 
 	function confirmRegenerateMessage() {
 		const item = pendingRegenerateMessage()
 		if (!item) return
-		if (regenerateConfirmSkipChecked()) {
-			setRegenerateConfirmSkipped(true)
-		}
 		setPendingRegenerateMessage(undefined)
 		props.onRegenerateMessage?.(item.message.id)
 	}
@@ -368,13 +338,6 @@ function App(props: AppProps) {
 	function confirmDeleteMessage() {
 		const item = pendingDeleteMessage()
 		if (!item) return
-		if (deleteConfirmSkipChecked()) {
-			setDeleteConfirmSkipped((prev) => {
-				const next = new Set(prev)
-				next.add(item.message.message.role)
-				return next
-			})
-		}
 		setPendingDeleteMessage(undefined)
 		props.onDeleteMessage?.(item.message.id)
 	}
@@ -390,6 +353,38 @@ function App(props: AppProps) {
 			default:
 				return t('deleteAssistantMessageConfirm')
 		}
+	}
+
+	const deleteMessageHasReversibleOps = () =>
+		Boolean(pendingDeleteMessage()?.message.reversibleOps?.length)
+
+	const recallHasReversibleOps = () => {
+		const item = pendingRecallMessage()
+		if (!item) return false
+		let seenTarget = false
+		for (const timelineItem of props.timeline) {
+			if (timelineItem.kind !== 'message') {
+				if (seenTarget) {
+					break
+				}
+				continue
+			}
+			if (!seenTarget) {
+				seenTarget = timelineItem.message.id === item.message.id
+				continue
+			}
+			if (timelineItem.message.reversibleOps?.length) {
+				return true
+			}
+		}
+		return item.message.reversibleOps?.length ? true : false
+	}
+
+	async function confirmRecallAndRestoreMessage() {
+		const item = pendingRecallMessage()
+		if (!item) return
+		setPendingRecallMessage(undefined)
+		await doRecallMessage(item, { restoreFiles: true })
 	}
 
 	return (
@@ -666,11 +661,12 @@ function App(props: AppProps) {
 			<Show when={pendingDeleteMessage()}>
 				<ConfirmDialog
 					title={t('deleteMessageTitle')}
-					message={deleteMessageConfirmText()}
+					message={`${deleteMessageConfirmText()}${
+						deleteMessageHasReversibleOps()
+							? `\n\n${t('deleteToolMessageRestoreWarning')}`
+							: ''
+					}`}
 					confirmLabel={t('confirmDelete')}
-					skipLabel={t('deleteMessageSkipConfirm')}
-					skipChecked={deleteConfirmSkipChecked()}
-					onSkipChange={setDeleteConfirmSkipChecked}
 					onCancel={() => setPendingDeleteMessage(undefined)}
 					onConfirm={confirmDeleteMessage}
 				/>
@@ -682,9 +678,6 @@ function App(props: AppProps) {
 					title={t('regenerateMessageTitle')}
 					message={t('regenerateMessageConfirm')}
 					confirmLabel={t('regenerateMessage')}
-					skipLabel={t('regenerateMessageSkipConfirm')}
-					skipChecked={regenerateConfirmSkipChecked()}
-					onSkipChange={setRegenerateConfirmSkipChecked}
 					onCancel={() => setPendingRegenerateMessage(undefined)}
 					onConfirm={confirmRegenerateMessage}
 				/>
@@ -696,11 +689,14 @@ function App(props: AppProps) {
 					title={t('recallMessageTitle')}
 					message={t('recallMessageConfirm')}
 					confirmLabel={t('confirmRecall')}
-					skipLabel={t('recallMessageSkipConfirm')}
-					skipChecked={recallConfirmSkipChecked()}
-					onSkipChange={setRecallConfirmSkipChecked}
+					secondaryConfirmLabel={
+						recallHasReversibleOps()
+							? t('recallMessageRestoreConfirm')
+							: undefined
+					}
 					onCancel={() => setPendingRecallMessage(undefined)}
-					onConfirm={confirmRecallMessage}
+					onConfirm={() => void confirmRecallMessage()}
+					onSecondaryConfirm={() => void confirmRecallAndRestoreMessage()}
 				/>
 			</Show>
 		</div>

@@ -10,19 +10,42 @@ import {
 } from 'just-bash/browser'
 import {
 	normalizePath,
+	TFile,
+	TFolder,
 	type App,
 	type TAbstractFile,
-	type TFile,
-	type TFolder,
 	type Vault,
 } from 'obsidian'
 import { posix as pathPosix } from 'path-browserify'
+import type {
+	AIDualPathFileOperation,
+	AISinglePathFileOperation,
+} from '~/ai/file-operation'
+import type { PermissionGuard } from '~/ai/permission-guard'
+import { cloneReversibleToolOp, type ReversibleToolOp } from '~/chat/domain'
 
 const FILE_MODE = 0o644
 const DIR_MODE = 0o755
 const VAULT_MOUNT_POINT = '/vault'
 type ReadFileOptions = { encoding?: BufferEncoding | null }
 type WriteFileOptions = { encoding?: BufferEncoding }
+type SnapshotKind = 'file' | 'dir'
+type VaultSnapshotNode = {
+	path: string
+	kind: SnapshotKind
+	contentBase64?: string
+}
+
+function encodeBase64(content: Uint8Array) {
+	if (typeof Buffer !== 'undefined') {
+		return Buffer.from(content).toString('base64')
+	}
+	let binary = ''
+	for (const byte of content) {
+		binary += String.fromCharCode(byte)
+	}
+	return btoa(binary)
+}
 
 function getEncoding(
 	options?: ReadFileOptions | WriteFileOptions | BufferEncoding | null,
@@ -80,6 +103,10 @@ function toArrayBuffer(content: Uint8Array) {
 	) as ArrayBuffer
 }
 
+function getPathDepth(path: string) {
+	return path.split('/').filter(Boolean).length
+}
+
 function normalizeVirtualPath(inputPath: string) {
 	const normalized = pathPosix.normalize(pathPosix.resolve('/', inputPath))
 	return normalized === '' ? '/' : normalized
@@ -95,6 +122,14 @@ function ensureNotEscapingRoot(inputPath: string) {
 		throw new Error(`EINVAL: invalid path '${inputPath}'`)
 	}
 	return normalized
+}
+
+function normalizeReversibleVaultPath(path: string) {
+	const normalized = ensureNotEscapingRoot(path)
+	if (normalized === '/') {
+		return ''
+	}
+	return normalizePath(normalized.slice(1))
 }
 
 function mapStat(stat: {
@@ -113,7 +148,7 @@ function mapStat(stat: {
 }
 
 function mapAbstractFileStat(file: TAbstractFile): FsStat {
-	if (isFolder(file)) {
+	if (file instanceof TFolder) {
 		return mapStat({
 			type: 'folder',
 			size: 0,
@@ -121,20 +156,11 @@ function mapAbstractFileStat(file: TAbstractFile): FsStat {
 		})
 	}
 
-	const textFile = file as TFile
 	return mapStat({
 		type: 'file',
-		size: textFile.stat.size,
-		mtime: textFile.stat.mtime,
+		size: (file as TFile).stat.size,
+		mtime: (file as TFile).stat.mtime,
 	})
-}
-
-function isFolder(file: TAbstractFile | null | undefined): file is TFolder {
-	return Boolean(file && 'children' in file && Array.isArray(file.children))
-}
-
-function isFile(file: TAbstractFile | null | undefined): file is TFile {
-	return Boolean(file && !isFolder(file))
 }
 
 async function copyRecursive(
@@ -193,7 +219,7 @@ export async function listVaultPaths(app: App) {
 		}
 
 		paths.add(`/${normalizePath(current.path)}`)
-		if (isFolder(current)) {
+		if (current instanceof TFolder) {
 			queue.push(...current.children)
 		}
 	}
@@ -201,17 +227,117 @@ export async function listVaultPaths(app: App) {
 	return [...paths]
 }
 
+export class ReversibleOpRecorder {
+	private readonly operations: ReversibleToolOp[] = []
+
+	recordCreate(vaultPath: string, kind: SnapshotKind) {
+		const normalizedPath = normalizeReversibleVaultPath(vaultPath)
+		if (!normalizedPath) {
+			return
+		}
+		this.operations.push({
+			vaultPath: normalizedPath,
+			operation: 'create',
+			before: { kind },
+		})
+	}
+
+	recordUpdate(vaultPath: string, contentBase64: string) {
+		const normalizedPath = normalizeReversibleVaultPath(vaultPath)
+		if (!normalizedPath) {
+			return
+		}
+		this.operations.push({
+			vaultPath: normalizedPath,
+			operation: 'update',
+			before: {
+				kind: 'file',
+				contentBase64,
+			},
+		})
+	}
+
+	recordDelete(snapshot: VaultSnapshotNode) {
+		const normalizedPath = normalizeReversibleVaultPath(snapshot.path)
+		if (!normalizedPath) {
+			return
+		}
+		this.operations.push({
+			vaultPath: normalizedPath,
+			operation: 'delete',
+			before:
+				snapshot.kind === 'dir'
+					? { kind: 'dir' }
+					: {
+							kind: 'file',
+							contentBase64: snapshot.contentBase64 || '',
+						},
+		})
+	}
+
+	getOperations(): ReversibleToolOp[] {
+		return this.operations.map(cloneReversibleToolOp)
+	}
+}
+
 export class ObsidianVaultFs implements IFileSystem {
 	private readonly snapshot = new Set<string>()
+	private _batchDepth = 0
 
 	constructor(
 		private readonly vault: Vault,
 		initialPaths: string[] = [],
+		private readonly permissionGuard?: PermissionGuard,
+		private readonly recorder?: ReversibleOpRecorder,
 	) {
 		for (const path of initialPaths) {
 			this.snapshot.add(ensureNotEscapingRoot(path))
 		}
 		this.snapshot.add('/')
+	}
+
+	private async withBatch<T>(fn: () => Promise<T>): Promise<T> {
+		this._batchDepth++
+		try {
+			return await fn()
+		} finally {
+			this._batchDepth--
+		}
+	}
+
+	private async checkPermission(
+		request:
+			| { kind: AISinglePathFileOperation; path: string }
+			| { kind: AIDualPathFileOperation; src: string; dest: string },
+	): Promise<void> {
+		if (this._batchDepth > 0 || !this.permissionGuard) return
+		const normalizedRequest =
+			'src' in request
+				? {
+						type: 'fs' as const,
+						fs: {
+							kind: request.kind,
+							src: this.toPermissionPath(request.src),
+							dest: this.toPermissionPath(request.dest),
+						},
+					}
+				: {
+						type: 'fs' as const,
+						fs: {
+							kind: request.kind,
+							path: this.toPermissionPath(request.path),
+						},
+					}
+		await this.permissionGuard({
+			...normalizedRequest,
+		})
+	}
+
+	private toPermissionPath(path: string) {
+		const normalized = ensureNotEscapingRoot(path)
+		return normalized === '/'
+			? VAULT_MOUNT_POINT
+			: `${VAULT_MOUNT_POINT}${normalized}`
 	}
 
 	private toVaultPath(inputPath: string) {
@@ -225,6 +351,128 @@ export class ObsidianVaultFs implements IFileSystem {
 			throw new Error(`ENOENT: no such file or directory, stat '${inputPath}'`)
 		}
 		return target
+	}
+
+	private async readFileContentBase64(target: TFile) {
+		return encodeBase64(
+			new Uint8Array(
+				(await this.vault.readBinary(target as never)) as ArrayBuffer,
+			),
+		)
+	}
+
+	private async snapshotNode(
+		target:
+			| TAbstractFile
+			| { path: string; name: string; children?: unknown[] },
+		virtualPath: string,
+	): Promise<VaultSnapshotNode[]> {
+		if (target instanceof TFolder) {
+			const children = [...target.children].sort((left, right) =>
+				left.path.localeCompare(right.path),
+			)
+			const snapshots: VaultSnapshotNode[] = []
+			for (const child of children) {
+				snapshots.push(
+					...(await this.snapshotNode(
+						child,
+						joinVirtualPath(virtualPath, child.name),
+					)),
+				)
+			}
+			snapshots.push({ path: virtualPath, kind: 'dir' })
+			return snapshots
+		}
+
+		return [
+			{
+				path: virtualPath,
+				kind: 'file',
+				contentBase64: await this.readFileContentBase64(target as TFile),
+			},
+		]
+	}
+
+	private async snapshotSubtree(path: string) {
+		const normalized = ensureNotEscapingRoot(path)
+		const target = this.vault.getAbstractFileByPath(
+			this.toVaultPath(normalized),
+		)
+		if (!target) {
+			return []
+		}
+		return this.snapshotNode(target, normalized)
+	}
+
+	private toSnapshotMap(entries: VaultSnapshotNode[]) {
+		return new Map(entries.map((entry) => [entry.path, entry]))
+	}
+
+	private recordDeleteSnapshots(entries: VaultSnapshotNode[]) {
+		if (!this.recorder) {
+			return
+		}
+		for (const entry of entries) {
+			this.recorder.recordDelete(entry)
+		}
+	}
+
+	private recordTargetDiff(
+		beforeEntries: VaultSnapshotNode[],
+		afterEntries: VaultSnapshotNode[],
+	) {
+		if (!this.recorder) {
+			return
+		}
+		const beforeByPath = this.toSnapshotMap(beforeEntries)
+		const afterByPath = this.toSnapshotMap(afterEntries)
+
+		for (const entry of afterEntries.sort((left, right) => {
+			const depthDelta = getPathDepth(left.path) - getPathDepth(right.path)
+			return depthDelta !== 0 ? depthDelta : left.path.localeCompare(right.path)
+		})) {
+			const previous = beforeByPath.get(entry.path)
+			if (!previous) {
+				this.recorder.recordCreate(entry.path, entry.kind)
+				continue
+			}
+			if (previous.kind !== entry.kind) {
+				this.recorder.recordDelete(previous)
+				this.recorder.recordCreate(entry.path, entry.kind)
+				continue
+			}
+			if (
+				entry.kind === 'file' &&
+				previous.contentBase64 !== entry.contentBase64
+			) {
+				this.recorder.recordUpdate(entry.path, previous.contentBase64 || '')
+			}
+		}
+
+		for (const entry of beforeEntries
+			.filter((entry) => !afterByPath.has(entry.path))
+			.sort((left, right) => {
+				const depthDelta = getPathDepth(right.path) - getPathDepth(left.path)
+				return depthDelta !== 0
+					? depthDelta
+					: left.path.localeCompare(right.path)
+			})) {
+			this.recorder.recordDelete(entry)
+		}
+	}
+
+	private async deleteAbstractFile(target: TAbstractFile) {
+		if (typeof this.vault.trash === 'function') {
+			await this.vault.trash(target, false)
+			return
+		}
+		if (typeof this.vault.delete === 'function') {
+			await this.vault.delete(target, false)
+			return
+		}
+		throw new Error(
+			`ENOTSUP: vault delete is not available for '${target.path}'`,
+		)
 	}
 
 	private recordPath(inputPath: string) {
@@ -260,7 +508,9 @@ export class ObsidianVaultFs implements IFileSystem {
 		path: string,
 		options?: ReadFileOptions | BufferEncoding,
 	): Promise<string> {
-		return decodeContent(await this.readFileBuffer(path), options)
+		return this.withBatch(() =>
+			this.readFileBuffer(path).then((buf) => decodeContent(buf, options)),
+		)
 	}
 
 	async readFileBuffer(path: string): Promise<Uint8Array> {
@@ -271,10 +521,10 @@ export class ObsidianVaultFs implements IFileSystem {
 			)
 		}
 		const target = this.vault.getAbstractFileByPath(this.toVaultPath(path))
-		if (!isFile(target)) {
+		if (!(target instanceof TFile)) {
 			throw new Error(`ENOENT: no such file or directory, read '${path}'`)
 		}
-		const buffer = await this.vault.readBinary(target)
+		const buffer = await this.vault.readBinary(target as never)
 		return new Uint8Array(buffer as ArrayBuffer)
 	}
 
@@ -283,23 +533,31 @@ export class ObsidianVaultFs implements IFileSystem {
 		content: FileContent,
 		options?: WriteFileOptions | BufferEncoding,
 	): Promise<void> {
-		await this.mkdir(pathPosix.dirname(ensureNotEscapingRoot(path)), {
-			recursive: true,
-		})
-		const encoded = encodeContent(content, options)
-		const vaultPath = this.toVaultPath(path)
-		const target = this.vault.getAbstractFileByPath(vaultPath)
-		if (target) {
-			if (!isFile(target)) {
-				throw new Error(
-					`EISDIR: illegal operation on a directory, write '${path}'`,
+		await this.checkPermission({ kind: 'write', path })
+		await this.withBatch(async () => {
+			await this.mkdir(pathPosix.dirname(ensureNotEscapingRoot(path)), {
+				recursive: true,
+			})
+			const encoded = encodeContent(content, options)
+			const vaultPath = this.toVaultPath(path)
+			const target = this.vault.getAbstractFileByPath(vaultPath)
+			if (target) {
+				if (!(target instanceof TFile)) {
+					throw new Error(
+						`EISDIR: illegal operation on a directory, write '${path}'`,
+					)
+				}
+				this.recorder?.recordUpdate(
+					path,
+					await this.readFileContentBase64(target),
 				)
+				await this.vault.modifyBinary(target as never, toArrayBuffer(encoded))
+			} else {
+				await this.vault.createBinary(vaultPath, toArrayBuffer(encoded))
+				this.recorder?.recordCreate(path, 'file')
 			}
-			await this.vault.modifyBinary(target, toArrayBuffer(encoded))
-		} else {
-			await this.vault.createBinary(vaultPath, toArrayBuffer(encoded))
-		}
-		this.recordPath(path)
+			this.recordPath(path)
+		})
 	}
 
 	async appendFile(
@@ -307,14 +565,17 @@ export class ObsidianVaultFs implements IFileSystem {
 		content: FileContent,
 		options?: WriteFileOptions | BufferEncoding,
 	): Promise<void> {
-		const encoded = encodeContent(content, options)
-		const existing = (await this.exists(path))
-			? await this.readFileBuffer(path)
-			: (new Uint8Array(0) as Uint8Array)
-		const merged = new Uint8Array(existing.length + encoded.length)
-		merged.set(existing)
-		merged.set(encoded, existing.length)
-		await this.writeFile(path, merged)
+		await this.checkPermission({ kind: 'write', path })
+		await this.withBatch(async () => {
+			const encoded = encodeContent(content, options)
+			const existing = (await this.exists(path))
+				? await this.readFileBuffer(path)
+				: (new Uint8Array(0) as Uint8Array)
+			const merged = new Uint8Array(existing.length + encoded.length)
+			merged.set(existing)
+			merged.set(encoded, existing.length)
+			await this.writeFile(path, merged)
+		})
 	}
 
 	async exists(path: string): Promise<boolean> {
@@ -346,6 +607,7 @@ export class ObsidianVaultFs implements IFileSystem {
 		if (normalized === '/') {
 			return
 		}
+		await this.checkPermission({ kind: 'mkdir', path })
 
 		const segments = normalized.split('/').filter(Boolean)
 		let current = ''
@@ -360,6 +622,7 @@ export class ObsidianVaultFs implements IFileSystem {
 				)
 			}
 			await this.vault.createFolder(this.toVaultPath(current))
+			this.recorder?.recordCreate(current, 'dir')
 			this.recordPath(current)
 		}
 	}
@@ -373,7 +636,7 @@ export class ObsidianVaultFs implements IFileSystem {
 			this.toVaultPath(path) === ''
 				? this.vault.getRoot()
 				: this.vault.getAbstractFileByPath(this.toVaultPath(path))
-		if (!isFolder(target)) {
+		if (!(target instanceof TFolder)) {
 			throw new Error(`ENOTDIR: not a directory, scandir '${path}'`)
 		}
 		return [...target.children]
@@ -391,14 +654,14 @@ export class ObsidianVaultFs implements IFileSystem {
 			this.toVaultPath(path) === ''
 				? this.vault.getRoot()
 				: this.vault.getAbstractFileByPath(this.toVaultPath(path))
-		if (!isFolder(target)) {
+		if (!(target instanceof TFolder)) {
 			throw new Error(`ENOTDIR: not a directory, scandir '${path}'`)
 		}
 		return [...target.children]
 			.map((item) => ({
 				name: item.name,
-				isFile: isFile(item),
-				isDirectory: isFolder(item),
+				isFile: item instanceof TFile,
+				isDirectory: item instanceof TFolder,
 				isSymbolicLink: false,
 			}))
 			.sort((left, right) => left.name.localeCompare(right.name))
@@ -409,6 +672,7 @@ export class ObsidianVaultFs implements IFileSystem {
 		if (normalized === '/') {
 			throw new Error(`EPERM: operation not permitted, remove '${path}'`)
 		}
+		await this.checkPermission({ kind: 'delete', path })
 
 		if (!(await this.exists(normalized))) {
 			if (options?.force) {
@@ -423,25 +687,40 @@ export class ObsidianVaultFs implements IFileSystem {
 		if (!target) {
 			throw new Error(`ENOENT: no such file or directory, remove '${path}'`)
 		}
-		await this.vault.delete(target, Boolean(options?.recursive))
+		this.recordDeleteSnapshots(await this.snapshotSubtree(normalized))
+		await this.deleteAbstractFile(target)
 		this.forgetPath(normalized)
 	}
 
 	async cp(src: string, dest: string, options?: CpOptions): Promise<void> {
-		await copyRecursive(this, src, dest, options)
+		await this.checkPermission({ kind: 'copy', src, dest })
+		await this.withBatch(() => copyRecursive(this, src, dest, options))
 	}
 
 	async mv(src: string, dest: string): Promise<void> {
-		await this.mkdir(pathPosix.dirname(ensureNotEscapingRoot(dest)), {
-			recursive: true,
+		await this.checkPermission({ kind: 'move', src, dest })
+		await this.withBatch(async () => {
+			const sourceSnapshots = await this.snapshotSubtree(src)
+			if (sourceSnapshots.length === 0) {
+				throw new Error(`ENOENT: no such file or directory, move '${src}'`)
+			}
+			const destSnapshotsBefore = await this.snapshotSubtree(dest)
+			await this.mkdir(pathPosix.dirname(ensureNotEscapingRoot(dest)), {
+				recursive: true,
+			})
+			const target = this.vault.getAbstractFileByPath(this.toVaultPath(src))
+			if (!target) {
+				throw new Error(`ENOENT: no such file or directory, move '${src}'`)
+			}
+			this.recordDeleteSnapshots(sourceSnapshots)
+			await this.vault.rename(target, this.toVaultPath(dest))
+			this.forgetPath(src)
+			this.recordPath(dest)
+			this.recordTargetDiff(
+				destSnapshotsBefore,
+				await this.snapshotSubtree(dest),
+			)
 		})
-		const target = this.vault.getAbstractFileByPath(this.toVaultPath(src))
-		if (!target) {
-			throw new Error(`ENOENT: no such file or directory, move '${src}'`)
-		}
-		await this.vault.rename(target, this.toVaultPath(dest))
-		this.forgetPath(src)
-		this.recordPath(dest)
 	}
 
 	resolvePath(base: string, path: string): string {
@@ -482,12 +761,14 @@ export class ObsidianVaultFs implements IFileSystem {
 	}
 
 	async utimes(path: string, _atime: Date, _mtime: Date): Promise<void> {
-		const stat = await this.stat(path)
-		if (stat.isDirectory) {
-			return
-		}
-		const content = await this.readFileBuffer(path)
-		await this.writeFile(path, content)
+		await this.withBatch(async () => {
+			const stat = await this.stat(path)
+			if (stat.isDirectory) {
+				return
+			}
+			const content = await this.readFileBuffer(path)
+			await this.writeFile(path, content)
+		})
 	}
 }
 

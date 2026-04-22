@@ -99,6 +99,9 @@ function createToolApp() {
 				return new TextEncoder().encode(files.get(normalize(file.path)) ?? '')
 					.buffer as ArrayBuffer
 			},
+			async cachedRead(file: any) {
+				return files.get(normalize(file.path)) ?? ''
+			},
 			async createBinary(path: string, data: ArrayBuffer) {
 				const normalized = normalize(path)
 				ensureFolder(dirname(normalized))
@@ -107,6 +110,9 @@ function createToolApp() {
 			},
 			async modifyBinary(file: any, data: ArrayBuffer) {
 				files.set(normalize(file.path), new TextDecoder().decode(data))
+			},
+			async modify(file: any, content: string) {
+				files.set(normalize(file.path), content)
 			},
 			async createFolder(path: string) {
 				ensureFolder(path)
@@ -233,7 +239,16 @@ describe('filterVaultEntries', () => {
 			{} as never,
 		)
 
-		expect(result).toBe('new note')
+		expect(result).toEqual({
+			result: 'new note',
+			reversibleOps: [
+				{
+					vaultPath: 'new.md',
+					operation: 'create',
+					before: { kind: 'file' },
+				},
+			],
+		})
 	})
 
 	it('accepts absolute virtual cwd paths for bash', async () => {
@@ -249,6 +264,41 @@ describe('filterVaultEntries', () => {
 				},
 				{} as never,
 			),
-		).resolves.toBe('/vault\n')
+		).resolves.toEqual({
+			result: '/vault\n',
+			reversibleOps: [],
+		})
+	})
+
+	it('records reversible ops for edit_file replacements', async () => {
+		const tools = createAITools(createToolApp())
+		const editTool = tools.find((tool) => tool.name === 'edit_file')
+
+		const result = await editTool!.execute(
+			{
+				path: 'notes/existing.md',
+				oldText: 'old',
+				newText: 'new',
+			},
+			{} as never,
+		)
+
+		expect(result).toEqual({
+			result: {
+				path: 'notes/existing.md',
+				replaced: true,
+				matchCount: 1,
+			},
+			reversibleOps: [
+				{
+					vaultPath: 'notes/existing.md',
+					operation: 'update',
+					before: {
+						kind: 'file',
+						contentBase64: Buffer.from('old').toString('base64'),
+					},
+				},
+			],
+		})
 	})
 })

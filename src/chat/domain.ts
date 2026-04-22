@@ -23,6 +23,7 @@ export type {
 	CancelledChatTask,
 	ChatTaskRecord,
 	ChatPendingMessage,
+	ReversibleToolOp,
 } from 'chatbox'
 
 import type {
@@ -40,6 +41,7 @@ import type {
 	CompletedChatTask,
 	FailedChatTask,
 	CancelledChatTask,
+	ReversibleToolOp,
 } from 'chatbox'
 
 export interface ChatFragment {
@@ -48,6 +50,10 @@ export interface ChatFragment {
 	updatedAt: number
 	summary?: string
 	messages: ChatMessageRecord[]
+}
+
+export interface ChatSessionPermissions {
+	allow: { operation: string; path: string }[]
 }
 
 export interface ChatSession {
@@ -60,6 +66,7 @@ export interface ChatSession {
 	fragments: ChatFragment[]
 	activeFragmentId: string
 	tasks: ChatTaskRecord[]
+	permissions?: ChatSessionPermissions
 }
 
 export interface ChatSessionIndexItem {
@@ -112,11 +119,44 @@ export function cloneMessage(message: ChatMessage): ChatMessage {
 	} as ChatMessage
 }
 
+export function cloneReversibleToolOp(op: ReversibleToolOp): ReversibleToolOp {
+	switch (op.operation) {
+		case 'create':
+			return {
+				vaultPath: op.vaultPath,
+				operation: 'create',
+				before: { kind: op.before.kind },
+			}
+		case 'update':
+			return {
+				vaultPath: op.vaultPath,
+				operation: 'update',
+				before: {
+					kind: 'file',
+					contentBase64: op.before.contentBase64,
+				},
+			}
+		case 'delete':
+			return {
+				vaultPath: op.vaultPath,
+				operation: 'delete',
+				before:
+					op.before.kind === 'dir'
+						? { kind: 'dir' }
+						: {
+								kind: 'file',
+								contentBase64: op.before.contentBase64,
+							},
+			}
+	}
+}
+
 export function cloneMessageRecord(
 	record: ChatMessageRecord,
 ): ChatMessageRecord {
 	return {
 		...record,
+		reversibleOps: record.reversibleOps?.map(cloneReversibleToolOp),
 		message: cloneMessage(record.message),
 		meta: record.meta
 			? {

@@ -1,7 +1,11 @@
 import { cloneDeep } from 'lodash-es'
 import { Modal, Notice, Setting } from 'obsidian'
 import { createModelDraft } from '~/ai/config'
-import { AIModelConfig, AIProviderConfig, OpenAIChatProviderType } from '~/ai/types'
+import {
+	AIModelConfig,
+	AIProviderConfig,
+	OpenAIChatProviderType,
+} from '~/ai/types'
 import i18n from '~/i18n'
 import logger from '~/utils/logger'
 import type NutstorePlugin from '..'
@@ -28,13 +32,16 @@ export default class ProviderEditorModal extends Modal {
 		const { contentEl } = this
 		contentEl.empty()
 		const currentType = this.draft.type as string
-		const typeOptions: Array<{ value: OpenAIChatProviderType; label: string }> = [
-			{
-				value: 'openai-chat',
-				label: i18n.t('settings.ai.provider.type.openai'),
-			},
-		]
-		const hasValidType = typeOptions.some((option) => option.value === currentType)
+		const typeOptions: Array<{ value: OpenAIChatProviderType; label: string }> =
+			[
+				{
+					value: 'openai-chat',
+					label: i18n.t('settings.ai.provider.type.openai'),
+				},
+			]
+		const hasValidType = typeOptions.some(
+			(option) => option.value === currentType,
+		)
 		contentEl.createEl('h2', {
 			text: this.isNew
 				? i18n.t('settings.ai.modals.provider.createTitle')

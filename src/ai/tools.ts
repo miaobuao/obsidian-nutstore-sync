@@ -3,11 +3,19 @@ import { posix as pathPosix } from 'path-browserify'
 import { z } from 'zod'
 import { execVaultBash, VAULT_MOUNT_POINT } from '~/ai/bash/runtime'
 import i18n from '~/i18n'
-import { AIToolDefinition } from './types'
+import type { PermissionGuard } from './permission-guard'
+import { AIToolDefinition, ToolExecutionResult } from './types'
 
 interface ReplaceResult {
 	content: string
 	matchCount: number
+}
+
+function encodeTextBase64(content: string) {
+	if (typeof Buffer !== 'undefined') {
+		return Buffer.from(content).toString('base64')
+	}
+	return btoa(String.fromCharCode(...new TextEncoder().encode(content)))
 }
 
 const textValue = (field: string) =>
@@ -60,6 +68,7 @@ interface SpawnToolHandler {
 interface CreateAIToolsOptions {
 	spawnTask?: SpawnToolHandler
 	allowSpawn?: boolean
+	permissionGuard?: PermissionGuard
 }
 
 function replaceUniqueOccurrence(
@@ -95,6 +104,7 @@ export function createAITools(
 	app: App,
 	options: CreateAIToolsOptions = {},
 ): AIToolDefinition[] {
+	const { permissionGuard } = options
 	const tools: AIToolDefinition[] = [
 		{
 			name: 'edit_file',
@@ -116,7 +126,7 @@ export function createAITools(
 					),
 				newText: textValue('newText'),
 			}),
-			execute: async (params) => {
+			execute: async (params): Promise<ToolExecutionResult> => {
 				const path = params.path
 				const oldText = params.oldText
 				const newText = params.newText
@@ -129,6 +139,15 @@ export function createAITools(
 					? path.slice(VAULT_MOUNT_POINT.length)
 					: path
 				const normalizedPath = normalizePath(strippedPath)
+
+				await permissionGuard?.({
+					type: 'fs',
+					fs: {
+						kind: 'edit',
+						path: `${VAULT_MOUNT_POINT}/${normalizedPath}`,
+					},
+				})
+
 				const target = app.vault.getAbstractFileByPath(normalizedPath)
 
 				if (!target) {
@@ -143,23 +162,35 @@ export function createAITools(
 				await app.vault.modify(target, replaced.content)
 
 				return {
-					path: normalizedPath,
-					replaced: true,
-					matchCount: replaced.matchCount,
+					result: {
+						path: normalizedPath,
+						replaced: true,
+						matchCount: replaced.matchCount,
+					},
+					reversibleOps: [
+						{
+							vaultPath: normalizedPath,
+							operation: 'update',
+							before: {
+								kind: 'file',
+								contentBase64: encodeTextBase64(content),
+							},
+						},
+					],
 				}
 			},
 		},
 		{
 			name: 'bash',
 			description:
-				'Execute bash against a virtual filesystem where the Obsidian vault is mounted at /vault. Use standard shell commands like ls, cat, rg, mkdir, mv, cp, and rm.',
+				"Execute bash against a virtual filesystem where the Obsidian vault is mounted at /vault. Use standard shell commands like ls, cat, rg, mkdir, mv, cp, and rm. Treat /vault as the user's personal knowledge base — only write there for content the user intends to keep; use /tmp for intermediate or scratch work.",
 			inputSchema: z.object({
 				script: textValue('script'),
 				cwd: z.string().default(VAULT_MOUNT_POINT),
 				stdin: z.string().optional(),
 				rawScript: booleanValue('rawScript').default(false),
 			}),
-			execute: async (params) => {
+			execute: async (params): Promise<ToolExecutionResult> => {
 				const cwd = params.cwd || VAULT_MOUNT_POINT
 				if (!isAllowedBashCwd(cwd)) {
 					throw new Error(
@@ -171,6 +202,7 @@ export function createAITools(
 					cwd,
 					stdin: params.stdin,
 					rawScript: params.rawScript,
+					permissionGuard,
 				})
 
 				const truncateLine = (line: string) =>
@@ -181,7 +213,10 @@ export function createAITools(
 				const processOutput = (text: string) =>
 					text.split('\n').map(truncateLine).join('\n')
 
-				return `${processOutput(result.stdout)}${processOutput(result.stderr)}`
+				return {
+					result: `${processOutput(result.stdout)}${processOutput(result.stderr)}`,
+					reversibleOps: result.reversibleOps,
+				}
 			},
 		},
 	]
@@ -201,15 +236,17 @@ export function createAITools(
 					),
 				label: z.string().trim().optional(),
 			}),
-			execute: async (params, context) => {
-				return options.spawnTask!({
-					prompt: params.task,
-					title: params.label,
-					parentTaskId: context.parentTaskId,
-					depth: context.depth + 1,
-					maxDepth: context.maxDepth,
-					sessionId: context.session.id,
-				})
+			execute: async (params, context): Promise<ToolExecutionResult> => {
+				return {
+					result: await options.spawnTask!({
+						prompt: params.task,
+						title: params.label,
+						parentTaskId: context.parentTaskId,
+						depth: context.depth + 1,
+						maxDepth: context.maxDepth,
+						sessionId: context.session.id,
+					}),
+				}
 			},
 		})
 	}

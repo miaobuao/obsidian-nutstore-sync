@@ -163,6 +163,10 @@ export default {
 					deleted: 'Model 已删除',
 				},
 			},
+			yolo: {
+				name: '完全访问权限',
+				desc: '⚠️ 开启后，AI 可直接读写笔记库中的文件，无需用户确认',
+			},
 			errors: {
 				saveFailed: 'AI 设置保存失败',
 				saveFailedWithReason: 'AI 设置保存失败：{{reason}}',
@@ -341,6 +345,27 @@ export default {
 				deleteSuccess: '缓存文件删除成功',
 				deleteError: '删除缓存文件出错: {{message}}',
 			},
+		},
+	},
+	aiPermission: {
+		title: 'AI 权限请求',
+		message: 'AI 正在请求执行以下文件操作：',
+		sessionScopeHint:
+			'“自动同意该操作”仅在当前会话生效，重启 Obsidian 后将恢复询问。',
+		allowOnce: '同意',
+		alwaysAllow: '自动同意该操作',
+		deny: '拒绝',
+		denied: '操作已拒绝：{{summary}}',
+		source: '源路径',
+		destination: '目标路径',
+		operations: {
+			read: '读取',
+			write: '写入',
+			edit: '编辑',
+			delete: '删除',
+			mkdir: '创建目录',
+			copy: '复制',
+			move: '移动',
 		},
 	},
 	sync: {

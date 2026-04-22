@@ -187,6 +187,10 @@ export default {
 					deleted: 'Model deleted',
 				},
 			},
+			yolo: {
+				name: 'Full access',
+				desc: '⚠️ When enabled, AI can read and write vault files directly without user confirmation',
+			},
 			errors: {
 				saveFailed: 'Failed to save AI settings',
 				saveFailedWithReason: 'Failed to save AI settings: {{reason}}',
@@ -346,6 +350,27 @@ export default {
 				deleteSuccess: 'Cache file deleted successfully',
 				deleteError: 'Error deleting cache file: {{message}}',
 			},
+		},
+	},
+	aiPermission: {
+		title: 'AI Permission Request',
+		message: 'AI is requesting to perform the following file operations:',
+		sessionScopeHint:
+			'"Auto-approve this operation" only applies to this chat session and resets after restarting Obsidian.',
+		allowOnce: 'Approve',
+		alwaysAllow: 'Auto-approve this operation',
+		deny: 'Deny',
+		denied: 'Permission denied: {{summary}}',
+		source: 'Source',
+		destination: 'Destination',
+		operations: {
+			read: 'read',
+			write: 'write',
+			edit: 'edit',
+			delete: 'delete',
+			mkdir: 'create directory',
+			copy: 'copy',
+			move: 'move',
 		},
 	},
 	sync: {

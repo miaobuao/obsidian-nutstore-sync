@@ -1,9 +1,10 @@
-import { Notice } from 'obsidian'
+import { Notice, normalizePath } from 'obsidian'
 import {
 	getModelById,
 	getProviderById,
 	resolveInitialSelection,
 } from '~/ai/config'
+import { createPermissionGuard } from '~/ai/permission-guard'
 import { assertProviderUsable, generateAssistantTurn } from '~/ai/runtime'
 import {
 	REPEATED_TOOL_CALL_THRESHOLD,
@@ -21,6 +22,7 @@ import {
 	AIToolCall,
 	AIToolDefinition,
 	AIToolExecutionContext,
+	ToolExecutionResult,
 } from '~/ai/types'
 import {
 	ChatFragment,
@@ -29,6 +31,7 @@ import {
 	ChatRunState,
 	ChatSessionIndexItem,
 	cloneMessage,
+	cloneReversibleToolOp,
 	cloneSession,
 	createQueuedTask,
 	createRunningTask,
@@ -67,6 +70,7 @@ const COMPRESSION_PROMPT = [
 interface ResolvedToolResult {
 	payload: string | Record<string, unknown>
 	isError: boolean
+	reversibleOps?: AIMessageRecord['reversibleOps']
 }
 
 interface DeferredTaskCompletion {
@@ -111,6 +115,70 @@ function getAssistantToolCalls(message: ChatMessage) {
 	return message.role === 'assistant' ? message.tool_calls : undefined
 }
 
+function getPathDepth(path: string) {
+	return path.split('/').filter(Boolean).length
+}
+
+function getParentVaultPaths(path: string) {
+	const parts = path.split('/').filter(Boolean)
+	const parents: string[] = []
+	let current = ''
+	for (let index = 0; index < parts.length - 1; index += 1) {
+		current = current ? `${current}/${parts[index]}` : parts[index]
+		parents.push(current)
+	}
+	return parents
+}
+
+function normalizeReversibleVaultPath(path: string) {
+	const trimmed = path.trim()
+	if (!trimmed) {
+		return ''
+	}
+	const normalized = normalizePath(trimmed.replace(/^\/+/, ''))
+	return normalized === '.' ? '' : normalized
+}
+
+function normalizeReversibleToolOpRecord(
+	op: NonNullable<AIMessageRecord['reversibleOps']>[number],
+) {
+	const normalizedPath = normalizeReversibleVaultPath(op.vaultPath)
+	if (!normalizedPath) {
+		return null
+	}
+	const cloned = cloneReversibleToolOp(op)
+	return {
+		...cloned,
+		vaultPath: normalizedPath,
+	}
+}
+
+function decodeBase64ToArrayBuffer(contentBase64: string) {
+	if (typeof Buffer !== 'undefined') {
+		const buffer = Buffer.from(contentBase64, 'base64')
+		return buffer.buffer.slice(
+			buffer.byteOffset,
+			buffer.byteOffset + buffer.byteLength,
+		) as ArrayBuffer
+	}
+	const binary = atob(contentBase64)
+	const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+	return bytes.buffer.slice(
+		bytes.byteOffset,
+		bytes.byteOffset + bytes.byteLength,
+	) as ArrayBuffer
+}
+
+function isVaultFolder(
+	target: unknown,
+): target is { path: string; children: unknown[] } {
+	return !!target && typeof target === 'object' && 'children' in target
+}
+
+function isVaultFile(target: unknown): target is { path: string } {
+	return !!target && typeof target === 'object' && !('children' in target)
+}
+
 function deriveTitle(session: Pick<AISession, 'fragments'>) {
 	for (const fragment of session.fragments) {
 		const firstUser = fragment.messages.find(
@@ -137,7 +205,7 @@ function createMainSystemPrompt(maxDepth: number) {
 	return [
 		'You are an Obsidian chat assistant with access to vault tools.',
 		'Use vault tools directly for focused file operations.',
-		'Use bash when shell-style workflows are more efficient; the vault is mounted at /vault.',
+		'Use bash when shell-style workflows are more efficient.',
 		createVaultToolGuidance(),
 		`Use the spawn tool only for large independent tasks that should run in the background. Maximum task depth is ${maxDepth}.`,
 	].join(' ')
@@ -155,19 +223,12 @@ function createSubagentSystemPrompt(canSpawn: boolean) {
 		.join(' ')
 }
 
-function createSessionPlaceholder(item: ChatSessionIndexItem): AISession {
-	return {
-		id: item.id,
-		createdAt: item.createdAt,
-		updatedAt: item.updatedAt,
-		fragments: [],
-		activeFragmentId: '',
-		tasks: [],
-	}
-}
-
 export default class ChatService {
 	private readonly loadedSessions = new Map<string, AISession>()
+	private readonly autoApproveRequestsBySessionId = new Map<
+		string,
+		Set<string>
+	>()
 	private sessionIndex: ChatSessionIndexItem[] = []
 	private readonly deletedSessionIds = new Set<string>()
 	private pendingProviderId?: string
@@ -342,8 +403,11 @@ export default class ChatService {
 			onRegenerateMessage: async (messageId: string) => {
 				await this.regenerateMessage(messageId)
 			},
-			onRecallMessage: (messageId: string) => {
-				this.recallMessage(messageId)
+			onRecallMessage: async (
+				messageId: string,
+				options?: { restoreFiles?: boolean },
+			) => {
+				await this.recallMessage(messageId, options)
 			},
 		}
 	}
@@ -403,6 +467,7 @@ export default class ChatService {
 
 		this.loadedSessions.delete(sessionId)
 		this.runtimeBySessionId.delete(sessionId)
+		this.autoApproveRequestsBySessionId.delete(sessionId)
 		await chatSessionKV.unset(sessionId)
 		await this.persistMetaAndIndex()
 		this.notify()
@@ -743,7 +808,7 @@ export default class ChatService {
 		this.notify()
 	}
 
-	recallMessage(messageId: string) {
+	async recallMessage(messageId: string, options?: { restoreFiles?: boolean }) {
 		const session = this.getLoadedActiveSession()
 		if (!session) {
 			return
@@ -757,10 +822,20 @@ export default class ChatService {
 		if (idx === -1) {
 			return
 		}
-		// Delete the target message and all subsequent messages in the same fragment
-		fragment.messages.splice(idx)
-		void this.persistSession(session)
-		this.notify()
+		const recallRange = fragment.messages.slice(idx)
+		const reversibleOps = recallRange.flatMap(
+			(record) => record.reversibleOps ?? [],
+		)
+		try {
+			if (options?.restoreFiles) {
+				await this.restoreFilesForRecall(reversibleOps)
+			}
+			fragment.messages.splice(idx)
+			await this.persistSession(session)
+			this.notify()
+		} catch (error) {
+			new Notice(error instanceof Error ? error.message : String(error))
+		}
 	}
 
 	async regenerateMessage(messageId: string) {
@@ -937,6 +1012,30 @@ export default class ChatService {
 							messages: Array.isArray(fragment.messages)
 								? fragment.messages.map((message) => ({
 										...message,
+										reversibleOps: Array.isArray(message.reversibleOps)
+											? message.reversibleOps
+													.filter(
+														(op) =>
+															!!op &&
+															typeof op.vaultPath === 'string' &&
+															(op.operation === 'create' ||
+																op.operation === 'update' ||
+																op.operation === 'delete') &&
+															!!op.before &&
+															(op.before.kind === 'file' ||
+																op.before.kind === 'dir') &&
+															(op.operation !== 'update' ||
+																op.before.kind === 'file'),
+													)
+													.map(normalizeReversibleToolOpRecord)
+													.filter(
+														(
+															op,
+														): op is NonNullable<
+															AIMessageRecord['reversibleOps']
+														>[number] => !!op,
+													)
+											: undefined,
 										message: cloneMessage(message.message),
 										meta: message.meta
 											? {
@@ -1230,6 +1329,7 @@ export default class ChatService {
 					fragment.messages.push(
 						this.createMessageRecord(item.message, {
 							isError: item.isError,
+							reversibleOps: item.reversibleOps,
 						}),
 					)
 				}
@@ -1299,6 +1399,15 @@ export default class ChatService {
 			this.runtimeBySessionId.set(sessionId, runtime)
 		}
 		return runtime
+	}
+
+	private getAutoApproveRequests(sessionId: string) {
+		let requests = this.autoApproveRequestsBySessionId.get(sessionId)
+		if (!requests) {
+			requests = new Set<string>()
+			this.autoApproveRequestsBySessionId.set(sessionId, requests)
+		}
+		return requests
 	}
 
 	private createPendingMessage(text: string): ChatPendingMessage {
@@ -1552,6 +1661,7 @@ export default class ChatService {
 				tool_call_id: toolCall.id,
 			},
 			isError: results[index].isError,
+			reversibleOps: results[index].reversibleOps,
 		}))
 	}
 
@@ -1571,15 +1681,16 @@ export default class ChatService {
 			}
 		}
 
-		const payload = await this.executeToolCall(
+		const result = await this.executeToolCall(
 			tools,
 			toolCall.function.name,
 			toolCall.function.arguments || '{}',
 			context,
 		)
 		return {
-			payload,
-			isError: typeof payload === 'object' && !!payload.error,
+			payload: result.payload,
+			reversibleOps: result.reversibleOps,
+			isError: typeof result.payload === 'object' && !!result.payload.error,
 		}
 	}
 
@@ -1800,8 +1911,20 @@ export default class ChatService {
 		parentTaskId?: string,
 	) {
 		const allowSpawn = depth < maxDepth
+		const permissionGuard = createPermissionGuard(
+			this.plugin.app,
+			() => this.plugin.settings,
+			{
+				has: (signature) =>
+					this.getAutoApproveRequests(session.id).has(signature),
+				add: (signature) => {
+					this.getAutoApproveRequests(session.id).add(signature)
+				},
+			},
+		)
 		return createAITools(this.plugin.app, {
 			allowSpawn,
+			permissionGuard,
 			spawnTask: async (params) => ({
 				task_id: null,
 				parent_task_id: parentTaskId || params.parentTaskId || null,
@@ -1822,7 +1945,7 @@ export default class ChatService {
 		context: AIToolExecutionContext,
 	) {
 		const tool = new Map(tools.map((item) => [item.name, item])).get(name)
-		let result: string | Record<string, unknown>
+		let result: ToolExecutionResult
 
 		try {
 			if (!tool) {
@@ -1838,11 +1961,21 @@ export default class ChatService {
 		} catch (error) {
 			logger.error(error)
 			result = {
-				error: error instanceof Error ? error.message : String(error),
+				result: {
+					error: error instanceof Error ? error.message : String(error),
+				},
 			}
 		}
 
-		return result
+		return {
+			payload: result.result,
+			reversibleOps: result.reversibleOps
+				?.map(normalizeReversibleToolOpRecord)
+				.filter(
+					(op): op is NonNullable<AIMessageRecord['reversibleOps']>[number] =>
+						!!op,
+				),
+		}
 	}
 
 	private buildMessagesForFragment(
@@ -1858,6 +1991,123 @@ export default class ChatService {
 			},
 			...fragment.messages.map((item) => item.message),
 		]
+	}
+
+	private async restoreFilesForRecall(
+		operations: NonNullable<AIMessageRecord['reversibleOps']>,
+	) {
+		const normalizedOperations = operations
+			.map(normalizeReversibleToolOpRecord)
+			.filter(
+				(op): op is NonNullable<AIMessageRecord['reversibleOps']>[number] =>
+					!!op,
+			)
+		if (normalizedOperations.length === 0) {
+			return
+		}
+
+		const earliestByPath = new Map<
+			string,
+			(typeof normalizedOperations)[number]
+		>()
+		for (const operation of normalizedOperations) {
+			if (!earliestByPath.has(operation.vaultPath)) {
+				earliestByPath.set(operation.vaultPath, operation)
+			}
+		}
+
+		const deletePaths = new Set<string>()
+		const restoreDirs = new Set<string>()
+		const restoreFiles = new Map<string, string>()
+
+		for (const operation of earliestByPath.values()) {
+			if (operation.operation === 'create') {
+				deletePaths.add(operation.vaultPath)
+				continue
+			}
+			if (operation.operation === 'update') {
+				restoreFiles.set(operation.vaultPath, operation.before.contentBase64)
+				continue
+			}
+			if (operation.before.kind === 'dir') {
+				restoreDirs.add(operation.vaultPath)
+				continue
+			}
+			restoreFiles.set(operation.vaultPath, operation.before.contentBase64)
+		}
+
+		for (const path of [...deletePaths].sort((left, right) => {
+			const depthDelta = getPathDepth(right) - getPathDepth(left)
+			return depthDelta !== 0 ? depthDelta : left.localeCompare(right)
+		})) {
+			await this.deleteVaultPathIfExists(path)
+		}
+
+		const requiredDirs = new Set<string>(restoreDirs)
+		for (const filePath of restoreFiles.keys()) {
+			for (const parentPath of getParentVaultPaths(filePath)) {
+				requiredDirs.add(parentPath)
+			}
+		}
+
+		for (const path of [...requiredDirs].sort((left, right) => {
+			const depthDelta = getPathDepth(left) - getPathDepth(right)
+			return depthDelta !== 0 ? depthDelta : left.localeCompare(right)
+		})) {
+			await this.ensureVaultDirectory(path)
+		}
+
+		for (const filePath of [...restoreFiles.keys()].sort((left, right) => {
+			const depthDelta = getPathDepth(left) - getPathDepth(right)
+			return depthDelta !== 0 ? depthDelta : left.localeCompare(right)
+		})) {
+			await this.writeVaultFile(filePath, restoreFiles.get(filePath) || '')
+		}
+	}
+
+	private async deleteVaultPathIfExists(path: string) {
+		const target = this.plugin.app.vault.getAbstractFileByPath(path)
+		if (!target) {
+			return
+		}
+		if (typeof this.plugin.app.vault.delete === 'function') {
+			await this.plugin.app.vault.delete(target, true)
+			return
+		}
+		if (typeof this.plugin.app.vault.trash === 'function') {
+			await this.plugin.app.vault.trash(target, false)
+			return
+		}
+		throw new Error(`Unable to delete ${path}: vault delete is unavailable.`)
+	}
+
+	private async ensureVaultDirectory(path: string) {
+		if (!path) {
+			return
+		}
+		const target = this.plugin.app.vault.getAbstractFileByPath(path)
+		if (target) {
+			if (isVaultFolder(target)) {
+				return
+			}
+			throw new Error(`Unable to restore ${path}: a file already exists there.`)
+		}
+		await this.plugin.app.vault.createFolder(path)
+	}
+
+	private async writeVaultFile(path: string, contentBase64: string) {
+		const data = decodeBase64ToArrayBuffer(contentBase64)
+		const existing = this.plugin.app.vault.getAbstractFileByPath(path)
+		if (existing && isVaultFolder(existing)) {
+			throw new Error(
+				`Unable to restore ${path}: a directory already exists there.`,
+			)
+		}
+		if (existing && isVaultFile(existing)) {
+			await this.plugin.app.vault.modifyBinary(existing as never, data)
+			return
+		}
+		await this.plugin.app.vault.createBinary(path, data)
 	}
 
 	private removeUnmatchedToolCalls(fragment: ChatFragment) {
@@ -2082,7 +2332,11 @@ export default class ChatService {
 
 	private createMessageRecord(
 		message: AIMessage,
-		options?: { meta?: AIMessageRecord['meta']; isError?: boolean },
+		options?: {
+			meta?: AIMessageRecord['meta']
+			isError?: boolean
+			reversibleOps?: AIMessageRecord['reversibleOps']
+		},
 	): AIMessageRecord {
 		return {
 			id: createId('message'),
@@ -2090,6 +2344,12 @@ export default class ChatService {
 			message,
 			meta: options?.meta,
 			isError: options?.isError,
+			reversibleOps: options?.reversibleOps
+				?.map(normalizeReversibleToolOpRecord)
+				.filter(
+					(op): op is NonNullable<AIMessageRecord['reversibleOps']>[number] =>
+						!!op,
+				),
 		}
 	}
 

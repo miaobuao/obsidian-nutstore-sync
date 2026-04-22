@@ -6,11 +6,11 @@ export function ConfirmDialog(props: {
 	message: string | undefined
 	confirmLabel: string | undefined
 	confirmClass?: string
-	skipLabel?: string | undefined
-	skipChecked?: boolean
-	onSkipChange?: (checked: boolean) => void
+	secondaryConfirmLabel?: string | undefined
+	secondaryConfirmClass?: string
 	onCancel: () => void
 	onConfirm: () => void
+	onSecondaryConfirm?: () => void
 }) {
 	return (
 		<div class="absolute inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
@@ -21,16 +21,6 @@ export function ConfirmDialog(props: {
 				<div class="mt-3 text-sm leading-6 text-[var(--text-muted)]">
 					{props.message}
 				</div>
-				<Show when={props.skipLabel}>
-					<label class="mt-3 flex cursor-pointer items-center gap-2 text-xs text-[var(--text-muted)]">
-						<input
-							type="checkbox"
-							checked={props.skipChecked}
-							onChange={(e) => props.onSkipChange?.(e.currentTarget.checked)}
-						/>
-						{props.skipLabel}
-					</label>
-				</Show>
 				<div class="mt-4 flex justify-end gap-2">
 					<button
 						class="rounded-2 border border-[var(--background-modifier-border)] px-3 py-2 text-sm hover:bg-[var(--background-modifier-hover)]"
@@ -39,6 +29,18 @@ export function ConfirmDialog(props: {
 					>
 						{t('cancel')}
 					</button>
+					<Show when={props.secondaryConfirmLabel}>
+						<button
+							class={
+								props.secondaryConfirmClass ??
+								'rounded-2 border border-[var(--interactive-accent-rgb)]/30 bg-[var(--interactive-accent-rgb)]/12 px-3 py-2 text-sm text-[var(--text-normal)] hover:bg-[var(--interactive-accent-rgb)]/18'
+							}
+							type="button"
+							onClick={() => props.onSecondaryConfirm?.()}
+						>
+							{props.secondaryConfirmLabel}
+						</button>
+					</Show>
 					<button
 						class={
 							props.confirmClass ??

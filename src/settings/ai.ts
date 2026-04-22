@@ -101,6 +101,18 @@ export default class AISettings extends BaseSettings {
 						await this.persist()
 					})
 			})
+
+		new Setting(this.containerEl)
+			.setName(i18n.t('settings.ai.yolo.name'))
+			.setDesc(i18n.t('settings.ai.yolo.desc'))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.ai.yolo ?? false)
+					.onChange(async (value) => {
+						this.plugin.settings.ai.yolo = value
+						await this.persist()
+					}),
+			)
 	}
 
 	private async persist(showNotice: boolean = true) {

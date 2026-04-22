@@ -121,6 +121,88 @@ function createPluginWithTwoProviders() {
 	}
 }
 
+function createPluginWithVault(initialFiles: Record<string, string> = {}) {
+	const files = new Map(Object.entries(initialFiles))
+	const folders = new Set<string>([''])
+	const normalize = (path: string) => path.replace(/^\/+|\/+$/g, '')
+	const dirname = (path: string) =>
+		!path || !path.includes('/') ? '' : path.slice(0, path.lastIndexOf('/'))
+	const basename = (path: string) => {
+		const normalized = normalize(path)
+		return normalized.slice(normalized.lastIndexOf('/') + 1)
+	}
+	const ensureFolder = (path: string) => {
+		const normalized = normalize(path)
+		if (!normalized) {
+			return
+		}
+		const parent = dirname(normalized)
+		if (parent && parent !== normalized) {
+			ensureFolder(parent)
+		}
+		folders.add(normalized)
+	}
+
+	for (const path of files.keys()) {
+		ensureFolder(dirname(path))
+	}
+
+	const getAbstractFileByPath = (path: string): any => {
+		const normalized = normalize(path)
+		if (!normalized) {
+			return { path: '', children: [] }
+		}
+		if (folders.has(normalized) && !files.has(normalized)) {
+			return { path: normalized, children: [] }
+		}
+		if (files.has(normalized)) {
+			return { path: normalized, stat: { size: files.get(normalized)!.length } }
+		}
+		return null
+	}
+
+	return {
+		plugin: {
+			app: {
+				vault: {
+					getAbstractFileByPath,
+					async createFolder(path: string) {
+						ensureFolder(path)
+						return getAbstractFileByPath(path)
+					},
+					async createBinary(path: string, data: ArrayBuffer) {
+						const normalized = normalize(path)
+						ensureFolder(dirname(normalized))
+						files.set(normalized, new TextDecoder().decode(data))
+						return getAbstractFileByPath(normalized)
+					},
+					async modifyBinary(file: any, data: ArrayBuffer) {
+						files.set(normalize(file.path), new TextDecoder().decode(data))
+					},
+					async delete(file: any) {
+						const normalized = normalize(file.path)
+						files.delete(normalized)
+						for (const folder of [...folders]) {
+							if (
+								folder === normalized ||
+								folder.startsWith(`${normalized}/`)
+							) {
+								folders.delete(folder)
+							}
+						}
+					},
+					async trash(file: any) {
+						return this.delete(file)
+					},
+				},
+			},
+			settings: createPlugin().settings,
+		},
+		files,
+		folders,
+	}
+}
+
 function deferredCompletion() {
 	let resolve!: (value: {
 		message: {
@@ -671,10 +753,12 @@ describe('ChatService fragment workflows', () => {
 	it('coerces numeric string arguments before executing tools', async () => {
 		const service = new ChatService(createPlugin() as never)
 		const execute = vi.fn(async (params: Record<string, unknown>) => ({
-			depthType: typeof params.depth,
-			depth: params.depth,
-			limitType: typeof params.limit,
-			limit: params.limit,
+			result: {
+				depthType: typeof params.depth,
+				depth: params.depth,
+				limitType: typeof params.limit,
+				limit: params.limit,
+			},
 		}))
 
 		const result = await (service as any).executeToolCall(
@@ -703,10 +787,224 @@ describe('ChatService fragment workflows', () => {
 
 		expect(execute).toHaveBeenCalledOnce()
 		expect(result).toEqual({
-			depthType: 'number',
-			depth: 2,
-			limitType: 'number',
-			limit: 20.5,
+			payload: {
+				depthType: 'number',
+				depth: 2,
+				limitType: 'number',
+				limit: 20.5,
+			},
 		})
+	})
+
+	it('restores files before deleting recalled messages when requested', async () => {
+		const { plugin, files, folders } = createPluginWithVault({
+			'notes/existing.md': 'changed twice',
+			'notes/new.md': 'created later',
+		})
+		const service = new ChatService(plugin as never)
+		await service.ensureSession()
+
+		const session = getActiveSession(service)
+		session.fragments[0].messages = [
+			{
+				id: 'user-1',
+				createdAt: 1,
+				message: {
+					role: 'user',
+					content: [{ type: 'text', text: 'please change files' }],
+				},
+			},
+			{
+				id: 'tool-1',
+				createdAt: 2,
+				message: {
+					role: 'tool',
+					name: 'bash',
+					tool_call_id: 'tool-call-1',
+					content: [{ type: 'text', text: 'done' }],
+				},
+				reversibleOps: [
+					{
+						vaultPath: 'notes/existing.md',
+						operation: 'update',
+						before: {
+							kind: 'file',
+							contentBase64: Buffer.from('original').toString('base64'),
+						},
+					},
+					{
+						vaultPath: 'notes/new.md',
+						operation: 'create',
+						before: { kind: 'file' },
+					},
+					{
+						vaultPath: 'notes/deleted.md',
+						operation: 'delete',
+						before: {
+							kind: 'file',
+							contentBase64: Buffer.from('restore me').toString('base64'),
+						},
+					},
+					{
+						vaultPath: 'notes/archive',
+						operation: 'delete',
+						before: { kind: 'dir' },
+					},
+				],
+			},
+			{
+				id: 'tool-2',
+				createdAt: 3,
+				message: {
+					role: 'tool',
+					name: 'edit_file',
+					tool_call_id: 'tool-call-2',
+					content: [{ type: 'text', text: 'done again' }],
+				},
+				reversibleOps: [
+					{
+						vaultPath: 'notes/existing.md',
+						operation: 'update',
+						before: {
+							kind: 'file',
+							contentBase64: Buffer.from('changed once').toString('base64'),
+						},
+					},
+				],
+			},
+		]
+
+		await service.recallMessage('user-1', { restoreFiles: true })
+
+		expect(session.fragments[0].messages).toEqual([])
+		expect(files.get('notes/existing.md')).toBe('original')
+		expect(files.has('notes/new.md')).toBe(false)
+		expect(files.get('notes/deleted.md')).toBe('restore me')
+		expect(folders.has('notes/archive')).toBe(true)
+	})
+
+	it('normalizes legacy absolute reversible paths when restoring recalled files', async () => {
+		const files = new Map<string, string>([['notes/new.md', 'created later']])
+		const folders = new Set<string>(['', 'notes'])
+		const normalizeWritePath = (path: string) => path.replace(/^\/+|\/+$/g, '')
+		const normalizeLookupPath = (path: string) => path.replace(/\/+$/g, '')
+		const dirname = (path: string) =>
+			!path || !path.includes('/') ? '' : path.slice(0, path.lastIndexOf('/'))
+		const ensureFolder = (path: string) => {
+			const normalized = normalizeWritePath(path)
+			if (!normalized) {
+				return
+			}
+			const parent = dirname(normalized)
+			if (parent && parent !== normalized) {
+				ensureFolder(parent)
+			}
+			folders.add(normalized)
+		}
+		const getAbstractFileByPath = (path: string): any => {
+			const normalized = normalizeLookupPath(path)
+			if (!normalized) {
+				return { path: '', children: [] }
+			}
+			if (normalized.startsWith('/')) {
+				return null
+			}
+			if (folders.has(normalized) && !files.has(normalized)) {
+				return { path: normalized, children: [] }
+			}
+			if (files.has(normalized)) {
+				return {
+					path: normalized,
+					stat: { size: files.get(normalized)!.length },
+				}
+			}
+			return null
+		}
+		const plugin = {
+			app: {
+				vault: {
+					getAbstractFileByPath,
+					async createFolder(path: string) {
+						const normalized = normalizeWritePath(path)
+						ensureFolder(normalized)
+						return getAbstractFileByPath(normalized)
+					},
+					async createBinary(path: string, data: ArrayBuffer) {
+						const normalized = normalizeWritePath(path)
+						ensureFolder(dirname(normalized))
+						files.set(normalized, new TextDecoder().decode(data))
+						return getAbstractFileByPath(normalized)
+					},
+					async modifyBinary(file: any, data: ArrayBuffer) {
+						files.set(
+							normalizeWritePath(file.path),
+							new TextDecoder().decode(data),
+						)
+					},
+					async delete(file: any) {
+						const normalized = normalizeWritePath(file.path)
+						files.delete(normalized)
+						for (const folder of [...folders]) {
+							if (
+								folder === normalized ||
+								folder.startsWith(`${normalized}/`)
+							) {
+								folders.delete(folder)
+							}
+						}
+					},
+					async trash(file: any) {
+						return this.delete(file)
+					},
+				},
+			},
+			settings: createPlugin().settings,
+		}
+
+		const service = new ChatService(plugin as never)
+		await service.ensureSession()
+
+		const session = getActiveSession(service)
+		session.fragments[0].messages = [
+			{
+				id: 'user-1',
+				createdAt: 1,
+				message: {
+					role: 'user',
+					content: [{ type: 'text', text: 'rename files' }],
+				},
+			},
+			{
+				id: 'tool-1',
+				createdAt: 2,
+				message: {
+					role: 'tool',
+					name: 'bash',
+					tool_call_id: 'tool-call-1',
+					content: [{ type: 'text', text: 'renamed' }],
+				},
+				reversibleOps: [
+					{
+						vaultPath: '/notes/old.md',
+						operation: 'delete',
+						before: {
+							kind: 'file',
+							contentBase64: Buffer.from('original').toString('base64'),
+						},
+					},
+					{
+						vaultPath: '/notes/new.md',
+						operation: 'create',
+						before: { kind: 'file' },
+					},
+				],
+			},
+		]
+
+		await service.recallMessage('user-1', { restoreFiles: true })
+
+		expect(session.fragments[0].messages).toEqual([])
+		expect(files.has('notes/new.md')).toBe(false)
+		expect(files.get('notes/old.md')).toBe('original')
 	})
 })

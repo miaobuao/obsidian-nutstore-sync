@@ -43,22 +43,22 @@ const en = {
 	deleteMessage: 'Delete message',
 	regenerateMessage: 'Regenerate',
 	deleteMessageTitle: 'Delete Message',
-	deleteMessageSkipConfirm: "Don't ask again for this type",
 	regenerateMessageTitle: 'Regenerate',
 	regenerateMessageConfirm:
 		'This will regenerate this AI response in place. The original response will be replaced, and subsequent messages will be preserved. This action cannot be undone.',
-	regenerateMessageSkipConfirm: "Don't ask again",
 	deleteUserMessageConfirm:
 		'This will delete this message and all following AI responses and tool results. This action cannot be undone.',
 	deleteAssistantMessageConfirm:
 		'This will delete this AI response. This action cannot be undone.',
 	deleteToolMessageConfirm:
 		'This will delete this tool result and remove the corresponding tool call from the AI message. This action cannot be undone.',
+	deleteToolMessageRestoreWarning:
+		'After deletion, these file changes can no longer be restored by recalling the message.',
 	recallMessage: 'Recall',
 	recallMessageTitle: 'Recall Message',
 	recallMessageConfirm:
-		'This will put the message content back into the input box and delete this message and all following messages in the current fragment. This action cannot be undone.',
-	recallMessageSkipConfirm: "Don't ask again",
+		'This will put the message content back into the input box and recall this message plus all following messages in the current fragment. This action cannot be undone.',
+	recallMessageRestoreConfirm: 'Recall and restore files',
 	confirmRecall: 'Recall',
 }
 

@@ -4,6 +4,23 @@ export interface ChatUsage {
 	totalTokens?: number
 }
 
+export type ReversibleToolOp =
+	| {
+			vaultPath: string
+			operation: 'create'
+			before: { kind: 'file' | 'dir' }
+	  }
+	| {
+			vaultPath: string
+			operation: 'update'
+			before: { kind: 'file'; contentBase64: string }
+	  }
+	| {
+			vaultPath: string
+			operation: 'delete'
+			before: { kind: 'file'; contentBase64: string } | { kind: 'dir' }
+	  }
+
 export type ChatRunState =
 	| 'idle'
 	| 'thinking'
@@ -94,6 +111,7 @@ export interface ChatMessageRecord {
 	message: ChatMessage
 	meta?: ChatMessageMeta
 	isError?: boolean
+	reversibleOps?: ReversibleToolOp[]
 }
 
 export interface ChatTaskBase {
@@ -221,7 +239,10 @@ export interface ChatboxProps extends ChatboxViewModel {
 	onCancelTask?: (taskId: string) => void
 	onDeleteMessage?: (messageId: string) => void
 	onRegenerateMessage?: (messageId: string) => void
-	onRecallMessage?: (messageId: string) => void
+	onRecallMessage?: (
+		messageId: string,
+		options?: { restoreFiles?: boolean },
+	) => Promise<void> | void
 	renderMarkdown?: (
 		el: HTMLElement,
 		markdown: string,

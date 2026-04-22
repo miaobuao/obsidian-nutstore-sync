@@ -12,6 +12,7 @@ export type {
 	ChatRunState,
 	ChatTaskRecord,
 	ChatToolCall,
+	ReversibleToolOp,
 } from '~/chat/domain'
 
 export interface ChatModelOption {
@@ -80,7 +81,10 @@ export interface ChatboxProps extends ChatboxViewModel {
 	onCancelTask?: (taskId: string) => void
 	onDeleteMessage?: (messageId: string) => void
 	onRegenerateMessage?: (messageId: string) => void
-	onRecallMessage?: (messageId: string) => void
+	onRecallMessage?: (
+		messageId: string,
+		options?: { restoreFiles?: boolean },
+	) => Promise<void>
 	renderMarkdown?: (
 		el: HTMLElement,
 		markdown: string,

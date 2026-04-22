@@ -11,7 +11,9 @@ import type {
 import { z } from 'zod'
 
 export const openAIChatProviderTypeSchema = z.literal('openai-chat')
-export type OpenAIChatProviderType = z.infer<typeof openAIChatProviderTypeSchema>
+export type OpenAIChatProviderType = z.infer<
+	typeof openAIChatProviderTypeSchema
+>
 export type AIProviderType = OpenAIChatProviderType
 
 export const aiModelConfigSchema = z.object({
@@ -72,6 +74,11 @@ export interface AIToolExecutionContext {
 	parentTaskId?: string
 }
 
+export interface ToolExecutionResult {
+	result: string | Record<string, unknown>
+	reversibleOps?: DomainChatMessageRecord['reversibleOps']
+}
+
 export interface AIToolDefinition {
 	name: string
 	description: string
@@ -79,5 +86,5 @@ export interface AIToolDefinition {
 	execute: (
 		params: any,
 		context: AIToolExecutionContext,
-	) => Promise<string | Record<string, unknown>>
+	) => Promise<ToolExecutionResult>
 }

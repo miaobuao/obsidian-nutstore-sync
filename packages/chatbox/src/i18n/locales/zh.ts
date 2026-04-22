@@ -42,21 +42,20 @@ const zh = {
 	deleteMessage: '删除消息',
 	regenerateMessage: '重新生成',
 	deleteMessageTitle: '删除消息',
-	deleteMessageSkipConfirm: '不再提醒此类操作',
 	regenerateMessageTitle: '重新生成',
 	regenerateMessageConfirm:
 		'此操作将重新生成该 AI 回复，原回复内容将被替换，其后的消息将被保留，无法恢复。',
-	regenerateMessageSkipConfirm: '不再提醒',
 	deleteUserMessageConfirm:
 		'此操作将删除该用户消息，以及其后所有 AI 回复和工具调用结果，无法恢复。',
 	deleteAssistantMessageConfirm: '此操作将删除该 AI 回复，无法恢复。',
 	deleteToolMessageConfirm:
 		'此操作将删除该工具调用结果，并从对应的 AI 消息中移除该工具调用记录，无法恢复。',
+	deleteToolMessageRestoreWarning: '删除后将无法通过撤回消息恢复这些文件修改。',
 	recallMessage: '撤回',
 	recallMessageTitle: '撤回消息',
 	recallMessageConfirm:
-		'此操作将把消息内容放回输入框，并删除该消息及当前段中之后的所有消息，无法恢复。',
-	recallMessageSkipConfirm: '不再提醒',
+		'此操作将把消息内容放回输入框，并撤回该消息及当前段中之后的所有消息，无法恢复。',
+	recallMessageRestoreConfirm: '撤回并还原修改',
 	confirmRecall: '确认撤回',
 }
 

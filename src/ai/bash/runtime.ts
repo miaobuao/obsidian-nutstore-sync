@@ -1,9 +1,11 @@
 import { Bash } from 'just-bash/browser'
 import type { App } from 'obsidian'
+import type { PermissionGuard } from '~/ai/permission-guard'
 import {
 	listVaultPaths,
 	MountedVaultFs,
 	ObsidianVaultFs,
+	ReversibleOpRecorder,
 	VAULT_MOUNT_POINT,
 } from './fs'
 
@@ -11,11 +13,21 @@ export interface VaultBashExecOptions {
 	cwd?: string
 	stdin?: string
 	rawScript?: boolean
+	permissionGuard?: PermissionGuard
 }
 
-export async function createVaultBash(app: App) {
+export async function createVaultBash(
+	app: App,
+	permissionGuard?: PermissionGuard,
+	recorder?: ReversibleOpRecorder,
+) {
 	const initialPaths = await listVaultPaths(app)
-	const vaultFs = new ObsidianVaultFs(app.vault, initialPaths)
+	const vaultFs = new ObsidianVaultFs(
+		app.vault,
+		initialPaths,
+		permissionGuard,
+		recorder,
+	)
 	const fs = new MountedVaultFs(vaultFs)
 
 	return new Bash({
@@ -29,12 +41,17 @@ export async function execVaultBash(
 	script: string,
 	options: VaultBashExecOptions = {},
 ) {
-	const bash = await createVaultBash(app)
-	return bash.exec(script, {
+	const recorder = new ReversibleOpRecorder()
+	const bash = await createVaultBash(app, options.permissionGuard, recorder)
+	const result = await bash.exec(script, {
 		cwd: options.cwd ?? VAULT_MOUNT_POINT,
 		stdin: options.stdin,
 		rawScript: options.rawScript,
 	})
+	return {
+		...result,
+		reversibleOps: recorder.getOperations(),
+	}
 }
 
 export { VAULT_MOUNT_POINT }

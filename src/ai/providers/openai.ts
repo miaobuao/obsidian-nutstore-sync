@@ -1,4 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai'
+import { simulateStreamingMiddleware, wrapLanguageModel } from 'ai'
 import { obsidianFetch } from '~/ai/transport/obsidian-fetch'
 import type { OpenAIProviderConfig } from '~/ai/types'
 import i18n from '~/i18n'
@@ -26,7 +27,10 @@ export const openAIProviderResolver: AIProviderResolver<OpenAIProviderConfig> =
 			})
 
 			return {
-				model: factory.chat(modelId),
+				model: wrapLanguageModel({
+					model: factory.chat(modelId),
+					middleware: [simulateStreamingMiddleware()],
+				}),
 				providerName: provider.name || 'OpenAI',
 			}
 		},

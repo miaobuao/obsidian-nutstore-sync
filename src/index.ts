@@ -146,12 +146,13 @@ export default class NutstorePlugin extends Plugin {
 			ai: {
 				providers: [],
 				defaultModel: undefined,
+				yolo: false,
 			},
 			configDirSyncMode: 'none',
 		}
 
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
-		this.settings.ai ??= { providers: [], defaultModel: undefined }
+		this.settings.ai ??= { providers: [], defaultModel: undefined, yolo: false }
 		let providersValid = true
 		try {
 			this.settings.ai.providers = sanitizeProviders(
