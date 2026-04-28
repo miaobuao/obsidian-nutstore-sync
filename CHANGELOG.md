@@ -4,8 +4,12 @@
 
 ## [1.2.0] - 2026-04-28
 
-- **AI 增强与管理**：新增 AI Agent 循环功能，支持自动化任务处理；引入 AI 
-
+- 新增 AI 助手主流程与 Agent loop，支持多轮任务执行、会话管理、任务状态展示，以及消息删除、重新生成、召回与复制等交互。 / Added the core AI assistant flow and Agent loop, including multi-step task execution, session management, task status views, and message actions such as delete, regenerate, recall, and copy.
+- 新增 AI Provider 配置与管理能力，完善模型与提供商设置结构、必填/选填提示、校验与错误处理，并加入权限确认弹窗与可逆操作保护。 / Added AI provider configuration and management, with reworked model/provider settings, required or optional field indicators, stronger validation and error handling, plus a permission modal and safeguards for reversible operations.
+- 新增 Vault Bash 执行环境与相关工具增强，改进 Bash 输出处理、文本内容展示，以及 `collectTreeItems` 的深度和数量限制支持。 / Added a Vault Bash execution environment and improved related tools, including better Bash output handling, clearer text rendering, and support for depth and limit parameters in `collectTreeItems`.
+- 新增配置目录同步规则与设置，允许更细致地控制 config 目录同步行为，并补充跨平台适配与基于 Adapter API 的文件系统重构。 / Added config directory sync rules and settings for finer control over config synchronization, along with cross-platform fixes and filesystem refactoring based on the Adapter API.
+- 优化聊天与命令界面体验，加入可拖拽输入区、命令按钮图标、聊天消息卡片与历史任务面板，提升 AI 交互可用性。 / Improved the chat and command UI with a resizable input pane, command button icons, chat message cards, and session task panels for a better AI experience.
+- 改进同步冲突处理与文件操作能力，引入 DiffMatchPatchOrSkip 策略，并增强本地 Vault 文件操作与搜索路径过滤等底层支持。 / Improved conflict resolution and file operations with the new DiffMatchPatchOrSkip strategy, alongside stronger local vault handling and search path filtering support.
 
 ## [1.1.3] - 2026-02-14
 
