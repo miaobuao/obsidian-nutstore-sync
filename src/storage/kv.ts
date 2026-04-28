@@ -1,4 +1,5 @@
 import localforage from 'localforage'
+import type { ChatSession, ChatSessionIndexItem } from '~/chat/domain'
 import { StatModel } from '~/model/stat.model'
 import { SyncRecordModel } from '~/model/sync-record.model'
 import useStorage from './use-storage'
@@ -29,5 +30,24 @@ export const traverseWebDAVKV = useStorage<TraverseWebDAVCache>(
 	localforage.createInstance({
 		name: DB_NAME,
 		storeName: 'traverse_webdav_cache',
+	}),
+)
+
+export interface ChatMetaRecord {
+	activeSessionId?: string
+	orderedSessionIds: string[]
+}
+
+export const chatSessionKV = useStorage<ChatSession>(
+	localforage.createInstance({
+		name: DB_NAME,
+		storeName: 'chat_sessions',
+	}),
+)
+
+export const chatMetaKV = useStorage<ChatMetaRecord | ChatSessionIndexItem[]>(
+	localforage.createInstance({
+		name: DB_NAME,
+		storeName: 'chat_meta',
 	}),
 )

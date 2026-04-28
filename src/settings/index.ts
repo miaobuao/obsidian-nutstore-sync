@@ -10,6 +10,8 @@ import CacheSettings from './cache'
 import CommonSettings from './common'
 import FilterSettings from './filter'
 import LogSettings from './log'
+import AISettings from './ai'
+import { AIProviderConfig } from '~/ai/types'
 
 export enum SyncMode {
 	STRICT = 'strict',
@@ -39,6 +41,12 @@ export interface NutstoreSettings {
 	startupSyncDelaySeconds: number
 	autoSyncIntervalSeconds: number
 	language?: 'zh' | 'en'
+	ai: {
+		providers: AIProviderConfig[]
+		defaultModel?: { providerId: string; modelId: string }
+		yolo?: boolean
+	}
+	configDirSyncMode?: 'none' | 'bookmarks' | 'all'
 }
 
 let pluginInstance: NutstorePlugin | null = null
@@ -63,6 +71,7 @@ export class NutstoreSettingTab extends PluginSettingTab {
 	filterSettings: FilterSettings
 	logSettings: LogSettings
 	cacheSettings: CacheSettings
+	aiSettings: AISettings
 	warningContainerEl: HTMLElement
 
 	subSso = onSsoReceive().subscribe(() => {
@@ -97,6 +106,12 @@ export class NutstoreSettingTab extends PluginSettingTab {
 			this,
 			this.containerEl.createDiv(),
 		)
+		this.aiSettings = new AISettings(
+			this.app,
+			this.plugin,
+			this,
+			this.containerEl.createDiv(),
+		)
 		this.logSettings = new LogSettings(
 			this.app,
 			this.plugin,
@@ -114,6 +129,7 @@ export class NutstoreSettingTab extends PluginSettingTab {
 		await this.commonSettings.display()
 		await this.filterSettings.display()
 		await this.cacheSettings.display()
+		await this.aiSettings.display()
 		await this.logSettings.display()
 	}
 

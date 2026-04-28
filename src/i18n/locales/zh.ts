@@ -53,6 +53,7 @@ export default {
 			diffMatchPatch: '智能合并（推荐）',
 			latestTimestamp: '使用最新版本',
 			skip: '跳过冲突',
+			diffMatchPatchOrSkip: '智能合并，无法合并时跳过',
 		},
 		loginMode: {
 			name: '登录方式',
@@ -79,6 +80,99 @@ export default {
 			account: '账号设置',
 			common: '通用设置',
 			filters: '过滤规则',
+			ai: 'AI 设置',
+		},
+		ai: {
+			saved: 'AI 设置已保存',
+			none: '未设置',
+			unnamedProvider: '未命名 Provider',
+			unnamedModel: '未命名 Model',
+			defaultProvider: {
+				name: '默认 Provider',
+				desc: '新建对话时可选的默认 Provider',
+			},
+			defaultModel: {
+				name: '默认 Model',
+				desc: '新建对话时可选的默认 Model',
+			},
+			providers: {
+				name: 'Providers',
+				desc: '管理可用的 AI Provider',
+				summary: '已配置 {{count}} 个 Provider',
+				manage: '管理 Providers',
+				add: '新增 Provider',
+				delete: '删除 Provider',
+				empty: '当前还没有配置 Provider。',
+				noBaseUrl: '尚未设置 Base URL',
+				openaiDefault: '使用 OpenAI 默认端点',
+			},
+			provider: {
+				type: {
+					name: 'Provider 类型',
+					desc: '底层运行时 Provider',
+					openai: 'OpenAI',
+					invalid: '未知类型：{{value}}（请选择合法类型）',
+				},
+				name: 'Provider 名称',
+				desc: '用于在 Chatbox 中显示的名称',
+				baseUrl: {
+					name: 'Base URL',
+					desc: '可选覆盖，例如 https://api.openai.com/v1',
+				},
+				apiKey: {
+					name: 'API Key',
+					desc: '发送请求时使用的密钥',
+				},
+				organization: {
+					name: 'Organization',
+					desc: '可选的 OpenAI organization ID',
+				},
+				project: {
+					name: 'Project',
+					desc: '可选的 OpenAI project ID',
+				},
+			},
+			models: {
+				name: 'Models',
+				desc: '在当前 Provider 下可用的模型',
+				add: '新增 Model',
+				delete: '删除 Model',
+				empty: '当前 Provider 下还没有 Model。',
+			},
+			model: {
+				name: 'Model 名称',
+				desc: '发送请求时使用的模型名',
+			},
+			modals: {
+				confirmDelete: '再次点击以删除',
+				providers: {
+					title: 'Providers 管理',
+				},
+				provider: {
+					createTitle: '新建 Provider',
+					editTitle: '编辑 Provider',
+					edit: '编辑',
+					saved: 'Provider 已保存',
+					deleted: 'Provider 已删除',
+				},
+				model: {
+					createTitle: '新建 Model',
+					editTitle: '编辑 Model',
+					edit: '编辑',
+					saved: 'Model 已保存',
+					deleted: 'Model 已删除',
+				},
+			},
+			yolo: {
+				name: '完全访问权限',
+				desc: '⚠️ 开启后，AI 可直接读写笔记库中的文件，无需用户确认',
+			},
+			errors: {
+				saveFailed: 'AI 设置保存失败',
+				saveFailedWithReason: 'AI 设置保存失败：{{reason}}',
+				invalidProvidersConfig:
+					'AI Provider 配置无效，请在设置中修正。详情：{{reason}}',
+			},
 		},
 		confirmBeforeSync: {
 			name: '同步前确认',
@@ -132,6 +226,27 @@ export default {
 				name: '包含规则',
 				desc: '符合规则的文件/文件夹会被同步，如果和排除规则有冲突，会优先选择包含规则。',
 			},
+		},
+		configDirSync: {
+			name: '配置目录同步',
+			desc: '控制 {{configDir}} 目录是否参与同步。',
+			none: '不同步',
+			bookmarks: '仅同步书签',
+			all: '同步全部（实验性）',
+			bookmarksTitle: '启用书签同步',
+			bookmarksDesc:
+				'仅同步 {{configDir}}/bookmarks.json，其他配置文件不受影响。',
+			warnTitle: '启用完整配置目录同步？',
+			warnSyncs:
+				'同步内容：插件设置（data.json）、插件二进制（main.js）、主题、代码片段等所有配置文件。',
+			warnExcludes:
+				'自动排除：{{configDir}}/plugins/**/node_modules、{{configDir}}/plugins/**/.git 和 {{configDir}}/plugins/**/.pnpm-store。',
+			warnConflict:
+				'冲突处理：两端同一文件均有修改时，保留修改时间较新的版本，另一端的修改将被覆盖。',
+			warnRisk:
+				'风险：多台设备同时运行 Obsidian 容易引发冲突；插件设置变更后可能需要重启 Obsidian 才能生效。',
+			confirm: '启用',
+			cancel: '取消',
 		},
 		skipLargeFiles: {
 			name: '跳过大文件',
@@ -230,6 +345,27 @@ export default {
 				deleteSuccess: '缓存文件删除成功',
 				deleteError: '删除缓存文件出错: {{message}}',
 			},
+		},
+	},
+	aiPermission: {
+		title: 'AI 权限请求',
+		message: 'AI 正在请求执行以下文件操作：',
+		sessionScopeHint:
+			'“自动同意该操作”仅在当前会话生效，重启 Obsidian 后将恢复询问。',
+		allowOnce: '同意',
+		alwaysAllow: '自动同意该操作',
+		deny: '拒绝',
+		denied: '操作已拒绝：{{summary}}',
+		source: '源路径',
+		destination: '目标路径',
+		operations: {
+			read: '读取',
+			write: '写入',
+			edit: '编辑',
+			delete: '删除',
+			mkdir: '创建目录',
+			copy: '复制',
+			move: '移动',
 		},
 	},
 	sync: {
@@ -345,5 +481,42 @@ export default {
 		hoursAgo: '{{count}}小时前',
 		daysAgo: '{{count}}天前',
 		longAgo: '很久前',
+	},
+	chatbox: {
+		title: 'Chatbox',
+		openCommand: '打开 Chatbox',
+		newChat: '新对话',
+		sessionDeleted: '会话已删除',
+		repeatedToolCallsStopped:
+			'Agent 连续 {{count}} 次调用了完全相同的工具与参数，已停止继续调用。',
+		task: {
+			cancelledSummary: '任务 {{task}} 已取消。',
+			emptyResult: '任务已完成，但没有返回摘要。',
+		},
+		requestFailed: '请求失败',
+		errors: {
+			noProvider: '发送前请先选择 Provider',
+			baseUrlRequired: '当前 Provider 缺少 Base URL',
+			apiKeyRequired: '当前 Provider 缺少 API Key',
+			noModel: '发送前请先选择 Model',
+			noChoices: 'Provider 未返回可用结果',
+			unknownTool: '未知工具：{{name}}',
+			toolFieldRequired: '{{field}} 为必填项',
+			invalidPositiveInteger: '{{field}} 必须是大于等于 1 的整数',
+			folderNotFound: '未找到文件夹：{{path}}',
+			notFolder: '该路径不是文件夹：{{path}}',
+			fileNotFound: '未找到文件：{{path}}',
+			notFile: '该路径不是文件：{{path}}',
+			fileExists: '文件已存在：{{path}}。如需覆盖请将 overwrite 设为 true。',
+			parentPathNotFolder: '父路径不是文件夹：{{path}}',
+			editMatchNotFound: '文件中未找到要替换的精确文本。',
+			editMatchNotUnique: '要替换的精确文本必须且只能匹配一次。',
+			invalidRegex: '第 {{index}} 个 pattern 的正则无效：{{pattern}}',
+			sessionNotFound: '目标会话已不存在',
+			taskDepthExceeded: '任务拆分深度已达到上限',
+			taskConcurrencyLimit:
+				'当前会话已有过多后台任务在运行，限制为 {{limit}} 个',
+			taskSessionUnavailable: '任务对应的会话或模型配置已不可用',
+		},
 	},
 }

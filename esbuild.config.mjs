@@ -15,7 +15,10 @@ const renamePlugin = {
 	name: 'rename-plugin',
 	setup(build) {
 		build.onEnd(async () => {
-			fs.renameSync(prod ? './dist/main.css' : './main.css', './styles.css')
+			const source = prod ? './dist/main.css' : './main.css'
+			if (fs.existsSync(source)) {
+				fs.renameSync(source, './styles.css')
+			}
 		})
 	},
 }
@@ -60,6 +63,9 @@ const context = await esbuild.context({
 		}),
 		renamePlugin,
 	],
+	alias: {
+		'node:zlib': './src/shims/node-zlib.ts',
+	},
 })
 
 if (prod) {

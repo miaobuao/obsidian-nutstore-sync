@@ -20,6 +20,7 @@ export enum ConflictStrategy {
 	DiffMatchPatch = 'diff-match-patch',
 	LatestTimeStamp = 'latest-timestamp',
 	Skip = 'skip',
+	DiffMatchPatchOrSkip = 'diff-match-patch-or-skip',
 }
 
 export default class ConflictResolveTask extends BaseTask {
@@ -70,6 +71,8 @@ export default class ConflictResolveTask extends BaseTask {
 					// Skip conflict resolution - keep files as they are
 					// Don't update record to preserve conflict state for next sync
 					return { success: true, skipRecord: true } as const
+				case ConflictStrategy.DiffMatchPatchOrSkip:
+					return await this.execIntelligentMergeOrSkip()
 			}
 		} catch (e) {
 			logger.error(this, e)
@@ -91,8 +94,8 @@ export default class ConflictResolveTask extends BaseTask {
 				return { success: true } as const
 			}
 
-			const file = this.vault.getFileByPath(this.localPath)
-			if (!file) {
+			const exists = await this.vault.adapter.exists(this.localPath)
+			if (!exists) {
 				return {
 					success: false,
 					error: toTaskError(
@@ -101,7 +104,7 @@ export default class ConflictResolveTask extends BaseTask {
 					),
 				}
 			}
-			const localContent = await this.vault.readBinary(file)
+			const localContent = await this.vault.adapter.readBinary(this.localPath)
 			const remoteContent = (await this.webdav.getFileContents(
 				this.remotePath,
 				{
@@ -123,7 +126,7 @@ export default class ConflictResolveTask extends BaseTask {
 						result.content instanceof ArrayBuffer
 							? result.content
 							: new Uint8Array(result.content).buffer
-					await this.vault.modifyBinary(file, arrayBuffer)
+					await this.vault.adapter.writeBinary(this.localPath, arrayBuffer)
 					break
 				case LatestTimestampResolution.UseLocal:
 					await this.webdav.putFileContents(this.remotePath, result.content, {
@@ -142,13 +145,13 @@ export default class ConflictResolveTask extends BaseTask {
 		}
 	}
 
-	async execIntelligentMerge() {
+	async execIntelligentMergeOrSkip() {
 		try {
-			const file = this.vault.getFileByPath(this.localPath)
-			if (!file) {
+			const exists = await this.vault.adapter.exists(this.localPath)
+			if (!exists) {
 				throw new Error('cannot find file in local fs: ' + this.localPath)
 			}
-			const localBuffer = await this.vault.readBinary(file)
+			const localBuffer = await this.vault.adapter.readBinary(this.localPath)
 			const remoteBuffer = (await this.webdav.getFileContents(this.remotePath, {
 				format: 'binary',
 				details: false,
@@ -165,7 +168,85 @@ export default class ConflictResolveTask extends BaseTask {
 				baseBlob = await blobStore.get(baseKey)
 			}
 
-			const localIsMergeable = isMergeablePath(file.path)
+			const localIsMergeable = isMergeablePath(this.localPath)
+			const remoteIsMergeable = isMergeablePath(this.remotePath)
+
+			if (!(localIsMergeable && remoteIsMergeable)) {
+				throw new Error(i18n.t('sync.error.mergeNotSupported'))
+			}
+
+			const localText = await new Blob([new Uint8Array(localBuffer)]).text()
+			const remoteText = await new Blob([new Uint8Array(remoteBuffer)]).text()
+			const baseText = (await baseBlob?.text()) ?? localText
+
+			const mergeResult = await resolveByIntelligentMerge({
+				localContentText: localText,
+				remoteContentText: remoteText,
+				baseContentText: baseText,
+			})
+
+			if (!mergeResult.success) {
+				throw new Error(i18n.t('sync.error.failedToAutoMerge'))
+			}
+
+			if (mergeResult.isIdentical) {
+				return { success: true } as const
+			}
+
+			const mergedText = mergeResult.mergedText!
+
+			if (mergedText === remoteText) {
+				if (mergedText !== localText) {
+					await this.vault.adapter.write(this.localPath, mergedText)
+				}
+				return { success: true } as const
+			}
+
+			const putResult = await this.webdav.putFileContents(
+				this.remotePath,
+				mergedText,
+				{ overwrite: true },
+			)
+
+			if (!putResult) {
+				throw new Error(i18n.t('sync.error.failedToUploadMerged'))
+			}
+
+			if (localText !== mergedText) {
+				await this.vault.adapter.write(this.localPath, mergedText)
+			}
+
+			return { success: true } as const
+		} catch (e) {
+			logger.error(this, e)
+			return { success: false, error: toTaskError(e, this) }
+		}
+	}
+
+	async execIntelligentMerge() {
+		try {
+			const exists = await this.vault.adapter.exists(this.localPath)
+			if (!exists) {
+				throw new Error('cannot find file in local fs: ' + this.localPath)
+			}
+			const localBuffer = await this.vault.adapter.readBinary(this.localPath)
+			const remoteBuffer = (await this.webdav.getFileContents(this.remotePath, {
+				format: 'binary',
+				details: false,
+			})) as BufferLike
+
+			if (isEqual(localBuffer, remoteBuffer)) {
+				return { success: true } as const
+			}
+
+			const { record } = this.options
+			let baseBlob: Blob | null = null
+			const baseKey = record?.base?.key
+			if (baseKey) {
+				baseBlob = await blobStore.get(baseKey)
+			}
+
+			const localIsMergeable = isMergeablePath(this.localPath)
 			const remoteIsMergeable = isMergeablePath(this.remotePath)
 
 			if (!(localIsMergeable && remoteIsMergeable)) {
@@ -199,7 +280,7 @@ export default class ConflictResolveTask extends BaseTask {
 				)
 
 				if (putResult) {
-					await this.vault.modify(file, mergedDmpText)
+					await this.vault.adapter.write(this.localPath, mergedDmpText)
 					return { success: true } as const
 				} else {
 					throw new Error(i18n.t('sync.error.failedToUploadMerged'))
@@ -217,7 +298,7 @@ export default class ConflictResolveTask extends BaseTask {
 			// If mergedText is the same as remoteText, we only need to update localText if it's different.
 			if (mergedText === remoteText) {
 				if (mergedText !== localText) {
-					await this.vault.modify(file, mergedText)
+					await this.vault.adapter.write(this.localPath, mergedText)
 				}
 				return { success: true } as const
 			}
@@ -234,7 +315,7 @@ export default class ConflictResolveTask extends BaseTask {
 			}
 
 			if (localText !== mergedText) {
-				await this.vault.modify(file, mergedText)
+				await this.vault.adapter.write(this.localPath, mergedText)
 			}
 
 			return { success: true } as const

@@ -64,6 +64,7 @@ export default {
 			diffMatchPatch: 'Smart merge (recommended)',
 			latestTimestamp: 'Use latest version',
 			skip: 'Skip conflicts',
+			diffMatchPatchOrSkip: 'Smart merge, skip if unresolvable',
 		},
 		confirmBeforeSync: {
 			name: 'Confirm before sync',
@@ -103,6 +104,99 @@ export default {
 			account: 'Account',
 			common: 'General',
 			filters: 'Filter rules',
+			ai: 'AI',
+		},
+		ai: {
+			saved: 'AI settings saved',
+			none: 'Not set',
+			unnamedProvider: 'Unnamed provider',
+			unnamedModel: 'Unnamed model',
+			defaultProvider: {
+				name: 'Default provider',
+				desc: 'Optional provider selected for new chat sessions',
+			},
+			defaultModel: {
+				name: 'Default model',
+				desc: 'Optional model selected for new chat sessions',
+			},
+			providers: {
+				name: 'Providers',
+				desc: 'Manage available AI providers',
+				summary: '{{count}} provider(s) configured',
+				manage: 'Manage providers',
+				add: 'Add provider',
+				delete: 'Delete provider',
+				empty: 'No provider configured yet.',
+				noBaseUrl: 'Base URL not set',
+				openaiDefault: 'OpenAI default endpoint',
+			},
+			provider: {
+				type: {
+					name: 'Provider type',
+					desc: 'Runtime provider implementation',
+					openai: 'OpenAI',
+					invalid: 'Unknown type: {{value}} (select a valid type)',
+				},
+				name: 'Provider name',
+				desc: 'Label shown in the chatbox',
+				baseUrl: {
+					name: 'Base URL',
+					desc: 'Optional override, for example https://api.openai.com/v1',
+				},
+				apiKey: {
+					name: 'API key',
+					desc: 'Secret used for requests',
+				},
+				organization: {
+					name: 'Organization',
+					desc: 'Optional OpenAI organization ID',
+				},
+				project: {
+					name: 'Project',
+					desc: 'Optional OpenAI project ID',
+				},
+			},
+			models: {
+				name: 'Models',
+				desc: 'Models available under this provider',
+				add: 'Add model',
+				delete: 'Delete model',
+				empty: 'No model configured yet.',
+			},
+			model: {
+				name: 'Model name',
+				desc: 'Model identifier sent to the provider',
+			},
+			modals: {
+				confirmDelete: 'Click again to delete',
+				providers: {
+					title: 'Providers',
+				},
+				provider: {
+					createTitle: 'Create provider',
+					editTitle: 'Edit provider',
+					edit: 'Edit',
+					saved: 'Provider saved',
+					deleted: 'Provider deleted',
+				},
+				model: {
+					createTitle: 'Create model',
+					editTitle: 'Edit model',
+					edit: 'Edit',
+					saved: 'Model saved',
+					deleted: 'Model deleted',
+				},
+			},
+			yolo: {
+				name: 'Full access',
+				desc: '⚠️ When enabled, AI can read and write vault files directly without user confirmation',
+			},
+			errors: {
+				saveFailed: 'Failed to save AI settings',
+				saveFailedWithReason: 'Failed to save AI settings: {{reason}}',
+				invalidProvidersConfig:
+					'AI provider configuration is invalid. Please fix it in settings. Details: {{reason}}',
+			},
 		},
 		logout: {
 			confirmTitle: 'Confirm logout',
@@ -135,6 +229,27 @@ export default {
 				name: 'Inclusion rules',
 				desc: 'Files/folders matching these patterns WILL be synced (if defined).',
 			},
+		},
+		configDirSync: {
+			name: 'Config directory sync',
+			desc: 'Control whether {{configDir}} is included in sync.',
+			none: 'Do not sync',
+			bookmarks: 'Sync bookmarks only',
+			all: 'Sync all (experimental)',
+			bookmarksTitle: 'Enable bookmark sync',
+			bookmarksDesc:
+				'Only {{configDir}}/bookmarks.json will be synced. Other config files are not affected.',
+			warnTitle: 'Enable full config directory sync?',
+			warnSyncs:
+				'What syncs: plugin settings (data.json), plugin binaries (main.js), themes, snippets, and all other config files.',
+			warnExcludes:
+				'Auto-excluded: {{configDir}}/plugins/**/node_modules, {{configDir}}/plugins/**/.git, and {{configDir}}/plugins/**/.pnpm-store.',
+			warnConflict:
+				'Conflict resolution: when both sides have changes, the more recently modified version wins and the other side is overwritten.',
+			warnRisk:
+				'Risks: running Obsidian on multiple devices simultaneously increases conflict risk; config changes may require restarting Obsidian to take effect.',
+			confirm: 'Enable',
+			cancel: 'Cancel',
 		},
 		skipLargeFiles: {
 			name: 'Skip large files',
@@ -237,19 +352,42 @@ export default {
 			},
 		},
 	},
+	aiPermission: {
+		title: 'AI Permission Request',
+		message: 'AI is requesting to perform the following file operations:',
+		sessionScopeHint:
+			'"Auto-approve this operation" only applies to this chat session and resets after restarting Obsidian.',
+		allowOnce: 'Approve',
+		alwaysAllow: 'Auto-approve this operation',
+		deny: 'Deny',
+		denied: 'Permission denied: {{summary}}',
+		source: 'Source',
+		destination: 'Destination',
+		operations: {
+			read: 'read',
+			write: 'write',
+			edit: 'edit',
+			delete: 'delete',
+			mkdir: 'create directory',
+			copy: 'copy',
+			move: 'move',
+		},
+	},
 	sync: {
 		failed: 'Sync failed!',
 		error: {
 			folderButFile: 'Expected folder but found file: {{path}}',
 			notFound: 'Not found: {{path}}',
 			localPathNotFound: 'Local path not found: {{path}}',
-			mergeNotSupported: 'This file type is currently not supported for merging',
+			mergeNotSupported:
+				'This file type is currently not supported for merging',
 			failedToAutoMerge: 'Failed to auto merge',
 			failedToUploadMerged: 'Failed to upload merged content',
 			conflictsMarkedInFile: 'Conflicts found and marked in file',
 			requestsTooFrequent:
 				'Requests too frequent, please wait a few minutes and try again',
-			accountNotConfigured: 'Nutstore account not configured. Please configure your account in settings first.',
+			accountNotConfigured:
+				'Nutstore account not configured. Please configure your account in settings first.',
 		},
 		requestsTooFrequent:
 			'Requests too frequent, plugin will resume sync at {{time}}',
@@ -352,5 +490,46 @@ export default {
 		hoursAgo: '{{count}}h ago',
 		daysAgo: '{{count}}d ago',
 		longAgo: 'long ago',
+	},
+	chatbox: {
+		title: 'Chatbox',
+		openCommand: 'Open chatbox',
+		newChat: 'New chat',
+		sessionDeleted: 'Session deleted',
+		repeatedToolCallsStopped:
+			'The agent repeated the same tool call with the same arguments {{count}} times in a row and was stopped.',
+		task: {
+			cancelledSummary: 'Task {{task}} was cancelled.',
+			emptyResult: 'Task completed but returned no summary.',
+		},
+		requestFailed: 'Request failed',
+		errors: {
+			noProvider: 'Select a provider before sending',
+			baseUrlRequired: 'The selected provider is missing a base URL',
+			apiKeyRequired: 'The selected provider is missing an API key',
+			noModel: 'Select a model before sending',
+			noChoices: 'Provider returned no choices',
+			unknownTool: 'Unknown tool: {{name}}',
+			toolFieldRequired: '{{field}} is required',
+			invalidPositiveInteger:
+				'{{field}} must be an integer greater than or equal to 1',
+			folderNotFound: 'Folder not found: {{path}}',
+			notFolder: 'Path is not a folder: {{path}}',
+			fileNotFound: 'File not found: {{path}}',
+			notFile: 'Path is not a file: {{path}}',
+			fileExists:
+				'File already exists: {{path}}. Set overwrite to true to replace it.',
+			parentPathNotFolder: 'Parent path is not a folder: {{path}}',
+			editMatchNotFound: 'Exact text to replace was not found in the file.',
+			editMatchNotUnique:
+				'Exact text to replace must match exactly once in the file.',
+			invalidRegex: 'Invalid regex in pattern {{index}}: {{pattern}}',
+			sessionNotFound: 'The target session no longer exists',
+			taskDepthExceeded: 'The task depth limit has been reached',
+			taskConcurrencyLimit:
+				'Too many background tasks are already running in this session. Limit: {{limit}}',
+			taskSessionUnavailable:
+				'The task session or model configuration is no longer available',
+		},
 	},
 }

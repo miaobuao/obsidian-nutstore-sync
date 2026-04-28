@@ -4,6 +4,7 @@ import { emitCancelSync } from '~/events'
 import i18n from '~/i18n'
 import { NutstoreSync, SyncStartMode } from '~/sync'
 import logger from '~/utils/logger'
+import { CHATBOX_VIEW_TYPE } from '~/views/chatbox.view'
 import NutstorePlugin from '..'
 
 export default class CommandService {
@@ -11,6 +12,7 @@ export default class CommandService {
 		plugin.addCommand({
 			id: 'start-sync',
 			name: i18n.t('sync.startButton'),
+			icon: 'refresh-cw',
 			checkCallback: (checking) => {
 				if (plugin.isSyncing) {
 					return false
@@ -55,8 +57,28 @@ export default class CommandService {
 		})
 
 		plugin.addCommand({
+			id: 'open-chatbox',
+			name: i18n.t('chatbox.openCommand'),
+			icon: 'message-square',
+			callback: async () => {
+				const existingLeaf =
+					plugin.app.workspace.getLeavesOfType(CHATBOX_VIEW_TYPE)[0]
+				const leaf = existingLeaf || plugin.app.workspace.getRightLeaf(false)
+				if (!leaf) {
+					return
+				}
+				await leaf.setViewState({
+					type: CHATBOX_VIEW_TYPE,
+					active: true,
+				})
+				plugin.app.workspace.revealLeaf(leaf)
+			},
+		})
+
+		plugin.addCommand({
 			id: 'stop-sync',
 			name: i18n.t('sync.stopButton'),
+			icon: 'x-circle',
 			checkCallback: (checking) => {
 				if (plugin.isSyncing) {
 					if (!checking) {
@@ -71,6 +93,7 @@ export default class CommandService {
 		plugin.addCommand({
 			id: 'show-sync-progress',
 			name: i18n.t('sync.showProgressButton'),
+			icon: 'activity',
 			callback: () => {
 				plugin.progressService.showProgressModal()
 			},
