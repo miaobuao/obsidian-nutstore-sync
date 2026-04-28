@@ -2,7 +2,7 @@
 
 本项目的所有重要更改都将记录在此文件中。All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-04-28
+## [1.2.0] - 2026-04-28
 
 - **AI 增强与管理**：新增 AI Agent 循环功能，支持自动化任务处理；引入 AI 
 
