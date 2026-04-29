@@ -649,8 +649,8 @@ describe('ChatService fragment workflows', () => {
 	})
 
 	it('applies default model to an unselected empty session after settings change', async () => {
-		const plugin = createPlugin() as never
-		const service = new ChatService(plugin)
+		const plugin = createPlugin() as any
+		const service = new ChatService(plugin as never)
 		await service.ensureSession()
 
 		plugin.settings.ai.providers['provider-1'].models = {}
@@ -691,8 +691,8 @@ describe('ChatService fragment workflows', () => {
 			},
 		})
 
-		const plugin = createPlugin() as never
-		const service = new ChatService(plugin)
+		const plugin = createPlugin() as any
+		const service = new ChatService(plugin as never)
 		await service.ensureSession()
 		await service.sendMessage('Original message')
 
