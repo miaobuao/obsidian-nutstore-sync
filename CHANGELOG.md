@@ -2,7 +2,7 @@
 
 本项目的所有重要更改都将记录在此文件中。All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.2.1]
 
 - 修复未选择会话时的默认模型应用问题 | Fixed default model application for empty unselected sessions.
 - 修复对话模型显示名称记录问题，并确保任务运行使用模型 ID | Fixed chat model display name recording and ensured model IDs are used for task runs.
