@@ -2,6 +2,15 @@
 
 本项目的所有重要更改都将记录在此文件中。All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+- 修复未选择会话时的默认模型应用问题 | Fixed default model application for empty unselected sessions.
+- 修复对话模型显示名称记录问题，并确保任务运行使用模型 ID | Fixed chat model display name recording and ensured model IDs are used for task runs.
+- 修复用户配置目录过滤规则失效的问题 (#123) | Fixed an issue where user configuration directory filter rules were not being respected (#123).
+- 重构 AI 配置为基于记录的结构并支持预设功能 | Refactored AI configuration to a record-based structure with support for presets.
+- 新增聊天框功能区 (Ribbon) | Added a new ribbon interface for the chatbox.
+
+
 ## [1.2.0] - 2026-04-28
 
 - 新增 AI 助手主流程与 Agent loop，支持多轮任务执行、会话管理、任务状态展示，以及消息删除、重新生成、召回与复制等交互。 / Added the core AI assistant flow and Agent loop, including multi-step task execution, session management, task status views, and message actions such as delete, regenerate, recall, and copy.
