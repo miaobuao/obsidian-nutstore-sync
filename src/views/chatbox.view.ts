@@ -63,7 +63,7 @@ export default class ChatboxView extends ItemView {
 	}
 
 	getIcon() {
-		return 'messages-square'
+		return 'bot'
 	}
 
 	private getChatboxProps(): ChatboxProps {

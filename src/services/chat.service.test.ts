@@ -61,21 +61,20 @@ function createPlugin() {
 		app: {},
 		settings: {
 			ai: {
-				providers: [
-					{
+				providers: {
+					'provider-1': {
 						id: 'provider-1',
 						name: 'Provider',
-						type: 'openai-chat' as const,
-						baseUrl: 'https://example.com/v1',
+						api: 'https://example.com/v1',
 						apiKey: 'key',
-						models: [
-							{
+						models: {
+							'model-1': {
 								id: 'model-1',
 								name: 'model-a',
 							},
-						],
+						},
 					},
-				],
+				},
 				defaultModel: { providerId: 'provider-1', modelId: 'model-1' },
 			},
 		},
@@ -87,34 +86,32 @@ function createPluginWithTwoProviders() {
 		app: {},
 		settings: {
 			ai: {
-				providers: [
-					{
+				providers: {
+					'provider-1': {
 						id: 'provider-1',
 						name: 'Provider 1',
-						type: 'openai-chat' as const,
-						baseUrl: 'https://example.com/v1',
+						api: 'https://example.com/v1',
 						apiKey: 'key',
-						models: [
-							{
+						models: {
+							'model-1': {
 								id: 'model-1',
 								name: 'model-a',
 							},
-						],
+						},
 					},
-					{
+					'provider-2': {
 						id: 'provider-2',
 						name: 'Provider 2',
-						type: 'openai-chat' as const,
-						baseUrl: 'https://example.org/v1',
+						api: 'https://example.org/v1',
 						apiKey: 'key',
-						models: [
-							{
+						models: {
+							'model-2': {
 								id: 'model-2',
 								name: 'model-b',
 							},
-						],
+						},
 					},
-				],
+				},
 				defaultModel: { providerId: 'provider-1', modelId: 'model-1' },
 			},
 		},

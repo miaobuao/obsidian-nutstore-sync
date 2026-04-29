@@ -63,7 +63,7 @@ export class SyncRibbonManager {
 		this.stopRibbonEl.classList.add('hidden')
 
 		this.plugin.addRibbonIcon(
-			'message-square',
+			'bot',
 			i18n.t('chatbox.openCommand'),
 			async () => {
 				const existingLeaf =

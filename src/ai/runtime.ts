@@ -146,7 +146,7 @@ function toAssistantMessage(result: any) {
 }
 
 export function assertProviderUsable(provider: AIProviderConfig) {
-	getProviderResolver(provider).assertUsable(provider as never)
+	getProviderResolver(provider).assertUsable(provider)
 }
 
 export async function generateAssistantTurn(

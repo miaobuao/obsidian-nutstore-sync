@@ -1,7 +1,10 @@
 import { Notice, normalizePath } from 'obsidian'
 import {
+	getFirstModel,
 	getModelById,
 	getProviderById,
+	listModels,
+	listProviders,
 	resolveInitialSelection,
 } from '~/ai/config'
 import { createPermissionGuard } from '~/ai/permission-guard'
@@ -345,16 +348,16 @@ export default class ChatService {
 						.sort((left, right) => right.createdAt - left.createdAt)
 				: [],
 			otherSessionTasks: this.collectOtherSessionTasks(),
-			providers: this.plugin.settings.ai.providers.map<ChatProviderOption>(
-				(provider) => ({
-					id: provider.id,
-					name: provider.name || i18n.t('settings.ai.unnamedProvider'),
-					models: provider.models.map((model) => ({
-						id: model.id,
-						name: model.name || i18n.t('settings.ai.unnamedModel'),
-					})),
-				}),
-			),
+			providers: listProviders(
+				this.plugin.settings.ai.providers,
+			).map<ChatProviderOption>((provider) => ({
+				id: provider.id,
+				name: provider.name || i18n.t('settings.ai.unnamedProvider'),
+				models: listModels(provider).map((model) => ({
+					id: model.id,
+					name: model.name || i18n.t('settings.ai.unnamedModel'),
+				})),
+			})),
 			selectedProviderId: selectedProvider?.id,
 			selectedModelId: selectedModel?.id,
 			runState: activeRuntime.runState,
@@ -493,7 +496,7 @@ export default class ChatService {
 			}
 
 			this.pendingProviderId = provider.id
-			this.pendingModelId = provider.models[0]?.id
+			this.pendingModelId = getFirstModel(provider)?.id
 			this.notify()
 			return
 		}
@@ -516,7 +519,7 @@ export default class ChatService {
 			return
 		}
 
-		const firstModelId = provider.models[0]?.id
+		const firstModelId = getFirstModel(provider)?.id
 		session.model = firstModelId
 			? { providerId: provider.id, modelId: firstModelId }
 			: undefined
@@ -646,7 +649,7 @@ export default class ChatService {
 					const model = this.getModelOrThrow(provider, session)
 					const response = await generateAssistantTurn({
 						provider,
-						model: model.name,
+						model: model.id,
 						messages: [
 							...sourceFragment.messages.map((item) => item.message),
 							{
@@ -1247,7 +1250,7 @@ export default class ChatService {
 				const tools = this.createToolsForContext(session, 0, MAX_TASK_DEPTH)
 				const response = await generateAssistantTurn({
 					provider,
-					model: model.name,
+					model: model.id,
 					messages: this.buildMessagesForFragment(fragment, session),
 					tools,
 					...session.inferenceParams,
@@ -2368,7 +2371,7 @@ export default class ChatService {
 
 		const nextModelId =
 			getModelById(provider, session.model?.modelId)?.id ||
-			provider.models[0]?.id
+			getFirstModel(provider)?.id
 		const nextModel = nextModelId
 			? { providerId: provider.id, modelId: nextModelId }
 			: undefined
@@ -2401,7 +2404,7 @@ export default class ChatService {
 		const model =
 			getModelById(provider, this.pendingModelId) ||
 			getModelById(provider, defaults.modelId) ||
-			provider?.models[0]
+			getFirstModel(provider)
 
 		return {
 			providerId: provider?.id,

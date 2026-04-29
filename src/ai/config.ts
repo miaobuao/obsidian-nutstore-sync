@@ -1,15 +1,27 @@
-import createId from '~/utils/create-id'
 import { z } from 'zod'
+import modelsApiJson from './models-api.json'
 import {
 	AIModelConfig,
+	AIModelConfigs,
 	AIProviderConfig,
+	AIProviderConfigs,
+	AIProviderDefinition,
+	AIProviderDefinitions,
 	AIProviderInput,
-	AIProviderType,
-	aiProviderInputSchema,
 	AIModelInput,
-	OpenAIProviderInput,
-	OpenAIProviderConfig,
+	AIModelInputs,
+	aiProviderDefinitionsSchema,
+	aiProviderInputsSchema,
 } from './types'
+
+const DEFAULT_NPM_PACKAGE = '@ai-sdk/openai-compatible'
+
+const DEFAULT_MODALITIES: AIModelConfig['modalities'] = {
+	input: ['text'],
+	output: ['text'],
+}
+
+const DEFAULT_LIMIT: AIModelConfig['limit'] = { context: 0, output: 0 }
 
 function formatSchemaIssues(error: z.ZodError): string {
 	return error.issues
@@ -20,71 +32,91 @@ function formatSchemaIssues(error: z.ZodError): string {
 		.join('; ')
 }
 
-function normalizeModel(model: AIModelInput): AIModelConfig {
+export function createModelConfig(
+	model: AIModelInput = {},
+	fallbackId = '',
+): AIModelConfig {
+	const id = model.id?.trim() || fallbackId.trim()
+	const modalities = model.modalities || DEFAULT_MODALITIES
 	return {
-		id: model.id?.trim() || createId('model'),
+		id,
 		name: model.name?.trim() || '',
+		family: model.family?.trim() || undefined,
+		attachment: model.attachment ?? false,
+		reasoning: model.reasoning ?? false,
+		tool_call: model.tool_call ?? true,
+		structured_output: model.structured_output,
+		temperature: model.temperature ?? true,
+		knowledge: model.knowledge?.trim() || undefined,
+		release_date: model.release_date?.trim() || '',
+		last_updated: model.last_updated?.trim() || '',
+		modalities: {
+			input: [...modalities.input],
+			output: [...modalities.output],
+		},
+		open_weights: model.open_weights ?? false,
+		cost: model.cost,
+		limit: { ...(model.limit || DEFAULT_LIMIT) },
+		interleaved: model.interleaved,
+		provider: model.provider ? { ...model.provider } : undefined,
+		status: model.status,
+		experimental: model.experimental,
 	}
 }
 
-function normalizeOpenAIProvider(
-	provider: OpenAIProviderInput,
-): OpenAIProviderConfig {
-	const models = (provider.models || []).map((model) => normalizeModel(model))
-
-	return {
-		id: provider.id?.trim() || createId('provider'),
-		name: provider.name?.trim() || '',
-		type: provider.type,
-		apiKey: provider.apiKey || '',
-		baseUrl: provider.baseUrl?.trim() || undefined,
-		organization: provider.organization?.trim() || undefined,
-		project: provider.project?.trim() || undefined,
-		models,
-	}
-}
-
-function normalizeProvider(
-	provider: Partial<AIProviderConfig>,
-	index: number,
+export function createProviderConfig(
+	provider: AIProviderInput = {},
+	fallbackId = '',
 ): AIProviderConfig {
-	const parsed = aiProviderInputSchema.safeParse(provider)
-	if (!parsed.success) {
-		throw new Error(
-			`Invalid AI provider at index ${index}: ${formatSchemaIssues(parsed.error)}`,
-		)
-	}
-
-	const typedProvider: AIProviderInput = parsed.data
-	switch (typedProvider.type) {
-		case 'openai-chat':
-			return normalizeOpenAIProvider(typedProvider)
+	const id = provider.id?.trim() || fallbackId.trim()
+	return {
+		id,
+		env: [...(provider.env || [])],
+		npm: provider.npm?.trim() || DEFAULT_NPM_PACKAGE,
+		api: provider.api?.trim() || undefined,
+		name: provider.name?.trim() || '',
+		doc: provider.doc?.trim() || '',
+		apiKey: provider.apiKey || '',
+		models: sanitizeModels(provider.models),
 	}
 }
 
-export function sanitizeProviders(
-	providers: Partial<AIProviderConfig>[] | undefined,
-): AIProviderConfig[] {
-	return (providers || []).map((provider, index) =>
-		normalizeProvider(provider, index),
+function sanitizeModels(models: AIModelInputs | undefined): AIModelConfigs {
+	return Object.fromEntries(
+		Object.entries(models || {}).map(([modelId, model]) => {
+			const config = createModelConfig(model, modelId)
+			return [config.id, config]
+		}),
+	)
+}
+
+export function sanitizeProviders(providers: unknown): AIProviderConfigs {
+	const parsed = aiProviderInputsSchema.safeParse(providers ?? {})
+	if (!parsed.success) {
+		throw new Error(`Invalid AI providers: ${formatSchemaIssues(parsed.error)}`)
+	}
+
+	return Object.fromEntries(
+		Object.entries(parsed.data).map(([providerId, provider]) => {
+			const config = createProviderConfig(provider, providerId)
+			return [config.id, config]
+		}),
 	)
 }
 
 export function sanitizeDefaultSelections(
-	providers: AIProviderConfig[],
+	providers: AIProviderConfigs,
 	defaultModel?: { providerId: string; modelId: string },
 ): { providerId: string; modelId: string } | undefined {
 	if (!defaultModel) return undefined
-	const provider = providers.find((item) => item.id === defaultModel.providerId)
-	const model = provider?.models.find(
-		(item) => item.id === defaultModel.modelId,
-	)
+	const provider = getProviderById(providers, defaultModel.providerId)
+	const model = getModelById(provider, defaultModel.modelId)
 	if (!provider || !model) return undefined
 	return { providerId: provider.id, modelId: model.id }
 }
 
 export function resolveInitialSelection(
-	providers: AIProviderConfig[],
+	providers: AIProviderConfigs,
 	defaultModel?: { providerId: string; modelId: string },
 ) {
 	const validated = sanitizeDefaultSelections(providers, defaultModel)
@@ -94,46 +126,89 @@ export function resolveInitialSelection(
 	}
 }
 
-export function createProviderDraft(
-	type: AIProviderType = 'openai-chat',
-): AIProviderConfig {
-	const providerId = createId('provider')
-	switch (type) {
-		case 'openai-chat':
-			return {
-				id: providerId,
-				name: 'Provider',
-				type: 'openai-chat',
-				apiKey: '',
-				baseUrl: undefined,
-				organization: undefined,
-				project: undefined,
-				models: [],
-			}
-	}
-}
-
-export function createModelDraft(): AIModelConfig {
-	return {
-		id: createId('model'),
-		name: 'new-model',
-	}
+export function slugifyProviderId(name: string): string {
+	return name
+		.trim()
+		.toLowerCase()
+		.replace(/\s+/g, '-')
+		.replace(/[^a-z0-9-_]/g, '')
 }
 
 export function getProviderById(
-	providers: AIProviderConfig[],
+	providers: AIProviderConfigs,
 	providerId?: string,
 ) {
-	return providerId
-		? providers.find((item) => item.id === providerId)
-		: undefined
+	return providerId ? providers[providerId] : undefined
 }
 
 export function getModelById(
 	provider: AIProviderConfig | undefined,
 	modelId?: string,
 ) {
-	return modelId
-		? provider?.models.find((item) => item.id === modelId)
-		: undefined
+	return modelId ? provider?.models[modelId] : undefined
+}
+
+export function listProviders(
+	providers: AIProviderConfigs,
+): AIProviderConfig[] {
+	return Object.values(providers)
+}
+
+export function listModels(
+	provider: AIProviderConfig | undefined,
+): AIModelConfig[] {
+	return Object.values(provider?.models || {})
+}
+
+export function getFirstModel(provider: AIProviderConfig | undefined) {
+	return listModels(provider)[0]
+}
+
+let _presetProviders: AIProviderDefinitions | null = null
+
+export function getPresetProviders(): AIProviderDefinitions {
+	if (!_presetProviders) {
+		const parsed = aiProviderDefinitionsSchema.safeParse(modelsApiJson)
+		if (!parsed.success) {
+			throw new Error(
+				`Invalid preset AI providers: ${formatSchemaIssues(parsed.error)}`,
+			)
+		}
+		_presetProviders = parsed.data
+	}
+	return _presetProviders
+}
+
+export function listPresetProviders(): AIProviderDefinition[] {
+	return Object.values(getPresetProviders()).sort((a, b) =>
+		a.name.localeCompare(b.name),
+	)
+}
+
+export function findPresetModelById(modelId: string): AIModelConfig | undefined {
+	const targetId = modelId.trim()
+	if (!targetId) return undefined
+
+	for (const provider of Object.values(getPresetProviders())) {
+		const matched = provider.models[targetId]
+		if (matched) return createModelConfig(matched, targetId)
+	}
+
+	return undefined
+}
+
+export function createProviderFromPreset(
+	preset: AIProviderDefinition,
+	apiKey: string,
+): AIProviderConfig {
+	return {
+		...preset,
+		apiKey,
+		models: Object.fromEntries(
+			Object.entries(preset.models).map(([modelId, model]) => [
+				modelId,
+				createModelConfig(model, modelId),
+			]),
+		),
+	}
 }
