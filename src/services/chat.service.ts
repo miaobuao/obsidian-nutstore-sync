@@ -1557,7 +1557,7 @@ export default class ChatService {
 		task: AITaskRecord,
 		session: AISession,
 		provider: AIProviderConfig,
-		model: { id: string; name: string },
+		model: { id: string },
 	): Promise<AgentRunResult> {
 		const tools = this.createToolsForContext(
 			session,
@@ -1593,7 +1593,7 @@ export default class ChatService {
 
 			const response = await generateAssistantTurn({
 				provider,
-				model: model.name,
+				model: model.id,
 				messages,
 				tools,
 				...session.inferenceParams,

@@ -153,6 +153,8 @@ export async function generateAssistantTurn(
 	request: GenerateAssistantTurnRequest,
 ): Promise<GenerateAssistantTurnResult> {
 	const resolver = getProviderResolver(request.provider)
+	const modelName =
+		request.provider.models[request.model]?.name?.trim() || request.model
 	const { model, providerName } = resolver.createLanguageModel(
 		request.provider as never,
 		request.model,
@@ -171,7 +173,7 @@ export async function generateAssistantTurn(
 		meta: {
 			providerId: request.provider.id,
 			providerName: request.provider.name || providerName,
-			modelName: request.model,
+			modelName,
 			usage: {
 				inputTokens: result.usage.inputTokens,
 				outputTokens: result.usage.outputTokens,
