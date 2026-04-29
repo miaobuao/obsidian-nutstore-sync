@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import type {
 	ChatPendingMessage,
 	ChatSessionHistoryItem,
 } from '~/chatbox/types'
-import { z } from 'zod'
 import ChatService from './chat.service'
 
 const storageState = vi.hoisted(() => {
@@ -646,6 +646,76 @@ describe('ChatService fragment workflows', () => {
 		const created = getActiveSession(service)
 		expect(created.model?.providerId).toBe('provider-2')
 		expect(created.model?.modelId).toBe('model-2')
+	})
+
+	it('applies default model to an unselected empty session after settings change', async () => {
+		const plugin = createPlugin() as never
+		const service = new ChatService(plugin)
+		await service.ensureSession()
+
+		plugin.settings.ai.providers['provider-1'].models = {}
+		plugin.settings.ai.defaultModel = undefined
+		await service.handleSettingsChanged()
+
+		expect(getActiveSession(service).model).toBeUndefined()
+
+		plugin.settings.ai.providers['provider-1'].models = {
+			'model-1': {
+				id: 'model-1',
+				name: 'model-a',
+			},
+		}
+		plugin.settings.ai.defaultModel = {
+			providerId: 'provider-1',
+			modelId: 'model-1',
+		}
+
+		await service.handleSettingsChanged()
+
+		expect(getActiveSession(service).model).toEqual({
+			providerId: 'provider-1',
+			modelId: 'model-1',
+		})
+	})
+
+	it('does not apply default model to an unselected session with message history', async () => {
+		generateAssistantTurn.mockResolvedValueOnce({
+			message: {
+				role: 'assistant',
+				content: [{ type: 'text', text: 'Initial response' }],
+			},
+			meta: {
+				providerId: 'provider-1',
+				providerName: 'Provider',
+				modelName: 'model-a',
+			},
+		})
+
+		const plugin = createPlugin() as never
+		const service = new ChatService(plugin)
+		await service.ensureSession()
+		await service.sendMessage('Original message')
+
+		plugin.settings.ai.providers['provider-1'].models = {}
+		plugin.settings.ai.defaultModel = undefined
+		await service.handleSettingsChanged()
+
+		expect(getActiveSession(service).model).toBeUndefined()
+
+		plugin.settings.ai.providers['provider-1'].models = {
+			'model-1': {
+				id: 'model-1',
+				name: 'model-a',
+			},
+		}
+		plugin.settings.ai.defaultModel = {
+			providerId: 'provider-1',
+			modelId: 'model-1',
+		}
+
+		await service.handleSettingsChanged()
+
+		expect(getActiveSession(service).model).toBeUndefined()
 	})
 
 	it('deletes a thinking session after stopping the active run', async () => {

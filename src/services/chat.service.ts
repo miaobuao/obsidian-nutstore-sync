@@ -2357,14 +2357,39 @@ export default class ChatService {
 	}
 
 	private sanitizeSessionSelection(session: AISession) {
+		if (!session.model) {
+			if (this.sessionHasMessages(session)) {
+				return false
+			}
+
+			const fallbackSelection = resolveInitialSelection(
+				this.plugin.settings.ai.providers,
+				this.plugin.settings.ai.defaultModel,
+			)
+			const fallbackProvider = getProviderById(
+				this.plugin.settings.ai.providers,
+				fallbackSelection.providerId,
+			)
+			const fallbackModel = getModelById(
+				fallbackProvider,
+				fallbackSelection.modelId,
+			)
+			if (!fallbackProvider || !fallbackModel) {
+				return false
+			}
+
+			session.model = {
+				providerId: fallbackProvider.id,
+				modelId: fallbackModel.id,
+			}
+			return true
+		}
+
 		const provider = getProviderById(
 			this.plugin.settings.ai.providers,
 			session.model?.providerId,
 		)
 		if (!provider) {
-			if (!session.model) {
-				return false
-			}
 			session.model = undefined
 			return true
 		}
@@ -2380,6 +2405,10 @@ export default class ChatService {
 			session.model?.modelId !== nextModelId
 		session.model = nextModel
 		return changed
+	}
+
+	private sessionHasMessages(session: AISession) {
+		return session.fragments.some((fragment) => fragment.messages.length > 0)
 	}
 
 	private getInitialSelectionForNewSession() {
