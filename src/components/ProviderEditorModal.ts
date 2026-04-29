@@ -1,11 +1,7 @@
 import { cloneDeep } from 'lodash-es'
-import { Modal, Notice, Setting } from 'obsidian'
-import { createModelDraft } from '~/ai/config'
-import {
-	AIModelConfig,
-	AIProviderConfig,
-	OpenAIChatProviderType,
-} from '~/ai/types'
+import { Modal, Notice, Setting, setIcon } from 'obsidian'
+import { createModelConfig, listModels, slugifyProviderId } from '~/ai/config'
+import { AIModelConfig, AIProviderConfig } from '~/ai/types'
 import i18n from '~/i18n'
 import logger from '~/utils/logger'
 import type NutstorePlugin from '..'
@@ -17,7 +13,7 @@ export default class ProviderEditorModal extends Modal {
 	constructor(
 		private plugin: NutstorePlugin,
 		provider: AIProviderConfig,
-		private onSave: (provider: AIProviderConfig) => Promise<void> | void,
+		private onSave: (provider: AIProviderConfig) => Promise<boolean> | boolean,
 		private isNew: boolean,
 	) {
 		super(plugin.app)
@@ -31,48 +27,11 @@ export default class ProviderEditorModal extends Modal {
 	private render() {
 		const { contentEl } = this
 		contentEl.empty()
-		const currentType = this.draft.type as string
-		const typeOptions: Array<{ value: OpenAIChatProviderType; label: string }> =
-			[
-				{
-					value: 'openai-chat',
-					label: i18n.t('settings.ai.provider.type.openai'),
-				},
-			]
-		const hasValidType = typeOptions.some(
-			(option) => option.value === currentType,
-		)
 		contentEl.createEl('h2', {
 			text: this.isNew
 				? i18n.t('settings.ai.modals.provider.createTitle')
 				: i18n.t('settings.ai.modals.provider.editTitle'),
 		})
-
-		new Setting(contentEl)
-			.setName(i18n.t('settings.ai.provider.type.name'))
-			.setDesc(i18n.t('settings.ai.provider.type.desc'))
-			.then((s) => s.settingEl.addClass('setting-required'))
-			.addDropdown((dropdown) => {
-				for (const option of typeOptions) {
-					dropdown.addOption(option.value, option.label)
-				}
-
-				if (!hasValidType) {
-					dropdown.addOption(
-						currentType,
-						i18n.t('settings.ai.provider.type.invalid', {
-							value: currentType,
-						}),
-					)
-				}
-
-				dropdown
-					.setValue(currentType)
-					.setDisabled(!this.isNew && hasValidType)
-					.onChange((value) => {
-						this.draft.type = value as OpenAIChatProviderType
-					})
-			})
 
 		new Setting(contentEl)
 			.setName(i18n.t('settings.ai.provider.name'))
@@ -87,13 +46,13 @@ export default class ProviderEditorModal extends Modal {
 		new Setting(contentEl)
 			.setName(i18n.t('settings.ai.provider.baseUrl.name'))
 			.setDesc(i18n.t('settings.ai.provider.baseUrl.desc'))
-			.then((s) => s.settingEl.addClass('setting-optional'))
+			.then((s) => s.settingEl.addClass('setting-required'))
 			.addText((text) =>
 				text
 					.setPlaceholder('https://api.openai.com/v1')
-					.setValue(this.draft.baseUrl || '')
+					.setValue(this.draft.api || '')
 					.onChange((value) => {
-						this.draft.baseUrl = value.trim() || undefined
+						this.draft.api = value.trim() || undefined
 					}),
 			)
 
@@ -108,26 +67,6 @@ export default class ProviderEditorModal extends Modal {
 				text.inputEl.type = 'password'
 			})
 
-		new Setting(contentEl)
-			.setName(i18n.t('settings.ai.provider.organization.name'))
-			.setDesc(i18n.t('settings.ai.provider.organization.desc'))
-			.then((s) => s.settingEl.addClass('setting-optional'))
-			.addText((text) =>
-				text.setValue(this.draft.organization || '').onChange((value) => {
-					this.draft.organization = value.trim() || undefined
-				}),
-			)
-
-		new Setting(contentEl)
-			.setName(i18n.t('settings.ai.provider.project.name'))
-			.setDesc(i18n.t('settings.ai.provider.project.desc'))
-			.then((s) => s.settingEl.addClass('setting-optional'))
-			.addText((text) =>
-				text.setValue(this.draft.project || '').onChange((value) => {
-					this.draft.project = value.trim() || undefined
-				}),
-			)
-
 		const modelContainer = contentEl.createDiv()
 		new Setting(modelContainer)
 			.setName(i18n.t('settings.ai.models.name'))
@@ -136,24 +75,34 @@ export default class ProviderEditorModal extends Modal {
 				button.setButtonText(i18n.t('settings.ai.models.add')).onClick(() => {
 					new ModelEditorModal(
 						this.plugin,
-						createModelDraft(),
+						createModelConfig(),
 						async (model) => {
-							this.draft.models.push(model)
+							if (this.draft.models[model.id]) {
+								new Notice(i18n.t('settings.ai.errors.duplicateModelId'))
+								return false
+							}
+							this.draft.models = {
+								...this.draft.models,
+								[model.id]: model,
+							}
 							this.render()
+							return true
 						},
 						true,
+						{ findPresetOnSave: true },
 					).open()
 				}),
 			)
 
-		if (this.draft.models.length === 0) {
+		const models = listModels(this.draft)
+		if (models.length === 0) {
 			modelContainer.createDiv({
 				cls: 'setting-item-description',
 				text: i18n.t('settings.ai.models.empty'),
 			})
 		}
 
-		for (const model of this.draft.models) {
+		for (const model of models) {
 			new Setting(modelContainer)
 				.setName(model.name || i18n.t('settings.ai.unnamedModel'))
 				.addButton((button) =>
@@ -164,37 +113,45 @@ export default class ProviderEditorModal extends Modal {
 								this.plugin,
 								model,
 								async (savedModel) => {
-									const index = this.draft.models.findIndex(
-										(item) => item.id === savedModel.id,
-									)
-									if (index >= 0) {
-										this.draft.models[index] = savedModel
-										this.render()
+									const isRename = savedModel.id !== model.id
+									if (isRename && this.draft.models[savedModel.id]) {
+										new Notice(i18n.t('settings.ai.errors.duplicateModelId'))
+										return false
 									}
+									const { [model.id]: _old, ...rest } = this.draft.models
+									this.draft.models = { ...rest, [savedModel.id]: savedModel }
+									this.render()
+									return true
 								},
 								false,
 							).open()
 						}),
 				)
-				.addExtraButton((button) => {
+				.addButton((button) => {
 					let confirmDelete = false
+
+					const resetButton = () => {
+						confirmDelete = false
+						button.buttonEl.empty()
+						setIcon(button.buttonEl, 'trash')
+						button.buttonEl.removeClass('mod-warning')
+					}
+
 					button
 						.setIcon('trash')
-						.setTooltip(i18n.t('settings.ai.models.delete'))
 						.onClick(() => {
 							if (!confirmDelete) {
 								confirmDelete = true
-								button.setIcon('alert-triangle')
-								button.setTooltip(i18n.t('settings.ai.modals.confirmDelete'))
+								button.buttonEl.empty()
+								button.buttonEl.createSpan({
+									text: i18n.t('settings.ai.modals.confirmDeleteLabel'),
+								})
+								button.buttonEl.addClass('mod-warning')
 								return
 							}
 							this.deleteModel(model)
 						})
-					button.extraSettingsEl.addEventListener('blur', () => {
-						confirmDelete = false
-						button.setIcon('trash')
-						button.setTooltip(i18n.t('settings.ai.models.delete'))
-					})
+					button.buttonEl.addEventListener('blur', resetButton)
 				})
 		}
 
@@ -205,7 +162,12 @@ export default class ProviderEditorModal extends Modal {
 					.setCta()
 					.onClick(async () => {
 						try {
-							await this.onSave(cloneDeep(this.draft))
+							const toSave = cloneDeep(this.draft)
+							if (this.isNew) {
+								toSave.id = slugifyProviderId(toSave.name)
+							}
+							const ok = await this.onSave(toSave)
+							if (!ok) return
 							new Notice(i18n.t('settings.ai.modals.provider.saved'))
 							this.close()
 						} catch (error) {
@@ -222,7 +184,8 @@ export default class ProviderEditorModal extends Modal {
 	}
 
 	private deleteModel(model: AIModelConfig) {
-		this.draft.models = this.draft.models.filter((item) => item.id !== model.id)
+		const { [model.id]: _deleted, ...models } = this.draft.models
+		this.draft.models = models
 		new Notice(i18n.t('settings.ai.modals.model.deleted'))
 		this.render()
 	}

@@ -129,6 +129,7 @@ export default {
 				empty: 'No provider configured yet.',
 				noBaseUrl: 'Base URL not set',
 				openaiDefault: 'OpenAI default endpoint',
+				presetCustom: 'Custom (OpenAI Compatible)',
 			},
 			provider: {
 				type: {
@@ -164,11 +165,12 @@ export default {
 				empty: 'No model configured yet.',
 			},
 			model: {
-				name: 'Model name',
-				desc: 'Model identifier sent to the provider',
+				id: 'Model ID',
+				idDesc: 'Model identifier sent to the API (e.g. gpt-4o)',
 			},
 			modals: {
 				confirmDelete: 'Click again to delete',
+				confirmDeleteLabel: 'Confirm',
 				providers: {
 					title: 'Providers',
 				},
@@ -196,6 +198,10 @@ export default {
 				saveFailedWithReason: 'Failed to save AI settings: {{reason}}',
 				invalidProvidersConfig:
 					'AI provider configuration is invalid. Please fix it in settings. Details: {{reason}}',
+				emptyModelId: 'Model ID cannot be empty',
+				duplicateModelId: 'A model with this ID already exists',
+				emptyProviderId: 'Provider name cannot be empty',
+				duplicateProviderId: 'A provider with this name already exists',
 			},
 		},
 		logout: {

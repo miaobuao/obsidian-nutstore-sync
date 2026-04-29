@@ -59,7 +59,7 @@ export default class CommandService {
 		plugin.addCommand({
 			id: 'open-chatbox',
 			name: i18n.t('chatbox.openCommand'),
-			icon: 'message-square',
+			icon: 'bot',
 			callback: async () => {
 				const existingLeaf =
 					plugin.app.workspace.getLeavesOfType(CHATBOX_VIEW_TYPE)[0]

@@ -11,7 +11,7 @@ import CommonSettings from './common'
 import FilterSettings from './filter'
 import LogSettings from './log'
 import AISettings from './ai'
-import { AIProviderConfig } from '~/ai/types'
+import { AIProviderConfigs } from '~/ai/types'
 
 export enum SyncMode {
 	STRICT = 'strict',
@@ -42,7 +42,7 @@ export interface NutstoreSettings {
 	autoSyncIntervalSeconds: number
 	language?: 'zh' | 'en'
 	ai: {
-		providers: AIProviderConfig[]
+		providers: AIProviderConfigs
 		defaultModel?: { providerId: string; modelId: string }
 		yolo?: boolean
 	}

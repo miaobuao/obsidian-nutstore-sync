@@ -105,6 +105,7 @@ export default {
 				empty: '当前还没有配置 Provider。',
 				noBaseUrl: '尚未设置 Base URL',
 				openaiDefault: '使用 OpenAI 默认端点',
+				presetCustom: '自定义（OpenAI Compatible）',
 			},
 			provider: {
 				type: {
@@ -140,11 +141,12 @@ export default {
 				empty: '当前 Provider 下还没有 Model。',
 			},
 			model: {
-				name: 'Model 名称',
-				desc: '发送请求时使用的模型名',
+				id: 'Model ID',
+				idDesc: '请求 API 时使用的模型标识（如 gpt-4o）',
 			},
 			modals: {
 				confirmDelete: '再次点击以删除',
+				confirmDeleteLabel: '确认',
 				providers: {
 					title: 'Providers 管理',
 				},
@@ -172,6 +174,10 @@ export default {
 				saveFailedWithReason: 'AI 设置保存失败：{{reason}}',
 				invalidProvidersConfig:
 					'AI Provider 配置无效，请在设置中修正。详情：{{reason}}',
+				emptyModelId: 'Model ID 不能为空',
+				duplicateModelId: '已存在相同 ID 的 Model',
+				emptyProviderId: 'Provider 名称不能为空',
+				duplicateProviderId: '已存在相同名称的 Provider',
 			},
 		},
 		confirmBeforeSync: {

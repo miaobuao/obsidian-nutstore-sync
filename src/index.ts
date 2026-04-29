@@ -144,7 +144,7 @@ export default class NutstorePlugin extends Plugin {
 			autoSyncIntervalSeconds: 300,
 			language: undefined,
 			ai: {
-				providers: [],
+				providers: {},
 				defaultModel: undefined,
 				yolo: false,
 			},
@@ -152,11 +152,14 @@ export default class NutstorePlugin extends Plugin {
 		}
 
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
-		this.settings.ai ??= { providers: [], defaultModel: undefined, yolo: false }
+		this.settings.ai ??= { providers: {}, defaultModel: undefined, yolo: false }
+		if (Array.isArray(this.settings.ai.providers)) {
+			this.settings.ai.providers = {}
+		}
 		let providersValid = true
 		try {
 			this.settings.ai.providers = sanitizeProviders(
-				this.settings.ai.providers ?? [],
+				this.settings.ai.providers ?? {},
 			)
 		} catch (error) {
 			logger.error(error)

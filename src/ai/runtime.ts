@@ -146,13 +146,15 @@ function toAssistantMessage(result: any) {
 }
 
 export function assertProviderUsable(provider: AIProviderConfig) {
-	getProviderResolver(provider).assertUsable(provider as never)
+	getProviderResolver(provider).assertUsable(provider)
 }
 
 export async function generateAssistantTurn(
 	request: GenerateAssistantTurnRequest,
 ): Promise<GenerateAssistantTurnResult> {
 	const resolver = getProviderResolver(request.provider)
+	const modelName =
+		request.provider.models[request.model]?.name?.trim() || request.model
 	const { model, providerName } = resolver.createLanguageModel(
 		request.provider as never,
 		request.model,
@@ -171,7 +173,7 @@ export async function generateAssistantTurn(
 		meta: {
 			providerId: request.provider.id,
 			providerName: request.provider.name || providerName,
-			modelName: request.model,
+			modelName,
 			usage: {
 				inputTokens: result.usage.inputTokens,
 				outputTokens: result.usage.outputTokens,

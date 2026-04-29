@@ -6,13 +6,10 @@ export interface ResolvedLanguageModel {
 	providerName: string
 }
 
-export interface AIProviderResolver<
-	TConfig extends AIProviderConfig = AIProviderConfig,
-> {
-	type: TConfig['type']
-	assertUsable: (provider: TConfig) => void
+export interface AIProviderResolver {
+	assertUsable: (provider: AIProviderConfig) => void
 	createLanguageModel: (
-		provider: TConfig,
+		provider: AIProviderConfig,
 		modelId: string,
 	) => ResolvedLanguageModel
 }

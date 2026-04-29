@@ -1,7 +1,10 @@
 import { Notice, Setting } from 'obsidian'
 import {
+	getFirstModel,
 	getModelById,
 	getProviderById,
+	listModels,
+	listProviders,
 	sanitizeDefaultSelections,
 	sanitizeProviders,
 } from '~/ai/config'
@@ -22,7 +25,7 @@ export default class AISettings extends BaseSettings {
 			.setName(i18n.t('settings.ai.providers.name'))
 			.setDesc(
 				i18n.t('settings.ai.providers.summary', {
-					count: this.plugin.settings.ai.providers.length,
+					count: listProviders(this.plugin.settings.ai.providers).length,
 				}),
 			)
 			.addButton((button) =>
@@ -41,7 +44,9 @@ export default class AISettings extends BaseSettings {
 			.setDesc(i18n.t('settings.ai.defaultProvider.desc'))
 			.addDropdown((dropdown) => {
 				dropdown.addOption('', i18n.t('settings.ai.none'))
-				for (const provider of this.plugin.settings.ai.providers) {
+				for (const provider of listProviders(
+					this.plugin.settings.ai.providers,
+				)) {
 					dropdown.addOption(
 						provider.id,
 						provider.name || i18n.t('settings.ai.unnamedProvider'),
@@ -60,7 +65,8 @@ export default class AISettings extends BaseSettings {
 							const currentModelId =
 								this.plugin.settings.ai.defaultModel?.modelId
 							const model =
-								getModelById(provider, currentModelId) || provider?.models[0]
+								getModelById(provider, currentModelId) ||
+								getFirstModel(provider)
 							this.plugin.settings.ai.defaultModel = model
 								? { providerId: value, modelId: model.id }
 								: undefined
@@ -79,7 +85,7 @@ export default class AISettings extends BaseSettings {
 					this.plugin.settings.ai.defaultModel?.providerId,
 				)
 				dropdown.addOption('', i18n.t('settings.ai.none'))
-				for (const model of provider?.models || []) {
+				for (const model of listModels(provider)) {
 					dropdown.addOption(
 						model.id,
 						model.name || i18n.t('settings.ai.unnamedModel'),

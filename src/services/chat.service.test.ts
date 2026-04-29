@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import type {
 	ChatPendingMessage,
 	ChatSessionHistoryItem,
 } from '~/chatbox/types'
-import { z } from 'zod'
 import ChatService from './chat.service'
 
 const storageState = vi.hoisted(() => {
@@ -61,21 +61,20 @@ function createPlugin() {
 		app: {},
 		settings: {
 			ai: {
-				providers: [
-					{
+				providers: {
+					'provider-1': {
 						id: 'provider-1',
 						name: 'Provider',
-						type: 'openai-chat' as const,
-						baseUrl: 'https://example.com/v1',
+						api: 'https://example.com/v1',
 						apiKey: 'key',
-						models: [
-							{
+						models: {
+							'model-1': {
 								id: 'model-1',
 								name: 'model-a',
 							},
-						],
+						},
 					},
-				],
+				},
 				defaultModel: { providerId: 'provider-1', modelId: 'model-1' },
 			},
 		},
@@ -87,34 +86,32 @@ function createPluginWithTwoProviders() {
 		app: {},
 		settings: {
 			ai: {
-				providers: [
-					{
+				providers: {
+					'provider-1': {
 						id: 'provider-1',
 						name: 'Provider 1',
-						type: 'openai-chat' as const,
-						baseUrl: 'https://example.com/v1',
+						api: 'https://example.com/v1',
 						apiKey: 'key',
-						models: [
-							{
+						models: {
+							'model-1': {
 								id: 'model-1',
 								name: 'model-a',
 							},
-						],
+						},
 					},
-					{
+					'provider-2': {
 						id: 'provider-2',
 						name: 'Provider 2',
-						type: 'openai-chat' as const,
-						baseUrl: 'https://example.org/v1',
+						api: 'https://example.org/v1',
 						apiKey: 'key',
-						models: [
-							{
+						models: {
+							'model-2': {
 								id: 'model-2',
 								name: 'model-b',
 							},
-						],
+						},
 					},
-				],
+				},
 				defaultModel: { providerId: 'provider-1', modelId: 'model-1' },
 			},
 		},
@@ -649,6 +646,76 @@ describe('ChatService fragment workflows', () => {
 		const created = getActiveSession(service)
 		expect(created.model?.providerId).toBe('provider-2')
 		expect(created.model?.modelId).toBe('model-2')
+	})
+
+	it('applies default model to an unselected empty session after settings change', async () => {
+		const plugin = createPlugin() as any
+		const service = new ChatService(plugin as never)
+		await service.ensureSession()
+
+		plugin.settings.ai.providers['provider-1'].models = {}
+		plugin.settings.ai.defaultModel = undefined
+		await service.handleSettingsChanged()
+
+		expect(getActiveSession(service).model).toBeUndefined()
+
+		plugin.settings.ai.providers['provider-1'].models = {
+			'model-1': {
+				id: 'model-1',
+				name: 'model-a',
+			},
+		}
+		plugin.settings.ai.defaultModel = {
+			providerId: 'provider-1',
+			modelId: 'model-1',
+		}
+
+		await service.handleSettingsChanged()
+
+		expect(getActiveSession(service).model).toEqual({
+			providerId: 'provider-1',
+			modelId: 'model-1',
+		})
+	})
+
+	it('does not apply default model to an unselected session with message history', async () => {
+		generateAssistantTurn.mockResolvedValueOnce({
+			message: {
+				role: 'assistant',
+				content: [{ type: 'text', text: 'Initial response' }],
+			},
+			meta: {
+				providerId: 'provider-1',
+				providerName: 'Provider',
+				modelName: 'model-a',
+			},
+		})
+
+		const plugin = createPlugin() as any
+		const service = new ChatService(plugin as never)
+		await service.ensureSession()
+		await service.sendMessage('Original message')
+
+		plugin.settings.ai.providers['provider-1'].models = {}
+		plugin.settings.ai.defaultModel = undefined
+		await service.handleSettingsChanged()
+
+		expect(getActiveSession(service).model).toBeUndefined()
+
+		plugin.settings.ai.providers['provider-1'].models = {
+			'model-1': {
+				id: 'model-1',
+				name: 'model-a',
+			},
+		}
+		plugin.settings.ai.defaultModel = {
+			providerId: 'provider-1',
+			modelId: 'model-1',
+		}
+
+		await service.handleSettingsChanged()
+
+		expect(getActiveSession(service).model).toBeUndefined()
 	})
 
 	it('deletes a thinking session after stopping the active run', async () => {
