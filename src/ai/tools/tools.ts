@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { createCompressedFileContent } from '~/ai/chat/messages/reversible-content'
 import type { AIToolDefinition, ToolExecutionResult } from '~/ai/core/types'
 import { execVaultBash, VAULT_MOUNT_POINT } from '~/ai/tools/bash/runtime'
+import { buildNoteNeighborhood } from '~/ai/tools/note-neighborhood'
 import {
 	executeTodoWrite,
 	todoWriteInputSchema,
@@ -40,6 +41,23 @@ const booleanValue = (field: string) =>
 			return value
 		},
 		z.boolean(i18n.t('chatbox.errors.toolFieldRequired', { field })),
+	)
+
+const integerValue = (field: string) =>
+	z.preprocess(
+		(value) => {
+			if (typeof value === 'number') {
+				return value
+			}
+			if (typeof value === 'string') {
+				const normalized = value.trim()
+				if (normalized !== '') {
+					return Number(normalized)
+				}
+			}
+			return value
+		},
+		z.number().int(i18n.t('chatbox.errors.toolFieldRequired', { field })),
 	)
 
 function isAllowedBashCwd(pathValue: string) {
@@ -110,6 +128,21 @@ function replaceUniqueOccurrence(
 	} satisfies ReplaceResult
 }
 
+function resolveNotePath(app: App, note: string) {
+	const normalizedPath = normalizePath(note)
+	const direct = app.vault.getAbstractFileByPath(normalizedPath)
+	if (direct instanceof TFile) {
+		return direct.path
+	}
+
+	const resolved = app.metadataCache.getFirstLinkpathDest(note, '')
+	if (resolved instanceof TFile) {
+		return resolved.path
+	}
+
+	throw new Error(i18n.t('chatbox.errors.fileNotFound', { path: note }))
+}
+
 export function createAITools(
 	app: App,
 	options: CreateAIToolsOptions = {},
@@ -132,6 +165,31 @@ export function createAITools(
 					} satisfies AIToolDefinition,
 				]
 			: []),
+		{
+			name: 'note_neighborhood',
+			description:
+				'Return an Obsidian-style local knowledge graph neighborhood for a note as a simple adjacency map. Input a note path or link path plus a depth. Output includes the resolved root path, normalized depth, and adj where each key is a note path and each value is the sorted list of related note paths within the returned neighborhood.',
+			inputSchema: z.object({
+				note: z
+					.string()
+					.trim()
+					.min(
+						1,
+						i18n.t('chatbox.errors.toolFieldRequired', { field: 'note' }),
+					),
+				depth: integerValue('depth').default(1),
+			}),
+			execute: async (params): Promise<ToolExecutionResult> => {
+				const root = resolveNotePath(app, params.note)
+				return {
+					result: buildNoteNeighborhood(
+						app.metadataCache.resolvedLinks ?? {},
+						root,
+						params.depth,
+					),
+				}
+			},
+		},
 		{
 			name: 'edit_file',
 			description:
