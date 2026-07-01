@@ -27,6 +27,7 @@ import {
 	hideChatboxSelectionHighlight,
 	showChatboxSelectionHighlight,
 } from './chatbox-selection-highlight'
+import { resolveMarkdownLinkAction } from './markdown-link-handler'
 import { mountChatbox } from '../components/solid-js'
 
 export const CHATBOX_VIEW_TYPE = 'nutstore-sync-chatbox'
@@ -93,7 +94,40 @@ export default class ChatboxView extends ItemView {
 				el.textContent = fallbackText
 			}
 
+			const onLinkClick = (event: MouseEvent) => {
+				const target = event.target
+				if (!(target instanceof Element)) {
+					return
+				}
+				const anchor = target.closest('a')
+				if (!(anchor instanceof HTMLAnchorElement)) {
+					return
+				}
+
+				const action = resolveMarkdownLinkAction({
+					href: anchor.getAttribute('href'),
+					datasetHref: anchor.getAttribute('data-href'),
+					classNames: Array.from(anchor.classList),
+				})
+				if (action.type === 'none') {
+					return
+				}
+
+				event.preventDefault()
+				event.stopPropagation()
+
+				if (action.type === 'internal') {
+					void this.app.workspace.openLinkText(action.linktext, '', false)
+					return
+				}
+
+				window.open(action.href, '_blank', 'noopener,noreferrer')
+			}
+
+			el.addEventListener('click', onLinkClick)
+
 			return () => {
+				el.removeEventListener('click', onLinkClick)
 				component.unload()
 				el.replaceChildren()
 			}
