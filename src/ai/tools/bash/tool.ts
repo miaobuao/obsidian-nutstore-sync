@@ -39,7 +39,7 @@ export const bashTool = tool({
 	description: [
 		`Execute a browser-based bash subset against a virtual filesystem where the Obsidian vault is mounted at ${VAULT_MOUNT_POINT}, agent data is mounted at ${AGENTS_MOUNT_POINT}, and built-in Skills are read-only under ${BUILTIN_SKILLS_MOUNT_POINT}.`,
 		'This is not the host shell: node, python, xxd, and some command flags are unavailable.',
-		'Prefer supported commands such as ls, cat, rg, sed, awk, od, mkdir, mv, cp, and rm.',
+		'Prefer supported commands such as ls, cat, rg, sed, awk, od, gzip, gunzip, zcat, mkdir, mv, cp, and rm.',
 		`Treat ${VAULT_MOUNT_POINT} as the user's personal knowledge base — only write there for content the user intends to keep; use ${BASH_TMP_MOUNT_POINT} for intermediate or scratch work.`,
 	].join(' '),
 	inputSchema: z.object({
