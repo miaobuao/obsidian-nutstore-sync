@@ -25,8 +25,7 @@ function createFileSystem(remoteBaseDir = '/vault/') {
 		remoteAccountId: 'neutral-account',
 		remoteBaseDir,
 		filterRules: {
-			exclusionRules: [],
-			inclusionRules: [],
+			rules: [],
 		},
 	})
 }

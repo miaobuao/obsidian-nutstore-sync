@@ -323,6 +323,8 @@
 			"name": "How to get WebDAV account and credential?"
 		},
 		"filters": {
+			"name": "Filter rules",
+			"desc": "Uses gitignore-style path rules. Rules are evaluated top to bottom; the last matching rule wins. Include rules cannot cross an excluded parent directory. The Aa switch controls case sensitivity for each rule.",
 			"add": "Add rule",
 			"remove": "Remove",
 			"confirmRemove": "Confirm remove",
@@ -330,13 +332,9 @@
 			"save": "Save",
 			"cancel": "Cancel",
 			"placeholder": "e.g.: .DS_Store, *.pdf",
-			"exclude": {
-				"name": "Exclusion rules",
-				"desc": "Files/folders matching these patterns will NOT be synced."
-			},
-			"include": {
-				"name": "Inclusion rules",
-				"desc": "Files/folders matching these patterns WILL be synced (if defined)."
+			"types": {
+				"exclude": "Exclude",
+				"include": "Include"
 			}
 		},
 		"configDirSync": {

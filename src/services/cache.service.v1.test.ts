@@ -46,7 +46,7 @@ function createService(
 		settings: {
 			loginMode: 'manual',
 			configDirSyncMode: 'all',
-			filterRules: { exclusionRules: [], inclusionRules: [] },
+			filterRules: { rules: [] },
 			...settings,
 		},
 		getToken: vi.fn(async () => 'token'),
@@ -163,10 +163,13 @@ describe('CacheServiceV1 remote cache safety', () => {
 		}
 		const service = createService(webdav, '/vault/', {
 			filterRules: {
-				exclusionRules: [
-					{ expr: '.obsidian/**', options: { caseSensitive: false } },
+				rules: [
+					{
+						expr: '.obsidian/**',
+						options: { caseSensitive: false },
+						type: 'exclude',
+					},
 				],
-				inclusionRules: [],
 			},
 		})
 

@@ -5,10 +5,10 @@ import {
 	ConfigDirSyncMode,
 	computeEffectiveFilterRulesFromParts,
 } from '~/utils/config-dir-rules'
-import GlobMatch, {
-	GlobMatchOptions,
-	isVoidGlobMatchOptions,
-	needIncludeFromGlobRules,
+import {
+	compileFilterRules,
+	GlobFilterRule,
+	isPathIncluded,
 } from '~/utils/glob-match'
 import { traverseLocalVault } from '~/utils/traverse-local-vault'
 import { isSyncCacheLocalPath } from '~/utils/sync-cache-file'
@@ -21,8 +21,7 @@ export class LocalVaultFileSystem implements AbstractFileSystem {
 			vault: Vault
 			syncRecord: SyncRecord
 			filterRules?: {
-				exclusionRules: GlobMatchOptions[]
-				inclusionRules: GlobMatchOptions[]
+				rules: GlobFilterRule[]
 				configDir?: string
 				configDirSyncMode?: ConfigDirSyncMode
 			}
@@ -43,8 +42,7 @@ export class LocalVaultFileSystem implements AbstractFileSystem {
 						settings.filterRules,
 					)
 				: undefined)
-		const exclusions = this.buildRules(filterRules?.exclusionRules)
-		const inclusions = this.buildRules(filterRules?.inclusionRules)
+		const compiledRules = compileFilterRules(filterRules?.rules)
 
 		const stats = await traverseLocalVault(
 			this.options.vault,
@@ -53,7 +51,7 @@ export class LocalVaultFileSystem implements AbstractFileSystem {
 		const includedStats = stats.filter(
 			(stat) =>
 				!isSyncCacheLocalPath(stat.path, this.options.vault.configDir) &&
-				needIncludeFromGlobRules(stat.path, inclusions, exclusions),
+				isPathIncluded(stat.path, compiledRules, stat.isDir),
 		)
 		const completeStats = completeLossDir(stats, includedStats)
 		const completeStatPaths = new Set(completeStats.map((s) => s.path))
@@ -61,11 +59,5 @@ export class LocalVaultFileSystem implements AbstractFileSystem {
 			stat,
 			ignored: !completeStatPaths.has(stat.path),
 		}))
-	}
-
-	private buildRules(rules: GlobMatchOptions[] = []): GlobMatch[] {
-		return rules
-			.filter((opt) => !isVoidGlobMatchOptions(opt))
-			.map(({ expr, options }) => new GlobMatch(expr, options))
 	}
 }

@@ -2,45 +2,34 @@ import { cloneDeep } from 'lodash-es'
 import { Modal, Setting } from 'obsidian'
 import i18n from '~/i18n'
 import { addClassTokens, removeClassTokens } from '~/utils/class-tokens'
-import { getUserOptions, GlobMatchOptions } from '~/utils/glob-match'
+import {
+	FilterRuleType,
+	getUserOptions,
+	GlobFilterRule,
+} from '~/utils/glob-match'
 import NutstorePlugin from '..'
 
-enum FilterType {
-	Include = 'include',
-	Exclude = 'exclude',
-}
-
 export default class FilterEditorModal extends Modal {
-	static readonly FilterType = FilterType
-
-	filters: GlobMatchOptions[]
+	rules: GlobFilterRule[]
 
 	constructor(
 		plugin: NutstorePlugin,
-		filters: GlobMatchOptions[] = [],
-		private onSave: (filters: GlobMatchOptions[]) => void,
-		private filterType: FilterType = FilterType.Exclude,
+		rules: GlobFilterRule[] = [],
+		private onSave: (filters: GlobFilterRule[]) => void,
 	) {
 		super(plugin.app)
-		this.filters = cloneDeep(filters)
+		this.rules = cloneDeep(rules)
 	}
 
 	onOpen() {
 		const { contentEl } = this
 		contentEl.empty()
 
-		const titleKey =
-			this.filterType === FilterType.Include
-				? 'settings.filters.include.name'
-				: 'settings.filters.exclude.name'
-		const descKey =
-			this.filterType === FilterType.Include
-				? 'settings.filters.include.desc'
-				: 'settings.filters.exclude.desc'
-
-		contentEl.createEl('h2', { text: i18n.t(titleKey) })
+		contentEl.createEl('h2', {
+			text: i18n.t('settings.filters.name'),
+		})
 		contentEl.createEl('p', {
-			text: i18n.t(descKey),
+			text: i18n.t('settings.filters.desc'),
 			cls: ':uno: setting-item-description',
 		})
 
@@ -50,27 +39,73 @@ export default class FilterEditorModal extends Modal {
 
 		const updateList = () => {
 			listContainer.empty()
-			this.filters.forEach((filter, index) => {
+			this.rules.forEach((rule, index) => {
 				const itemContainer = listContainer.createDiv({
-					cls: ':uno: flex gap-2',
+					cls: ':uno: flex gap-2 items-center',
 				})
+				const typeSelect = listContainer.createEl('select', {
+					cls: ':uno: shadow-none!',
+				})
+				typeSelect.addClass('ns-filter-type')
+				for (const type of ['exclude', 'include'] as FilterRuleType[]) {
+					const option = typeSelect.createEl('option', {
+						value: type,
+						text:
+							type === 'exclude'
+								? i18n.t('settings.filters.types.exclude')
+								: i18n.t('settings.filters.types.include'),
+					})
+					option.selected = rule.type === type
+				}
+				typeSelect.addEventListener('change', () => {
+					rule.type = typeSelect.value as FilterRuleType
+					this.rules[index] = rule
+				})
+
 				const input = listContainer.createEl('input', {
 					type: 'text',
 					cls: ':uno: flex-1',
 					placeholder: i18n.t('settings.filters.placeholder'),
-					value: filter.expr,
+					value: rule.expr,
 				})
 				input.spellcheck = false
 				input.addEventListener('input', () => {
-					filter.expr = input.value
-					this.filters[index] = filter
+					rule.expr = input.value
+					this.rules[index] = rule
 				})
+
+				const upBtn = listContainer.createEl('button', {
+					text: '↑',
+					cls: ':uno: shadow-none!',
+				})
+				upBtn.disabled = index === 0
+				upBtn.addEventListener('click', () => {
+					if (index === 0) {
+						return
+					}
+					this.rules.splice(index - 1, 0, this.rules.splice(index, 1)[0])
+					updateList()
+				})
+
+				const downBtn = listContainer.createEl('button', {
+					text: '↓',
+					cls: ':uno: shadow-none!',
+				})
+				downBtn.disabled = index === this.rules.length - 1
+				downBtn.addEventListener('click', () => {
+					if (index === this.rules.length - 1) {
+						return
+					}
+					this.rules.splice(index + 1, 0, this.rules.splice(index, 1)[0])
+					updateList()
+				})
+
 				const forceCaseBtn = listContainer.createEl('button', {
 					text: 'Aa',
 					cls: ':uno: shadow-none!',
 				})
 				function updateButtonStatus() {
-					const opt = getUserOptions(filter)
+					const opt = getUserOptions(rule)
 					const activeCls = [':uno: bg-[var(--interactive-accent)]!']
 					const inactiveCls = [
 						'background-none!',
@@ -86,9 +121,10 @@ export default class FilterEditorModal extends Modal {
 				}
 				updateButtonStatus()
 				forceCaseBtn.addEventListener('click', () => {
-					filter.options.caseSensitive = !filter.options.caseSensitive
+					rule.options.caseSensitive = !rule.options.caseSensitive
 					updateButtonStatus()
 				})
+
 				const trash = listContainer.createEl('button', {
 					text: i18n.t('settings.filters.remove'),
 				})
@@ -99,7 +135,7 @@ export default class FilterEditorModal extends Modal {
 						trash.setText(i18n.t('settings.filters.confirmRemove'))
 						addClassTokens(trash, ':uno: mod-warning')
 					} else {
-						this.filters.splice(index, 1)
+						this.rules.splice(index, 1)
 						updateList()
 					}
 				})
@@ -108,7 +144,10 @@ export default class FilterEditorModal extends Modal {
 					trash.setText(i18n.t('settings.filters.remove'))
 					removeClassTokens(trash, ':uno: mod-warning')
 				})
+				itemContainer.appendChild(typeSelect)
 				itemContainer.appendChild(input)
+				itemContainer.appendChild(upBtn)
+				itemContainer.appendChild(downBtn)
 				itemContainer.appendChild(forceCaseBtn)
 				itemContainer.appendChild(trash)
 			})
@@ -118,11 +157,12 @@ export default class FilterEditorModal extends Modal {
 
 		new Setting(contentEl).addButton((button) => {
 			button.setButtonText(i18n.t('settings.filters.add')).onClick(() => {
-				this.filters.push({
+				this.rules.push({
 					expr: '',
 					options: {
 						caseSensitive: false,
 					},
+					type: 'exclude',
 				})
 				updateList()
 			})
@@ -134,7 +174,7 @@ export default class FilterEditorModal extends Modal {
 					.setButtonText(i18n.t('settings.filters.save'))
 					.setCta()
 					.onClick(() => {
-						this.onSave(this.filters)
+						this.onSave(this.rules)
 						this.close()
 					})
 			})

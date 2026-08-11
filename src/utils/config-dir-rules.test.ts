@@ -5,25 +5,21 @@ import {
 	getConfigDirSystemTraversalRules,
 	shouldUseRemoteTraversalCache,
 } from './config-dir-rules'
-import GlobMatch, { needIncludeFromGlobRules } from './glob-match'
+import {
+	compileFilterRules,
+	GlobFilterRule,
+	isPathIncluded,
+} from './glob-match'
 
 function createPluginMock(
 	mode: 'none' | 'bookmarks' | 'all',
-	filterRules = {
-		exclusionRules: [] as {
-			expr: string
-			options: { caseSensitive: boolean }
-		}[],
-		inclusionRules: [] as {
-			expr: string
-			options: { caseSensitive: boolean }
-		}[],
-	},
+	filterRules: { rules: GlobFilterRule[] } = { rules: [] },
+	configDir = '.obsidian',
 ) {
 	return {
 		app: {
 			vault: {
-				configDir: '.obsidian',
+				configDir,
 			},
 		},
 		settings: {
@@ -31,6 +27,22 @@ function createPluginMock(
 			filterRules,
 		},
 	} as any
+}
+
+const include = (expr: string): GlobFilterRule => ({
+	expr,
+	options: { caseSensitive: false },
+	type: 'include',
+})
+const exclude = (expr: string): GlobFilterRule => ({
+	expr,
+	options: { caseSensitive: false },
+	type: 'exclude',
+})
+const decider = (rules: GlobFilterRule[]) => {
+	const compiled = compileFilterRules(rules)
+	return (path: string, isDir = path.endsWith('/')) =>
+		isPathIncluded(path, compiled, isDir)
 }
 
 describe('computeEffectiveFilterRules', () => {
@@ -42,195 +54,227 @@ describe('computeEffectiveFilterRules', () => {
 			{
 				expr: '.obsidian/plugins/**/node_modules',
 				options: { caseSensitive: true },
+				type: 'exclude',
 			},
-			{ expr: '.obsidian/plugins/**/.git', options: { caseSensitive: true } },
+			{
+				expr: '.obsidian/plugins/**/.git',
+				options: { caseSensitive: true },
+				type: 'exclude',
+			},
 			{
 				expr: '.obsidian/plugins/**/.pnpm-store',
 				options: { caseSensitive: true },
+				type: 'exclude',
 			},
 			{
 				expr: '.obsidian/plugins/nutstore-sync/data.local.json',
 				options: { caseSensitive: true },
+				type: 'exclude',
 			},
 			{
 				expr: '.obsidian/plugins/nutstore-sync/cache/ObsidianNutstoreSync.SyncCache.v1',
 				options: { caseSensitive: true },
+				type: 'exclude',
 			},
-			{ expr: '.obsidian/workspace', options: { caseSensitive: true } },
-			{ expr: '.obsidian/workspace.json', options: { caseSensitive: true } },
+			{
+				expr: '.obsidian/workspace',
+				options: { caseSensitive: true },
+				type: 'exclude',
+			},
+			{
+				expr: '.obsidian/workspace.json',
+				options: { caseSensitive: true },
+				type: 'exclude',
+			},
 		])
 		expect(filterRules).toEqual(
 			expect.arrayContaining([
 				{
 					expr: '.obsidian/plugins/**/node_modules',
 					options: { caseSensitive: true },
+					type: 'exclude',
 				},
 				{
 					expr: '.obsidian/plugins/**/node_modules/**',
 					options: { caseSensitive: true },
+					type: 'exclude',
 				},
-				{ expr: '.obsidian/plugins/**/.git', options: { caseSensitive: true } },
+				{
+					expr: '.obsidian/plugins/**/.git',
+					options: { caseSensitive: true },
+					type: 'exclude',
+				},
 				{
 					expr: '.obsidian/plugins/**/.git/**',
 					options: { caseSensitive: true },
-				},
-				{
-					expr: '.obsidian/plugins/**/.pnpm-store',
-					options: { caseSensitive: true },
-				},
-				{
-					expr: '.obsidian/plugins/**/.pnpm-store/**',
-					options: { caseSensitive: true },
+					type: 'exclude',
 				},
 			]),
 		)
 	})
 
-	it('keeps user configDir whitelist rules in all mode', () => {
+	it('a directory-level exclude prunes children even with a child whitelist', () => {
 		const rules = computeEffectiveFilterRules(
 			createPluginMock('all', {
-				exclusionRules: [
-					{ expr: '.obsidian/**', options: { caseSensitive: false } },
-				],
-				inclusionRules: [
-					{
-						expr: '.obsidian/snippets/file-tree-colors.css',
-						options: { caseSensitive: false },
-					},
-					{
-						expr: '.obsidian/plugins/manual-sorting/data.json',
-						options: { caseSensitive: false },
-					},
+				rules: [
+					exclude('.obsidian/**'),
+					include('.obsidian/snippets/file-tree-colors.css'),
+					include('.obsidian/plugins/manual-sorting/data.json'),
 				],
 			}),
 		)
-		const exclusions = rules.exclusionRules.map(
-			(rule) => new GlobMatch(rule.expr, rule.options),
-		)
-		const inclusions = rules.inclusionRules.map(
-			(rule) => new GlobMatch(rule.expr, rule.options),
-		)
+		const decide = decider(rules.rules)
 
-		expect(
-			needIncludeFromGlobRules(
-				'.obsidian/snippets/file-tree-colors.css',
-				inclusions,
-				exclusions,
-			),
-		).toBe(true)
-		expect(
-			needIncludeFromGlobRules(
-				'.obsidian/plugins/manual-sorting/data.json',
-				inclusions,
-				exclusions,
-			),
-		).toBe(true)
-		expect(
-			needIncludeFromGlobRules('.obsidian/app.json', inclusions, exclusions),
-		).toBe(false)
+		expect(decide('.obsidian/snippets/file-tree-colors.css')).toBe(false)
+		expect(decide('.obsidian/plugins/manual-sorting/data.json')).toBe(false)
+		expect(decide('.obsidian/app.json')).toBe(false)
 	})
 
-	it('allows user inclusions to override mode-derived configDir exclusions', () => {
+	it('re-including the parent dir enables a child whitelist', () => {
+		const rules = computeEffectiveFilterRules(
+			createPluginMock('all', {
+				rules: [
+					exclude('.obsidian/**'),
+					include('.obsidian'),
+					include('.obsidian/**'),
+					exclude('.obsidian/plugins/foo/**'),
+					include('.obsidian/snippets/file-tree-colors.css'),
+				],
+			}),
+		)
+		const decide = decider(rules.rules)
+
+		expect(decide('.obsidian/snippets/file-tree-colors.css')).toBe(true)
+		expect(decide('.obsidian/app.json')).toBe(true)
+		expect(decide('.obsidian/plugins/foo/main.js')).toBe(false)
+	})
+
+	it('a later user include can bring the config dir back after **/.*', () => {
+		const rules = computeEffectiveFilterRules(
+			createPluginMock('all', {
+				rules: [
+					exclude('**/.*'),
+					include('.obsidian'),
+					include('.obsidian/**'),
+				],
+			}),
+		)
+		const decide = decider(rules.rules)
+
+		expect(decide('.obsidian')).toBe(true)
+		expect(decide('.obsidian/app.json')).toBe(true)
+		expect(decide('.obsidian/plugins/sample/main.js')).toBe(true)
+		expect(decide('.trash')).toBe(false)
+	})
+
+	it('mode none excludes the whole config dir', () => {
 		const rules = computeEffectiveFilterRules(
 			createPluginMock('none', {
-				exclusionRules: [],
-				inclusionRules: [
-					{
-						expr: '.obsidian/bookmarks.json',
-						options: { caseSensitive: false },
-					},
+				rules: [
+					exclude('**/.*'),
+					include('.obsidian'),
+					include('.obsidian/**'),
 				],
 			}),
 		)
-		const exclusions = rules.exclusionRules.map(
-			(rule) => new GlobMatch(rule.expr, rule.options),
-		)
-		const inclusions = rules.inclusionRules.map(
-			(rule) => new GlobMatch(rule.expr, rule.options),
-		)
+		const decide = decider(rules.rules)
 
-		expect(
-			needIncludeFromGlobRules(
-				'.obsidian/bookmarks.json',
-				inclusions,
-				exclusions,
-			),
-		).toBe(true)
-		expect(
-			needIncludeFromGlobRules('.obsidian/app.json', inclusions, exclusions),
-		).toBe(false)
+		expect(decide('.obsidian/app.json')).toBe(false)
+		expect(decide('.obsidian')).toBe(false)
+		expect(decide('note.md')).toBe(true)
 	})
 
-	it('allows user inclusions to extend bookmarks mode', () => {
+	it('bookmarks mode syncs only the bookmark file', () => {
+		const rules = computeEffectiveFilterRules(createPluginMock('bookmarks'))
+		const decide = decider(rules.rules)
+
+		expect(decide('.obsidian/bookmarks.json')).toBe(true)
+		expect(decide('.obsidian/app.json')).toBe(false)
+		expect(decide('.obsidian/plugins/sample/main.js')).toBe(false)
+		expect(decide('note.md')).toBe(true)
+	})
+
+	it.each([
+		{ label: 'English', configDir: '.obsidian', parentDir: 'notes' },
+		{ label: '中文', configDir: '.配置', parentDir: '笔记' },
+	])(
+		'$label: bookmarks mode does not re-include a nested config directory',
+		({ configDir, parentDir }) => {
+			const rules = computeEffectiveFilterRules(
+				createPluginMock('bookmarks', { rules: [exclude('**/.*')] }, configDir),
+			)
+			const decide = decider(rules.rules)
+
+			expect(decide(`${configDir}/bookmarks.json`)).toBe(true)
+			expect(decide(`${parentDir}/${configDir}/example.json`)).toBe(false)
+		},
+	)
+
+	it('all mode leaves user rules in full control of the config dir', () => {
+		const plugin = createPluginMock('all', {
+			rules: [exclude('**/.*'), include('.obsidian'), include('.obsidian/**')],
+		})
+		const rules = computeEffectiveFilterRules(plugin)
+		expect(rules.configDirSyncMode).toBe('all')
+		expect(rules.rules.length).toBeGreaterThanOrEqual(3)
+	})
+
+	it('system rules sit at the end so they always win', () => {
 		const rules = computeEffectiveFilterRules(
-			createPluginMock('bookmarks', {
-				exclusionRules: [],
-				inclusionRules: [
-					{
-						expr: '.obsidian/snippets/file-tree-colors.css',
-						options: { caseSensitive: false },
-					},
-				],
+			createPluginMock('all', {
+				rules: [include('.obsidian'), include('.obsidian/**')],
 			}),
 		)
-		const exclusions = rules.exclusionRules.map(
-			(rule) => new GlobMatch(rule.expr, rule.options),
-		)
-		const inclusions = rules.inclusionRules.map(
-			(rule) => new GlobMatch(rule.expr, rule.options),
-		)
+		const decide = decider(rules.rules)
+		const nodeModulesPath = '.obsidian/plugins/foo/node_modules/pkg/index.js'
 
-		expect(
-			needIncludeFromGlobRules(
-				'.obsidian/bookmarks.json',
-				inclusions,
-				exclusions,
-			),
-		).toBe(true)
-		expect(
-			needIncludeFromGlobRules(
-				'.obsidian/snippets/file-tree-colors.css',
-				inclusions,
-				exclusions,
-			),
-		).toBe(true)
-		expect(
-			needIncludeFromGlobRules('.obsidian/app.json', inclusions, exclusions),
-		).toBe(false)
+		expect(decide('.obsidian/plugins/foo/main.js')).toBe(true)
+		expect(decide(nodeModulesPath)).toBe(false)
 	})
 
 	it('adds plugin dependency exclusions in all mode', () => {
 		const rules = computeEffectiveFilterRules(createPluginMock('all'))
-		expect(rules.exclusionRules).toEqual(
+		expect(rules.rules).toEqual(
 			expect.arrayContaining([
 				{
 					expr: '.obsidian/plugins/**/node_modules',
 					options: { caseSensitive: true },
+					type: 'exclude',
 				},
-				{ expr: '.obsidian/plugins/**/.git', options: { caseSensitive: true } },
+				{
+					expr: '.obsidian/plugins/**/.git',
+					options: { caseSensitive: true },
+					type: 'exclude',
+				},
 				{
 					expr: '.obsidian/plugins/**/.git/**',
 					options: { caseSensitive: true },
+					type: 'exclude',
 				},
 				{
 					expr: '.obsidian/plugins/**/.pnpm-store',
 					options: { caseSensitive: true },
+					type: 'exclude',
 				},
 				{
 					expr: '.obsidian/plugins/**/.pnpm-store/**',
 					options: { caseSensitive: true },
+					type: 'exclude',
 				},
 				{
 					expr: '.obsidian/plugins/**/node_modules/**',
 					options: { caseSensitive: true },
+					type: 'exclude',
 				},
 				{
 					expr: '.obsidian/plugins/nutstore-sync/cache/ObsidianNutstoreSync.SyncCache.v1',
 					options: { caseSensitive: true },
+					type: 'exclude',
 				},
 				{
 					expr: '.obsidian/plugins/nutstore-sync/cache/ObsidianNutstoreSync.SyncCache.v1/**',
 					options: { caseSensitive: true },
+					type: 'exclude',
 				},
 			]),
 		)
@@ -240,23 +284,17 @@ describe('computeEffectiveFilterRules', () => {
 		'excludes the automatic remote sync cache file in %s mode',
 		(mode) => {
 			const rules = computeEffectiveFilterRules(createPluginMock(mode))
-			const exclusions = rules.exclusionRules.map(
-				(rule) => new GlobMatch(rule.expr, rule.options),
-			)
-			const inclusions = rules.inclusionRules.map(
-				(rule) => new GlobMatch(rule.expr, rule.options),
-			)
-
+			const decide = decider(rules.rules)
 			expect(
-				needIncludeFromGlobRules(
+				decide(
 					'.obsidian/plugins/nutstore-sync/cache/ObsidianNutstoreSync.SyncCache.v1',
-					inclusions,
-					exclusions,
 				),
 			).toBe(false)
 		},
 	)
+})
 
+describe('shouldUseRemoteTraversalCache', () => {
 	it.each([
 		{ label: 'English', configDir: '.obsidian', mode: 'none' as const },
 		{ label: '中文', configDir: '.配置', mode: 'bookmarks' as const },
@@ -264,10 +302,7 @@ describe('computeEffectiveFilterRules', () => {
 		'$label: disables the remote traversal cache outside all config synchronization',
 		({ configDir, mode }) => {
 			expect(
-				shouldUseRemoteTraversalCache(configDir, mode, {
-					exclusionRules: [],
-					inclusionRules: [],
-				}),
+				shouldUseRemoteTraversalCache(configDir, mode, { rules: [] }),
 			).toBe(false)
 		},
 	)
@@ -275,32 +310,14 @@ describe('computeEffectiveFilterRules', () => {
 	it('disables the remote traversal cache for a user config directory exclusion', () => {
 		expect(
 			shouldUseRemoteTraversalCache('.obsidian', 'all', {
-				exclusionRules: [
-					{ expr: '.obsidian/**', options: { caseSensitive: false } },
-				],
-				inclusionRules: [],
+				rules: [exclude('.obsidian/**')],
 			}),
 		).toBe(false)
 	})
 
 	it('allows the remote traversal cache when all config synchronization is enabled', () => {
 		expect(
-			shouldUseRemoteTraversalCache('.obsidian', 'all', {
-				exclusionRules: [],
-				inclusionRules: [],
-			}),
-		).toBe(true)
-	})
-
-	it('uses mode-derived rules as normal glob rules', () => {
-		const inclusion = [new GlobMatch('**/*.json', { caseSensitive: false })]
-		const exclusion = [new GlobMatch('.obsidian', { caseSensitive: false })]
-		expect(
-			needIncludeFromGlobRules(
-				'.obsidian/workspace.json',
-				inclusion,
-				exclusion,
-			),
+			shouldUseRemoteTraversalCache('.obsidian', 'all', { rules: [] }),
 		).toBe(true)
 	})
 })

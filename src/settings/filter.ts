@@ -64,40 +64,20 @@ export default class FilterSettings extends BaseSettings {
 					}),
 			)
 
-		// Inclusion
+		// Rules
 		new Setting(this.containerEl)
-			.setName(i18n.t('settings.filters.include.name'))
-			.setDesc(i18n.t('settings.filters.include.desc'))
+			.setName(i18n.t('settings.filters.name'))
+			.setDesc(i18n.t('settings.filters.desc'))
 			.addButton((button) => {
 				button.setButtonText(i18n.t('settings.filters.edit')).onClick(() => {
 					new FilterEditorModal(
 						this.plugin,
-						this.plugin.settings.filterRules.inclusionRules,
+						this.plugin.settings.filterRules.rules,
 						async (filters) => {
-							this.plugin.settings.filterRules.inclusionRules = filters
+							this.plugin.settings.filterRules.rules = filters
 							await this.plugin.settingsService.saveSettings()
 							this.display()
 						},
-						FilterEditorModal.FilterType.Include,
-					).open()
-				})
-			})
-
-		// Exclusion
-		new Setting(this.containerEl)
-			.setName(i18n.t('settings.filters.exclude.name'))
-			.setDesc(i18n.t('settings.filters.exclude.desc'))
-			.addButton((button) => {
-				button.setButtonText(i18n.t('settings.filters.edit')).onClick(() => {
-					new FilterEditorModal(
-						this.plugin,
-						this.plugin.settings.filterRules.exclusionRules,
-						async (filters) => {
-							this.plugin.settings.filterRules.exclusionRules = filters
-							await this.plugin.settingsService.saveSettings()
-							this.display()
-						},
-						FilterEditorModal.FilterType.Exclude,
 					).open()
 				})
 			})

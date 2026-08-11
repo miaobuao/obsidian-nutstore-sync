@@ -323,6 +323,8 @@
 			"exceedsMax": "数值超过最大限制 {{max}} 分钟（1天），已自动调整"
 		},
 		"filters": {
+			"name": "过滤规则",
+			"desc": "使用 gitignore 风格的路径规则。规则从上到下判定，最后命中的规则生效；包含规则不能跨过已排除的父目录。每条规则的 Aa 开关控制是否区分大小写。",
 			"add": "添加规则",
 			"remove": "删除",
 			"confirmRemove": "确认删除",
@@ -330,13 +332,9 @@
 			"save": "保存",
 			"cancel": "取消",
 			"placeholder": "例如: .DS_Store, *.pdf",
-			"exclude": {
-				"name": "排除规则",
-				"desc": "符合规则的文件/文件夹将不会被同步"
-			},
-			"include": {
-				"name": "包含规则",
-				"desc": "符合规则的文件/文件夹会被同步，如果和排除规则有冲突，会优先选择包含规则。"
+			"types": {
+				"exclude": "排除",
+				"include": "包含"
 			}
 		},
 		"configDirSync": {
