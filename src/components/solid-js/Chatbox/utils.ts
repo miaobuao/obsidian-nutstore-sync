@@ -55,6 +55,25 @@ export function formatToolResult(
 		: (JSON.stringify(toolCall.output, null, 2) ?? String(toolCall.output))
 }
 
+export function toolCallPurpose(
+	toolCall: ChatDisplayToolCallBlock['toolCall'],
+) {
+	const input = toolCall.input
+	if (input && typeof input === 'object' && !Array.isArray(input)) {
+		const purpose = (input as Record<string, unknown>).purpose
+		if (typeof purpose === 'string' && purpose.trim() !== '') {
+			return purpose.trim()
+		}
+	}
+	return undefined
+}
+
+export function toolCallDisplayTitle(
+	toolCall: ChatDisplayToolCallBlock['toolCall'],
+) {
+	return toolCallPurpose(toolCall) ?? toolCall.toolName
+}
+
 export function fencedCode(language: string, value: string) {
 	const longestBacktickRun = Math.max(
 		0,
@@ -72,12 +91,12 @@ export function stringifyJsonValue(value: unknown) {
 	}
 }
 
-export function formatToolDetailsMarkdown(params: unknown, result?: string) {
-	const lines = [
-		`${t('chatbox.ui.labels.params')}:`,
-		'',
-		fencedCode('json', stringifyJsonValue(params)),
-	]
+export function formatToolDetailsMarkdown(params?: unknown, result?: string) {
+	const lines: string[] = []
+	if (params !== undefined) {
+		lines.push(`${t('chatbox.ui.labels.params')}:`, '')
+		lines.push(fencedCode('json', stringifyJsonValue(params)))
+	}
 	const resultText = result?.trim()
 
 	if (resultText) {

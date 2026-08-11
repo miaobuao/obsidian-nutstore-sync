@@ -16,6 +16,7 @@ import {
 	recordMetadataDep,
 	scratchDep,
 } from '~/ai/tools/tool-context'
+import i18n from '~/i18n'
 import { booleanValue, textValue } from '../shared'
 
 const MAX_INLINE_BASH_OUTPUT_CHARS = 20 * 1024
@@ -41,8 +42,15 @@ export const bashTool = tool({
 		'This is not the host shell: node, python, xxd, and some command flags are unavailable.',
 		'Prefer supported commands such as ls, cat, rg, sed, awk, od, gzip, gunzip, zcat, zip, unzip, mkdir, mv, cp, and rm. zip and unzip support standard store/deflate archives, but not encrypted, Zip64, or uncommon compression formats.',
 		`Treat ${VAULT_MOUNT_POINT} as the user's personal knowledge base — only write there for content the user intends to keep; use ${BASH_TMP_MOUNT_POINT} for intermediate or scratch work.`,
+		`The required "purpose" field is a very short (up to 120 characters) plain-language summary of what this command does and why it is being run, safe for users who cannot read shell — no code, no markdown, no newlines, no shell syntax.`,
 	].join(' '),
 	inputSchema: z.object({
+		purpose: textValue('purpose').check(
+			z.maxLength(
+				120,
+				i18n.t('chatbox.errors.toolFieldTooLong', { field: 'purpose' }),
+			),
+		),
 		script: textValue('script'),
 		cwd: z._default(z.string(), VAULT_MOUNT_POINT),
 		stdin: z.optional(z.string()),

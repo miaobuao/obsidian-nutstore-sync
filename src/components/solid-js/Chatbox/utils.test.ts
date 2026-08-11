@@ -4,6 +4,8 @@ import {
 	formatDuration,
 	formatSystemNotificationMarkdown,
 	formatToolDetailsMarkdown,
+	toolCallDisplayTitle,
+	toolCallPurpose,
 } from './utils'
 
 describe('formatDuration', () => {
@@ -45,5 +47,71 @@ describe('chat detail markdown', () => {
 
 		expect(markdown).toContain('```json')
 		expect(markdown).toContain('"message": "状态更新 / Status update"')
+	})
+
+	it('omits the params section when params are hidden', () => {
+		const markdown = formatToolDetailsMarkdown(
+			undefined,
+			'处理完成 / Completed',
+		)
+
+		expect(markdown).not.toContain('params')
+		expect(markdown).not.toContain('```json')
+		expect(markdown).toContain('```text\n处理完成 / Completed\n```')
+	})
+})
+
+describe('toolCallPurpose', () => {
+	function makeToolCall(input: unknown) {
+		return { toolName: 'bash', input } as unknown as Parameters<
+			typeof toolCallPurpose
+		>[0]
+	}
+
+	it('returns the trimmed plain-language purpose when present', () => {
+		expect(
+			toolCallPurpose(makeToolCall({ purpose: '  读取备注 / Read note  ' })),
+		).toBe('读取备注 / Read note')
+	})
+
+	it('returns undefined when purpose is blank, missing, or not a string', () => {
+		for (const input of [
+			undefined,
+			null,
+			'string',
+			{ purpose: '' },
+			{ purpose: '   ' },
+			{ purpose: 42 },
+			{},
+		]) {
+			expect(toolCallPurpose(makeToolCall(input))).toBeUndefined()
+		}
+	})
+})
+
+describe('toolCallDisplayTitle', () => {
+	function makeToolCall(input: unknown) {
+		return { toolName: 'bash', input } as unknown as Parameters<
+			typeof toolCallDisplayTitle
+		>[0]
+	}
+
+	it('prefers a non-empty plain-language purpose over the tool name', () => {
+		const title = toolCallDisplayTitle(
+			makeToolCall({ purpose: '读取备注内容 / Read the note content' }),
+		)
+		expect(title).toBe('读取备注内容 / Read the note content')
+	})
+
+	it('falls back to the tool name when purpose is blank or whitespace', () => {
+		for (const purpose of ['', '   ']) {
+			expect(toolCallDisplayTitle(makeToolCall({ purpose }))).toBe('bash')
+		}
+	})
+
+	it('falls back to the tool name when purpose is missing or not a string', () => {
+		for (const input of [undefined, null, 'string', { purpose: 42 }, {}]) {
+			expect(toolCallDisplayTitle(makeToolCall(input))).toBe('bash')
+		}
 	})
 })

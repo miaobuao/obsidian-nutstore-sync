@@ -219,6 +219,19 @@ describe('tool registration', () => {
 		expect('use_skill' in createAITools()).toBe(false)
 	})
 
+	it('requires a short plain-language purpose for the bash tool', async () => {
+		const tool = findTool(createAITools(), 'bash')
+		const jsonSchema = (await asSchema(
+			tool.inputSchema as FlexibleSchema<unknown>,
+		).jsonSchema) as {
+			required?: string[]
+			properties?: Record<string, unknown>
+		}
+
+		expect(jsonSchema.required).toContain('purpose')
+		expect(jsonSchema.properties?.purpose).toBeDefined()
+	})
+
 	it('does not register view_image when image input is unavailable', () => {
 		expect('view_image' in createAITools()).toBe(false)
 	})
