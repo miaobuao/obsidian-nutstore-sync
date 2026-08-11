@@ -3,6 +3,7 @@ import type { IFileSystem } from 'just-bash/browser'
 import type { App } from 'obsidian'
 import type { PermissionGuard } from '~/ai/tools/permission-guard'
 import { ReversibleOpRecorder } from './fs'
+import { archiveCommands } from './zip'
 import { createVaultFileSystem, VAULT_MOUNT_POINT } from '../vault-filesystem'
 
 export interface VaultBashExecOptions {
@@ -27,7 +28,11 @@ export async function createVaultBash(
 		onRead,
 		scratch,
 	})
-	return new Bash({ fs, cwd: VAULT_MOUNT_POINT })
+	return new Bash({
+		fs,
+		cwd: VAULT_MOUNT_POINT,
+		customCommands: archiveCommands,
+	})
 }
 
 export async function execVaultBash(

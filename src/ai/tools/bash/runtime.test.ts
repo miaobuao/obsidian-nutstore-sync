@@ -392,6 +392,15 @@ describe.each(filesystemCases)('%s filesystem contract', (_name, createFs) => {
 })
 
 describe('vault bash runtime', () => {
+	it('uses the adapter mtime for vault directories', async () => {
+		const { vault } = createMockVault({}, ['docs'])
+		const bash = await createVaultBash(createApp(vault))
+
+		const stat = await bash.fs.stat('/vault/docs')
+
+		expect(stat.mtime.getTime()).toBeGreaterThan(0)
+	})
+
 	it('reads and writes hidden Vault Skills through the adapter mount', async () => {
 		const { vault, store } = createMockVault({
 			'.agents/skills/custom/SKILL.md': '# Custom',

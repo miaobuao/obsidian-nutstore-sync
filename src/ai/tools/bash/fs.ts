@@ -668,13 +668,17 @@ export class ObsidianVaultFs implements IFileSystem {
 		if (!stat) {
 			throw new Error(`ENOENT: no such file or directory, stat '${path}'`)
 		}
+		const adapterStat =
+			stat.isDir && stat.mtime === undefined
+				? await this.vault.adapter.stat(this.toVaultPath(normalized))
+				: undefined
 		return {
 			isFile: !stat.isDir,
 			isDirectory: stat.isDir,
 			isSymbolicLink: false,
 			mode: stat.isDir ? DIR_MODE : FILE_MODE,
 			size: stat.isDir ? 0 : (stat.size ?? 0),
-			mtime: new Date(stat.mtime ?? 0),
+			mtime: new Date(stat.mtime ?? adapterStat?.mtime ?? 0),
 		}
 	}
 
