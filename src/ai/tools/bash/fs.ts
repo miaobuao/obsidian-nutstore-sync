@@ -22,15 +22,10 @@ import type {
 	AISinglePathFileOperation,
 } from '~/ai/tools/file-operation'
 import type { PermissionGuard } from '~/ai/tools/permission-guard'
-import { copyReversibleToolOp } from '~/ai/chat/messages/reversible-op-utils'
-import type { ReversibleToolOp } from '~/ai/chat/types'
-import {
-	createCompressedFileContent,
-	decodeReversibleFileSnapshot,
-} from '~/ai/chat/messages/reversible-content'
+import type { ReversibleFileSnapshot, ReversibleToolOp } from '~/ai/chat/types'
+import { decodeReversibleFileSnapshot } from '~/ai/chat/messages/reversible-content'
 import { mkdirsVault } from '~/utils/mkdirs-vault'
 import { existsLocalPath } from '~/utils/local-vault-io'
-import { sha256Base64 } from '~/utils/sha256'
 import { statVaultItem } from '~/utils/stat-vault-item'
 import { VAULT_MOUNT_POINT } from './mount-points'
 
@@ -38,21 +33,6 @@ const FILE_MODE = 0o644
 const DIR_MODE = 0o755
 type ReadFileOptions = { encoding?: BufferEncoding | null }
 type WriteFileOptions = { encoding?: BufferEncoding }
-type SnapshotKind = 'file' | 'dir'
-type VaultSnapshotNode =
-	| {
-			path: string
-			kind: 'dir'
-	  }
-	| {
-			path: string
-			kind: 'file'
-			contentHash: string
-			contentCompressed: {
-				compress: 'deflate'
-				blob: Blob
-			}
-	  }
 
 function getEncoding(
 	options?: ReadFileOptions | WriteFileOptions | BufferEncoding | null,
@@ -151,14 +131,6 @@ function ensureNotEscapingRoot(inputPath: string) {
 	return normalized
 }
 
-function normalizeReversibleVaultPath(path: string) {
-	const normalized = ensureNotEscapingRoot(path)
-	if (normalized === '/') {
-		return ''
-	}
-	return normalizePath(normalized.slice(1))
-}
-
 async function copyRecursive(
 	fs: IFileSystem,
 	src: string,
@@ -206,18 +178,33 @@ export async function listVaultPaths(app: App) {
 }
 
 export class ReversibleOpRecorder {
-	private readonly operations: ReversibleToolOp[] = []
+	private captureDepth = 0
+	private readonly virtualInitial = new Map<
+		string,
+		ReversibleFileSnapshot | { kind: 'dir' } | undefined
+	>()
+	private readonly virtualLatest = new Map<
+		string,
+		ReversibleFileSnapshot | { kind: 'dir' } | undefined
+	>()
 
-	private async currentState(vault: Vault, vaultPath: string) {
-		if (!(await vault.adapter.exists(vaultPath))) return undefined
-		const stat = await vault.adapter.stat(vaultPath)
-		if (!stat) return undefined
-		if (stat.type === 'folder') return { kind: 'dir' as const }
-		const content = await vault.adapter.readBinary(vaultPath)
-		return {
-			kind: 'file' as const,
-			contentCompressed: createCompressedFileContent(content),
-		}
+	get isCapturing() {
+		return this.captureDepth > 0
+	}
+	beginCapture() {
+		this.captureDepth++
+	}
+	endCapture() {
+		this.captureDepth--
+	}
+
+	recordVirtualTransition(
+		path: string,
+		before: ReversibleFileSnapshot | { kind: 'dir' } | undefined,
+		after: ReversibleFileSnapshot | { kind: 'dir' } | undefined,
+	) {
+		if (!this.virtualInitial.has(path)) this.virtualInitial.set(path, before)
+		this.virtualLatest.set(path, after)
 	}
 
 	private async sameFileContent(
@@ -236,102 +223,37 @@ export class ReversibleOpRecorder {
 		)
 	}
 
-	recordCreate(vaultPath: string, kind: SnapshotKind) {
-		const normalizedPath = normalizeReversibleVaultPath(vaultPath)
-		if (!normalizedPath) {
-			return
-		}
-		this.operations.push({
-			vaultPath: normalizedPath,
-			operation: 'create',
-			before: { kind },
-		})
-	}
-
-	recordUpdate(
-		vaultPath: string,
-		content: Extract<VaultSnapshotNode, { kind: 'file' }>,
-	) {
-		const normalizedPath = normalizeReversibleVaultPath(vaultPath)
-		if (!normalizedPath) {
-			return
-		}
-		this.operations.push({
-			vaultPath: normalizedPath,
-			operation: 'update',
-			before: {
-				kind: 'file',
-				contentCompressed: content.contentCompressed,
-			},
-		})
-	}
-
-	recordDelete(snapshot: VaultSnapshotNode) {
-		const normalizedPath = normalizeReversibleVaultPath(snapshot.path)
-		if (!normalizedPath) {
-			return
-		}
-		this.operations.push({
-			vaultPath: normalizedPath,
-			operation: 'delete',
-			before:
-				snapshot.kind === 'dir'
-					? { kind: 'dir' }
-					: {
-							kind: 'file',
-							contentCompressed: snapshot.contentCompressed,
-						},
-		})
-	}
-
-	getOperations(): ReversibleToolOp[] {
-		return this.operations.map(copyReversibleToolOp)
-	}
-
-	async getNetOperations(vault: Vault): Promise<ReversibleToolOp[]> {
-		const firstByPath = new Map<string, ReversibleToolOp>()
-		for (const operation of this.operations) {
-			firstByPath.set(
-				operation.vaultPath,
-				firstByPath.get(operation.vaultPath) ?? operation,
-			)
-		}
-
+	async getNetOperations(): Promise<ReversibleToolOp[]> {
 		const result: ReversibleToolOp[] = []
-		for (const [vaultPath, first] of firstByPath) {
-			const initial = first.operation === 'create' ? undefined : first.before
-			const after = await this.currentState(vault, vaultPath)
-			if (!initial && !after) continue
+		for (const [path, initial] of [...this.virtualInitial].sort(
+			([left], [right]) => {
+				const depth = getPathDepth(left) - getPathDepth(right)
+				return depth !== 0 ? depth : left.localeCompare(right)
+			},
+		)) {
+			const after = this.virtualLatest.get(path)
 			if (!initial && after) {
 				result.push({
-					vaultPath,
+					vaultPath: path,
 					operation: 'create',
 					before: { kind: after.kind },
 					after,
 				})
-				continue
-			}
-			if (initial && !after) {
-				result.push({ vaultPath, operation: 'delete', before: initial })
-				continue
-			}
-			if (initial?.kind === 'file' && after?.kind === 'file') {
-				if (await this.sameFileContent(initial, after)) continue
+			} else if (initial && !after) {
+				result.push({ vaultPath: path, operation: 'delete', before: initial })
+			} else if (initial?.kind === 'file' && after?.kind === 'file') {
+				if (!(await this.sameFileContent(initial, after))) {
+					result.push({
+						vaultPath: path,
+						operation: 'update',
+						before: initial,
+						after,
+					})
+				}
+			} else if (initial && after && initial.kind !== after.kind) {
+				result.push({ vaultPath: path, operation: 'delete', before: initial })
 				result.push({
-					vaultPath,
-					operation: 'update',
-					before: initial,
-					after,
-				})
-				continue
-			}
-			if (initial?.kind === after?.kind) continue
-			if (initial) {
-				result.push({ vaultPath, operation: 'delete', before: initial })
-			}
-			if (after) {
-				result.push({
-					vaultPath,
+					vaultPath: path,
 					operation: 'create',
 					before: { kind: after.kind },
 					after,
@@ -350,7 +272,6 @@ export class ObsidianVaultFs implements IFileSystem {
 		private readonly vault: Vault,
 		initialPaths: string[] = [],
 		private readonly permissionGuard?: PermissionGuard,
-		private readonly recorder?: ReversibleOpRecorder,
 		private readonly onRead?: (vaultPath: string) => void,
 	) {
 		for (const path of initialPaths) {
@@ -406,118 +327,6 @@ export class ObsidianVaultFs implements IFileSystem {
 	private toVaultPath(inputPath: string) {
 		const normalized = ensureNotEscapingRoot(inputPath)
 		return normalized === '/' ? '' : normalizePath(normalized.slice(1))
-	}
-
-	private async readFileSnapshotContent(target: TFile) {
-		const content = new Uint8Array(
-			(await this.vault.readBinary(target as never)) as ArrayBuffer,
-		)
-		const [contentHash, contentCompressed] = await Promise.all([
-			sha256Base64(toArrayBuffer(content)),
-			createCompressedFileContent(content),
-		])
-		return { contentHash, contentCompressed }
-	}
-
-	private async snapshotNode(
-		target:
-			| TAbstractFile
-			| { path: string; name: string; children?: unknown[] },
-		virtualPath: string,
-	): Promise<VaultSnapshotNode[]> {
-		if (target instanceof TFolder) {
-			const children = [...target.children].sort((left, right) =>
-				left.path.localeCompare(right.path),
-			)
-			const snapshots: VaultSnapshotNode[] = []
-			for (const child of children) {
-				snapshots.push(
-					...(await this.snapshotNode(
-						child,
-						joinVirtualPath(virtualPath, child.name),
-					)),
-				)
-			}
-			snapshots.push({ path: virtualPath, kind: 'dir' })
-			return snapshots
-		}
-
-		return [
-			{
-				path: virtualPath,
-				kind: 'file',
-				...(await this.readFileSnapshotContent(target as TFile)),
-			},
-		]
-	}
-
-	private async snapshotSubtree(path: string) {
-		const normalized = ensureNotEscapingRoot(path)
-		const target = this.vault.getAbstractFileByPath(
-			this.toVaultPath(normalized),
-		)
-		if (!target) {
-			return []
-		}
-		return this.snapshotNode(target, normalized)
-	}
-
-	private toSnapshotMap(entries: VaultSnapshotNode[]) {
-		return new Map(entries.map((entry) => [entry.path, entry]))
-	}
-
-	private recordDeleteSnapshots(entries: VaultSnapshotNode[]) {
-		if (!this.recorder) {
-			return
-		}
-		for (const entry of entries) {
-			this.recorder.recordDelete(entry)
-		}
-	}
-
-	private recordTargetDiff(
-		beforeEntries: VaultSnapshotNode[],
-		afterEntries: VaultSnapshotNode[],
-	) {
-		if (!this.recorder) {
-			return
-		}
-		const beforeByPath = this.toSnapshotMap(beforeEntries)
-		const afterByPath = this.toSnapshotMap(afterEntries)
-
-		for (const entry of afterEntries.sort((left, right) => {
-			const depthDelta = getPathDepth(left.path) - getPathDepth(right.path)
-			return depthDelta !== 0 ? depthDelta : left.path.localeCompare(right.path)
-		})) {
-			const previous = beforeByPath.get(entry.path)
-			if (!previous) {
-				this.recorder.recordCreate(entry.path, entry.kind)
-				continue
-			}
-			if (previous.kind !== entry.kind) {
-				this.recorder.recordDelete(previous)
-				this.recorder.recordCreate(entry.path, entry.kind)
-				continue
-			}
-			if (
-				entry.kind === 'file' &&
-				previous.kind === 'file' &&
-				previous.contentHash !== entry.contentHash
-			) {
-				this.recorder.recordUpdate(entry.path, previous)
-			}
-		}
-
-		for (const entry of beforeEntries
-			.filter((entry) => !afterByPath.has(entry.path))
-			.sort((left, right) => {
-				const depthDelta = getPathDepth(right.path) - getPathDepth(left.path)
-				return depthDelta !== 0
-					? depthDelta
-					: left.path.localeCompare(right.path)
-			})) {
-			this.recorder.recordDelete(entry)
-		}
 	}
 
 	private async deleteAbstractFile(target: TAbstractFile) {
@@ -612,15 +421,9 @@ export class ObsidianVaultFs implements IFileSystem {
 						`EISDIR: illegal operation on a directory, write '${path}'`,
 					)
 				}
-				this.recorder?.recordUpdate(path, {
-					path,
-					kind: 'file',
-					...(await this.readFileSnapshotContent(target)),
-				})
 				await this.vault.modifyBinary(target as never, toArrayBuffer(encoded))
 			} else {
 				await this.vault.createBinary(vaultPath, toArrayBuffer(encoded))
-				this.recorder?.recordCreate(path, 'file')
 			}
 			this.recordPath(path)
 		})
@@ -696,12 +499,7 @@ export class ObsidianVaultFs implements IFileSystem {
 				)
 			}
 		}
-		const before = await this.snapshotSubtree(normalized)
 		await mkdirsVault(this.vault, this.toVaultPath(normalized))
-		const after = await this.snapshotSubtree(normalized)
-		if (before.length === 0 && after.length > 0) {
-			this.recordTargetDiff(before, after)
-		}
 		this.recordPath(normalized)
 	}
 
@@ -765,7 +563,6 @@ export class ObsidianVaultFs implements IFileSystem {
 		if (!target) {
 			throw new Error(`ENOENT: no such file or directory, remove '${path}'`)
 		}
-		this.recordDeleteSnapshots(await this.snapshotSubtree(normalized))
 		await this.deleteAbstractFile(target)
 		this.forgetPath(normalized)
 	}
@@ -778,11 +575,9 @@ export class ObsidianVaultFs implements IFileSystem {
 	async mv(src: string, dest: string): Promise<void> {
 		await this.checkPermission({ kind: 'move', src, dest })
 		await this.withBatch(async () => {
-			const sourceSnapshots = await this.snapshotSubtree(src)
-			if (sourceSnapshots.length === 0) {
+			if (!(await this.exists(src))) {
 				throw new Error(`ENOENT: no such file or directory, move '${src}'`)
 			}
-			const destSnapshotsBefore = await this.snapshotSubtree(dest)
 			await this.mkdir(pathPosix.dirname(ensureNotEscapingRoot(dest)), {
 				recursive: true,
 			})
@@ -790,14 +585,9 @@ export class ObsidianVaultFs implements IFileSystem {
 			if (!target) {
 				throw new Error(`ENOENT: no such file or directory, move '${src}'`)
 			}
-			this.recordDeleteSnapshots(sourceSnapshots)
 			await this.vault.rename(target, this.toVaultPath(dest))
 			this.forgetPath(src)
 			this.recordPath(dest)
-			this.recordTargetDiff(
-				destSnapshotsBefore,
-				await this.snapshotSubtree(dest),
-			)
 		})
 	}
 

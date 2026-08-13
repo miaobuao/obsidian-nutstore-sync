@@ -23,7 +23,7 @@ import {
 	migrateChatSession,
 	normalizeLegacySession,
 } from '~/ai/chat/session/session-migration'
-import type { ChatAgentState } from '~/ai/chat/types'
+import type { ChatAgentState, ReversibleToolOp } from '~/ai/chat/types'
 import { getSessionSubagents } from '~/ai/chat/domain'
 import { normalizeReversibleToolOpRecord } from '~/ai/chat/messages/reversible-op-utils'
 import { MASTER_AGENT_ID } from '~/ai/chat/agents/registry'
@@ -313,9 +313,12 @@ export class SessionStore {
 		const migrated = migrateChatSession(
 			'schemaVersion' in session ? session : normalizeLegacySession(session),
 		)
-		const rehydrated = this.normalizeSession(migrated.session)
+		const { session: rehydrated, changed: opsRewritten } =
+			this.normalizeSession(migrated.session)
 		let changed =
-			migrated.changed || this.selection.sanitizeSessionSelection(rehydrated)
+			migrated.changed ||
+			this.selection.sanitizeSessionSelection(rehydrated) ||
+			opsRewritten
 
 		for (const agent of getSessionSubagents(rehydrated)) {
 			if (agent.status !== 'queued' && agent.status !== 'running') {
@@ -332,7 +335,11 @@ export class SessionStore {
 		}
 	}
 
-	normalizeSession(session: ChatSession): ChatSession {
+	normalizeSession(session: ChatSession): {
+		session: ChatSession
+		changed: boolean
+	} {
+		let changed = false
 		const normalizeMessage = (message: ChatAgentState['timeline'][number]) => ({
 			...message,
 			metadata: message.metadata
@@ -352,6 +359,21 @@ export class SessionStore {
 					normalizeAgent(child),
 				]),
 			)
+			const normalizeOperations = (operations: ReversibleToolOp[]) => {
+				const normalized: ReversibleToolOp[] = []
+				for (const operation of operations) {
+					const canonical = normalizeReversibleToolOpRecord(operation)
+					if (!canonical) {
+						changed = true
+						continue
+					}
+					if (canonical.vaultPath !== operation.vaultPath) {
+						changed = true
+					}
+					normalized.push(canonical)
+				}
+				return normalized
+			}
 			return {
 				id: agent.id,
 				type:
@@ -371,9 +393,7 @@ export class SessionStore {
 					Object.entries(agent.operations ?? {}).map(
 						([messageId, operations]) => [
 							messageId,
-							operations
-								.map(normalizeReversibleToolOpRecord)
-								.filter((op): op is NonNullable<typeof op> => !!op),
+							normalizeOperations(operations ?? []),
 						],
 					),
 				),
@@ -403,21 +423,24 @@ export class SessionStore {
 		}
 		const master = normalizeAgent(session.subagents.master)
 		return {
-			schemaVersion: 2,
-			id: session.id,
-			createdAt: session.createdAt,
-			updatedAt: session.updatedAt || session.createdAt,
-			model: session.model ? { ...session.model } : undefined,
-			systemPrompt: session.systemPrompt,
-			inferenceParams: session.inferenceParams
-				? { ...session.inferenceParams }
-				: undefined,
-			disabledMcpServers: Array.isArray(session.disabledMcpServers)
-				? session.disabledMcpServers.filter(
-						(name): name is string => typeof name === 'string',
-					)
-				: undefined,
-			subagents: { master },
+			session: {
+				schemaVersion: 2,
+				id: session.id,
+				createdAt: session.createdAt,
+				updatedAt: session.updatedAt || session.createdAt,
+				model: session.model ? { ...session.model } : undefined,
+				systemPrompt: session.systemPrompt,
+				inferenceParams: session.inferenceParams
+					? { ...session.inferenceParams }
+					: undefined,
+				disabledMcpServers: Array.isArray(session.disabledMcpServers)
+					? session.disabledMcpServers.filter(
+							(name): name is string => typeof name === 'string',
+						)
+					: undefined,
+				subagents: { master },
+			},
+			changed,
 		}
 	}
 

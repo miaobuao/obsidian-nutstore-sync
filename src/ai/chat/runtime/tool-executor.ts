@@ -29,6 +29,10 @@ import {
 } from '~/ai/tools/permission-guard'
 import type { DispatchTaskFn } from '~/ai/tools/task'
 import { createAITools } from '~/ai/tools/tools'
+import type {
+	SettingsSnapshotFn,
+	SettingsUpdater,
+} from '~/ai/tools/tool-context'
 import type McpService from '~/services/mcp.service'
 import type { NutstoreSettings } from '~/settings'
 
@@ -38,6 +42,8 @@ export interface StableToolsContext {
 	scratch: IFileSystem
 	dispatchTask?: DispatchTaskFn
 	dispatchableDefinitions?: readonly AgentDefinition[]
+	getSettingsSnapshot?: SettingsSnapshotFn
+	updateSettings?: SettingsUpdater
 }
 
 export class ToolExecutor {
@@ -51,6 +57,10 @@ export class ToolExecutor {
 		private state: ChatState,
 		private runtimeStates: RuntimeStates,
 		private mcpService: McpService,
+		private settingsIo: {
+			getSettingsSnapshot: SettingsSnapshotFn
+			updateSettings: SettingsUpdater
+		},
 	) {}
 
 	setDispatchTaskHandler(handler: DispatchTaskFn) {
@@ -142,6 +152,8 @@ export class ToolExecutor {
 			dispatchableDefinitions: listDispatchableDefinitions({
 				fullAccess: Boolean(this.getSettings().yolo),
 			}),
+			getSettingsSnapshot: this.settingsIo.getSettingsSnapshot,
+			updateSettings: this.settingsIo.updateSettings,
 		}
 	}
 

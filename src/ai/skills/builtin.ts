@@ -3,6 +3,7 @@ import { posix as pathPosix } from 'path-browserify'
 import { BUILTIN_SKILLS_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 import aiChatboxReferenceContent from './builtin/nutstore-sync-guide/references/ai-chatbox.md?raw'
 import mcpServersReferenceContent from './builtin/nutstore-sync-guide/references/mcp-servers.md?raw'
+import settingsReferenceContent from './builtin/nutstore-sync-guide/references/settings.md?raw'
 import nutstoreSyncGuideContent from './builtin/nutstore-sync-guide/SKILL.md?raw'
 import syncReferenceContent from './builtin/nutstore-sync-guide/references/sync.md?raw'
 import skillCreatorContent from './builtin/skill-creator/SKILL.md?raw'
@@ -14,7 +15,7 @@ export const BUILTIN_SKILLS: readonly BuiltinSkill[] = [
 	{
 		name: 'nutstore-sync-guide',
 		description:
-			'Explain and operate Nutstore Sync features—including syncing, AI ChatBox, and MCP server configuration—when users ask for plugin help, setup, or troubleshooting.',
+			'Explain and operate Nutstore Sync features—including syncing, plugin settings, AI ChatBox, and MCP server configuration—when users ask for plugin help, setup, or troubleshooting.',
 		path: `${BUILTIN_SKILLS_ROOT}/nutstore-sync-guide/SKILL.md`,
 		content: nutstoreSyncGuideContent,
 		resources: [
@@ -25,6 +26,10 @@ export const BUILTIN_SKILLS: readonly BuiltinSkill[] = [
 			{
 				path: 'references/mcp-servers.md',
 				content: mcpServersReferenceContent,
+			},
+			{
+				path: 'references/settings.md',
+				content: settingsReferenceContent,
 			},
 			{
 				path: 'references/sync.md',

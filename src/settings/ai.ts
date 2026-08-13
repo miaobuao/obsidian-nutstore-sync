@@ -40,6 +40,14 @@ export default class AISettings extends BaseSettings {
 					}),
 			)
 
+		if (this.listUserManagedProviders().length === 0) {
+			const hintEl = this.containerEl.createEl('p', {
+				text: i18n.t('settings.ai.providers.emptyHint'),
+			})
+			hintEl.style.margin = '-0.25rem 0 1.25rem'
+			hintEl.style.opacity = '0.75'
+		}
+
 		new Setting(this.containerEl)
 			.setName(i18n.t('settings.ai.defaultModel.name'))
 			.setDesc(i18n.t('settings.ai.defaultModel.desc'))

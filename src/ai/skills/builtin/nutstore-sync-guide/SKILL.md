@@ -1,6 +1,6 @@
 ---
 name: nutstore-sync-guide
-description: Explain and operate Nutstore Sync features—including syncing, AI ChatBox, and MCP server configuration—when users ask for plugin help, setup, or troubleshooting.
+description: Explain and operate Nutstore Sync features—including syncing, plugin settings, AI ChatBox, and MCP server configuration—when users ask for plugin help, setup, or troubleshooting.
 ---
 
 # Nutstore Sync Guide
@@ -23,8 +23,10 @@ configuration workflow.
 | Topic                                                                        | Reference                   |
 | ---------------------------------------------------------------------------- | --------------------------- |
 | Synchronization, account connection, conflicts, large files, troubleshooting | `references/sync.md`        |
+| Plugin settings file, filters, sync timing, toggles, enums                   | `references/settings.md`    |
 | AI provider setup, ChatBox, approval behavior                                | `references/ai-chatbox.md`  |
 | Adding, editing, removing, diagnosing an MCP server                          | `references/mcp-servers.md` |
 
 For a request spanning several topics, read each relevant reference before
-answering or acting. Read the MCP reference before making any MCP change.
+answering or acting. Read the MCP reference before making any MCP change, and
+read the settings reference before changing plugin settings.

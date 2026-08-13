@@ -43,7 +43,7 @@ export default class AIPermissionModal extends Modal {
 	}
 
 	private renderSinglePathRequest() {
-		if (!('path' in this.request.fs)) {
+		if (this.request.type !== 'fs' || !('path' in this.request.fs)) {
 			return
 		}
 		const rowEl = this.contentEl.createEl('div')
@@ -62,7 +62,11 @@ export default class AIPermissionModal extends Modal {
 	}
 
 	private renderDualPathRequest() {
-		if (!('src' in this.request.fs) || !('dest' in this.request.fs)) {
+		if (
+			this.request.type !== 'fs' ||
+			!('src' in this.request.fs) ||
+			!('dest' in this.request.fs)
+		) {
 			return
 		}
 		const rowEl = this.contentEl.createEl('div')
@@ -97,6 +101,33 @@ export default class AIPermissionModal extends Modal {
 		destPathEl.style.wordBreak = 'break-all'
 	}
 
+	private renderSettingsRequest() {
+		if (this.request.type !== 'settings') {
+			return
+		}
+		const rowEl = this.contentEl.createEl('div')
+		rowEl.style.marginBottom = '0.5rem'
+
+		rowEl.createEl('strong', {
+			text: i18n.t('aiPermission.operations.updateSettings'),
+		})
+		const summary = this.request.settings.summary
+		if (summary) {
+			rowEl.createEl('code', { text: summary })
+		} else {
+			rowEl.createEl('p', {
+				text: i18n.t('aiPermission.settings.emptySummary'),
+			})
+		}
+		const codeEl = rowEl.lastChild as HTMLElement | null
+		if (codeEl) {
+			codeEl.style.display = 'block'
+			codeEl.style.marginTop = '0.25rem'
+			codeEl.style.wordBreak = 'break-all'
+			codeEl.style.whiteSpace = 'pre-wrap'
+		}
+	}
+
 	onOpen() {
 		this.setTitle(i18n.t('aiPermission.title'))
 
@@ -119,7 +150,12 @@ export default class AIPermissionModal extends Modal {
 			text: i18n.t('aiPermission.sessionScopeHint'),
 		})
 
-		if (this.request.fs.kind === 'copy' || this.request.fs.kind === 'move') {
+		if (this.request.type === 'settings') {
+			this.renderSettingsRequest()
+		} else if (
+			this.request.fs.kind === 'copy' ||
+			this.request.fs.kind === 'move'
+		) {
 			this.renderDualPathRequest()
 		} else {
 			this.renderSinglePathRequest()

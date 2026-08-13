@@ -4,6 +4,10 @@ import {
 	sanitizeDefaultSelections,
 	sanitizeProviders,
 } from '~/ai/catalog/config'
+import {
+	applyNormalizedSettingsPatch,
+	type NormalizedSettingsPatch,
+} from '~/ai/tools/settings-whitelist'
 import i18n from '~/i18n'
 import {
 	DEFAULT_LOCAL_SETTINGS,
@@ -105,6 +109,22 @@ export default class SettingsService extends BaseService {
 		await this.plugin.saveData(this.plugin.settings)
 		await this.plugin.chatService.handleSettingsChanged()
 		await this.plugin.aiConflictResolverService.refresh()
+	}
+
+	/**
+	 * Applies an AI-originated, already-validated settings patch and runs the
+	 * same side-effect chain used after reloading settings from disk (language
+	 * refresh, chat coordination, conflict refresh, schedule update, settings
+	 * tab rerender).
+	 */
+	async applySettingsPatch(patch: NormalizedSettingsPatch) {
+		applyNormalizedSettingsPatch(this.plugin.settings, patch)
+		await this.plugin.saveData(this.plugin.settings)
+		await this.plugin.i18nService.update()
+		await this.plugin.chatService.handleSettingsChanged()
+		await this.plugin.aiConflictResolverService.refresh()
+		await this.plugin.scheduledSyncService.updateInterval()
+		await this.plugin.settingTab?.rerenderIfVisible()
 	}
 
 	async loadLocalSettings() {

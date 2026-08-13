@@ -154,6 +154,9 @@ kind of conflict.
 - Inclusion and exclusion filters apply before reconciliation. Do not tell a
   user that an excluded path will be synchronized.
 
+For which of these settings the agent can change directly through the chat and
+the exact allowed values, read `references/settings.md`.
+
 ## Troubleshooting workflow
 
 1. Ask whether the issue is a missing file, an unexpected overwrite, a skipped

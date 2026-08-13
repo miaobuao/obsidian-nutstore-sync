@@ -10,8 +10,10 @@ import {
 } from '~/ai/chat/session/session-files'
 import {
 	decodeChatSessionFromStorage,
+	encodeChatSessionForStorage,
 	type PersistedChatSession,
 } from '~/ai/chat/session/session-persistence'
+import type { ReversibleToolOp } from '~/ai/chat/types'
 import {
 	SessionStore,
 	type SessionLegacyStore,
@@ -396,5 +398,143 @@ describe('SessionStore (vault file persistence)', () => {
 		await Promise.all([persist, deletion])
 
 		expect([...files.keys()]).not.toContain(`${CHAT_SESSIONS_DIR}/pending.json`)
+	})
+
+	async function writeSessionWithOps(
+		backend: SessionsFileBackend,
+		id: string,
+		operations: ReversibleToolOp[],
+	) {
+		const session = decodeChatSessionFromStorage(
+			legacyV1PersistedRecord(id),
+		) as ChatSession
+		session.subagents.master.operations = { m1: operations }
+		await backend.writeSessionFile(id, {
+			session: await encodeChatSessionForStorage(session),
+			title: `Archived / 归档 ${id}`,
+		})
+		return session
+	}
+
+	it('rewrites absolute /vault op paths to relative when loading a persisted session', async () => {
+		const { vault } = createMemoryVault()
+		const backend = new SessionsFileBackend(vault)
+		const state = createState()
+		const emptyLegacy = {
+			listSessionKeys: async () => [],
+			getSession: async () => undefined,
+			unsetSession: async () => undefined,
+			getMeta: async () => ({ meta: null, index: [] }),
+		} as SessionLegacyStore
+		const store = new SessionStore(
+			state,
+			new RuntimeStates(state),
+			createSelection(),
+			backend,
+			emptyLegacy,
+		)
+
+		await writeSessionWithOps(backend, 'conv-abs', [
+			{
+				vaultPath: '/vault/notes/example.md',
+				operation: 'update',
+				before: { kind: 'file', contentBase64: 'YQo=' },
+			},
+		] as ReversibleToolOp[])
+
+		const loaded = await store.loadSessionById('conv-abs')
+		expect(
+			loaded.subagents.master.operations.m1?.map((op) => op.vaultPath),
+		).toEqual(['notes/example.md'])
+
+		const payload = await backend.readSessionFile('conv-abs')
+		const serialized = JSON.stringify(payload)
+		expect(serialized).not.toContain('/vault/notes/example.md')
+		expect(serialized).toContain('notes/example.md')
+	})
+
+	it('keeps mixed mounts: vault becomes relative, tmp stays absolute on disk', async () => {
+		const { vault } = createMemoryVault()
+		const backend = new SessionsFileBackend(vault)
+		const state = createState()
+		const emptyLegacy = {
+			listSessionKeys: async () => [],
+			getSession: async () => undefined,
+			unsetSession: async () => undefined,
+			getMeta: async () => ({ meta: null, index: [] }),
+		} as SessionLegacyStore
+		const store = new SessionStore(
+			state,
+			new RuntimeStates(state),
+			createSelection(),
+			backend,
+			emptyLegacy,
+		)
+
+		await writeSessionWithOps(backend, 'conv-mixed', [
+			{
+				vaultPath: '/vault/随笔/日常记录.md',
+				operation: 'update',
+				before: { kind: 'file', contentBase64: '5a+56K+0Cg==' },
+			},
+			{
+				vaultPath: '/tmp/scratch.txt',
+				operation: 'update',
+				before: { kind: 'file', contentBase64: 'YQo=' },
+			},
+		] as ReversibleToolOp[])
+
+		await store.loadSessionById('conv-mixed')
+		const payload = await backend.readSessionFile('conv-mixed')
+		const serialized = JSON.stringify(payload)
+		expect(serialized).toContain('随笔/日常记录.md')
+		expect(serialized).not.toContain('/vault/随笔/日常记录.md')
+		expect(serialized).toContain('/tmp/scratch.txt')
+	})
+
+	it('does not rewrite the file when ops are already normalized', async () => {
+		const { vault } = createMemoryVault()
+		const backend = new SessionsFileBackend(vault)
+		const state = createState()
+		const emptyLegacy = {
+			listSessionKeys: async () => [],
+			getSession: async () => undefined,
+			unsetSession: async () => undefined,
+			getMeta: async () => ({ meta: null, index: [] }),
+		} as SessionLegacyStore
+		const store = new SessionStore(
+			state,
+			new RuntimeStates(state),
+			createSelection(),
+			backend,
+			emptyLegacy,
+		)
+
+		await writeSessionWithOps(backend, 'conv-rel', [
+			{
+				vaultPath: 'notes/example.md',
+				operation: 'update',
+				before: { kind: 'file', contentBase64: 'YQo=' },
+			},
+			{
+				vaultPath: '/tmp/scratch.txt',
+				operation: 'update',
+				before: { kind: 'file', contentBase64: 'YQo=' },
+			},
+		] as ReversibleToolOp[])
+
+		let writes = 0
+		const originalWrite = backend.writeSessionFile.bind(backend)
+		backend.writeSessionFile = async (id, payload) => {
+			writes += 1
+			await originalWrite(id, payload)
+		}
+
+		await store.loadSessionById('conv-rel')
+
+		expect(writes).toBe(0)
+		const payload = await backend.readSessionFile('conv-rel')
+		expect(JSON.stringify(payload)).toContain('notes/example.md')
+		expect(JSON.stringify(payload)).toContain('/tmp/scratch.txt')
 	})
 })

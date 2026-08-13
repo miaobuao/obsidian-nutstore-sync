@@ -134,6 +134,11 @@ export default class ChatService extends BaseService {
 			this.state,
 			this.runtimeStates,
 			plugin.mcpService,
+			{
+				getSettingsSnapshot: () => plugin.settings,
+				updateSettings: (patch) =>
+					plugin.settingsService.applySettingsPatch(patch),
+			},
 		)
 		this.userContextManager = new UserContextManager(
 			this.state,
@@ -179,6 +184,11 @@ export default class ChatService extends BaseService {
 			(session) => this.selection.validateSessionSelection(session),
 			(sessionId) => this.sessionProcessor.start(sessionId),
 			this.skillRepository,
+			{
+				getSettingsSnapshot: () => plugin.settings,
+				updateSettings: (patch) =>
+					plugin.settingsService.applySettingsPatch(patch),
+			},
 		)
 		this.sessionProcessor = new SessionProcessor(
 			ensureProviderReady,

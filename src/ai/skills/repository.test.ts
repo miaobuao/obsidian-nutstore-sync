@@ -3,6 +3,10 @@ import {
 	MAX_SKILL_MARKDOWN_BYTES,
 	SkillRepository,
 } from '~/ai/skills/repository'
+import {
+	AGENTS_MOUNT_POINT,
+	NUTSTORE_SYNC_AGENTS_MOUNT_POINT,
+} from '~/ai/tools/bash/mount-points'
 import type { BuiltinSkill } from '~/ai/skills/types'
 
 interface SkillEntry {
@@ -65,12 +69,12 @@ describe('SkillRepository', () => {
 			{
 				name: 'a-first',
 				description: 'First skill',
-				path: '/.agents/skills/a-first/SKILL.md',
+				path: `${AGENTS_MOUNT_POINT}/skills/a-first/SKILL.md`,
 			},
 			{
 				name: 'z-last',
 				description: 'Last skill',
-				path: '/.agents/skills/z-last/SKILL.md',
+				path: `${AGENTS_MOUNT_POINT}/skills/z-last/SKILL.md`,
 			},
 		])
 	})
@@ -82,7 +86,7 @@ describe('SkillRepository', () => {
 				{
 					name: 'skill-creator',
 					description: 'Create Skills',
-					path: '/.agents/nutstore-sync/builtin-skills/skill-creator/SKILL.md',
+					path: `${NUTSTORE_SYNC_AGENTS_MOUNT_POINT}/builtin-skills/skill-creator/SKILL.md`,
 					content: '# Skill Creator',
 				},
 			],
@@ -92,7 +96,7 @@ describe('SkillRepository', () => {
 			{
 				name: 'skill-creator',
 				description: 'Create Skills',
-				path: '/.agents/nutstore-sync/builtin-skills/skill-creator/SKILL.md',
+				path: `${NUTSTORE_SYNC_AGENTS_MOUNT_POINT}/builtin-skills/skill-creator/SKILL.md`,
 			},
 		])
 	})
@@ -104,7 +108,7 @@ describe('SkillRepository', () => {
 				{
 					name: 'skill-creator',
 					description: 'Built-in creator',
-					path: '/.agents/nutstore-sync/builtin-skills/skill-creator/SKILL.md',
+					path: `${NUTSTORE_SYNC_AGENTS_MOUNT_POINT}/builtin-skills/skill-creator/SKILL.md`,
 					content: '# Built-in',
 				},
 			],
@@ -115,7 +119,7 @@ describe('SkillRepository', () => {
 		expect(repository.getCatalog()[0]).toEqual({
 			name: 'skill-creator',
 			description: 'Customized creator',
-			path: '/.agents/skills/skill-creator/SKILL.md',
+			path: `${AGENTS_MOUNT_POINT}/skills/skill-creator/SKILL.md`,
 		})
 		expect(repository.discover().diagnostics).toContainEqual({
 			path: '.agents/skills/skill-creator/SKILL.md',

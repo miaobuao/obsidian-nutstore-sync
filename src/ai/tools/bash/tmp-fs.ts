@@ -4,7 +4,6 @@ import { posix as pathPosix } from 'path-browserify'
 import { mkdirsVault } from '~/utils/mkdirs-vault'
 import type { PermissionGuard } from '~/ai/tools/permission-guard'
 import { ObsidianAdapterFs } from './adapter-fs'
-import type { ReversibleOpRecorder } from './fs'
 import { BASH_TMP_MOUNT_POINT, BASH_TMP_VAULT_PATH } from './mount-points'
 
 function getBashTmpAdapterRoot() {
@@ -18,7 +17,6 @@ export async function ensureBashTmpDirectory(app: App) {
 export async function createBashTmpFs(
 	app: App,
 	permissionGuard?: PermissionGuard,
-	recorder?: ReversibleOpRecorder,
 	onRead?: (vaultPath: string) => void,
 ) {
 	await ensureBashTmpDirectory(app)
@@ -26,7 +24,6 @@ export async function createBashTmpFs(
 		app.vault.adapter,
 		BASH_TMP_VAULT_PATH,
 		permissionGuard,
-		recorder,
 		onRead,
 		BASH_TMP_MOUNT_POINT,
 	)

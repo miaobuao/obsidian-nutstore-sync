@@ -137,8 +137,15 @@ export class AgentRunner {
 			bash: {
 				...fileToolsContext,
 				scratch: stableContext.scratch,
+				getSettingsSnapshot: stableContext.getSettingsSnapshot,
+				updateSettings: stableContext.updateSettings,
 			},
-			apply_patch: fileToolsContext,
+			apply_patch: {
+				...fileToolsContext,
+				scratch: stableContext.scratch,
+				getSettingsSnapshot: stableContext.getSettingsSnapshot,
+				updateSettings: stableContext.updateSettings,
+			},
 			note_neighborhood: {
 				app: stableContext.app,
 				session,

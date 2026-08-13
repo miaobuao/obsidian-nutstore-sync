@@ -4,9 +4,21 @@ import { InMemoryFs, MountableFs, type IFileSystem } from 'just-bash/browser'
 import { createBuiltinSkillsFs } from '~/ai/skills/builtin'
 import type { PermissionRequest } from '~/ai/tools/permission-guard'
 import { createVaultBash, execVaultBash, VAULT_MOUNT_POINT } from './runtime'
+import {
+	AGENTS_MOUNT_POINT,
+	NUTSTORE_SYNC_AGENTS_MOUNT_POINT,
+} from './mount-points'
+import {
+	applyNormalizedSettingsPatch,
+	type NormalizedSettingsPatch,
+} from '../settings-whitelist'
+import type { NutstoreSettings } from '~/settings'
 import { createVaultFileSystem } from '../vault-filesystem'
 import { listVaultPaths, ObsidianVaultFs, ReversibleOpRecorder } from './fs'
 import { ObsidianAdapterFs } from './adapter-fs'
+import { ReversibleFs } from './reversible-fs'
+import { restoreVirtualReversibleOperations } from '~/ai/chat/messages/message-ops'
+import { decodeReversibleFileSnapshot } from '~/ai/chat/messages/reversible-content'
 
 interface MockEntryFile {
 	type: 'file'
@@ -414,7 +426,7 @@ describe('vault bash runtime', () => {
 		const requests: PermissionRequest[] = []
 		const result = await execVaultBash(
 			app,
-			'cat /.agents/skills/custom/SKILL.md && printf "new" > /.agents/skills/new/SKILL.md',
+			`cat ${AGENTS_MOUNT_POINT}/skills/custom/SKILL.md && printf "new" > ${AGENTS_MOUNT_POINT}/skills/new/SKILL.md`,
 			{
 				onRead: (path) => reads.push(path),
 				permissionGuard: async (request) => {
@@ -434,19 +446,19 @@ describe('vault bash runtime', () => {
 				type: 'fs',
 				fs: {
 					kind: 'write',
-					path: '/.agents/skills/new/SKILL.md',
+					path: `${AGENTS_MOUNT_POINT}/skills/new/SKILL.md`,
 				},
 			},
 		])
 		expect(result.reversibleOps).toEqual([
 			{
-				vaultPath: '.agents/skills/new',
+				vaultPath: '/.agents/skills/new',
 				operation: 'create',
 				before: { kind: 'dir' },
 				after: { kind: 'dir' },
 			},
 			{
-				vaultPath: '.agents/skills/new/SKILL.md',
+				vaultPath: '/.agents/skills/new/SKILL.md',
 				operation: 'create',
 				before: { kind: 'file' },
 				after: expect.objectContaining({
@@ -464,7 +476,7 @@ describe('vault bash runtime', () => {
 		const { vault } = createMockVault()
 		const result = await execVaultBash(
 			createApp(vault),
-			'cat /.agents/nutstore-sync/builtin-skills/skill-creator/SKILL.md',
+			`cat ${NUTSTORE_SYNC_AGENTS_MOUNT_POINT}/builtin-skills/skill-creator/SKILL.md`,
 		)
 
 		expect(result.exitCode).toBe(0)
@@ -584,7 +596,11 @@ describe('vault bash runtime', () => {
 		})
 		const fs = await createVaultFileSystem(createApp(vault))
 
-		expect(await fs.readdir('/')).toEqual(['.agents', 'tmp', 'vault'])
+		expect(await fs.readdir('/')).toEqual([
+			AGENTS_MOUNT_POINT.split('/').filter(Boolean)[0],
+			'tmp',
+			'vault',
+		])
 		expect(await fs.exists('/tmp/session/tasks/legacy-旧缓存.txt')).toBe(false)
 
 		await fs.writeFile('/tmp/session/tasks/current-当前.txt', 'current / 当前')
@@ -653,10 +669,18 @@ describe('vault bash runtime', () => {
 			['docs', 'docs/nested'],
 		)
 		const recorder = new ReversibleOpRecorder()
-		const fs = new ObsidianVaultFs(
-			vault,
-			['/', '/docs', '/docs/existing.md', '/docs/nested', '/docs/nested/a.txt'],
-			undefined,
+		const fs = new ReversibleFs(
+			new ObsidianVaultFs(
+				vault,
+				[
+					'/',
+					'/docs',
+					'/docs/existing.md',
+					'/docs/nested',
+					'/docs/nested/a.txt',
+				],
+				undefined,
+			),
 			recorder,
 		)
 
@@ -667,91 +691,26 @@ describe('vault bash runtime', () => {
 		await fs.cp('/docs', '/docs-copy', { recursive: true })
 		await fs.mv('/docs/new.md', '/moved/new.md')
 
-		expect(recorder.getOperations()).toEqual([
-			{
-				vaultPath: 'docs/new.md',
-				operation: 'create',
-				before: { kind: 'file' },
-			},
-			{
-				vaultPath: 'docs/existing.md',
-				operation: 'update',
-				before: expect.objectContaining({
-					kind: 'file',
-					contentCompressed: {
-						compress: 'deflate',
-						blob: expect.any(Blob),
-					},
-				}),
-			},
-			{
-				vaultPath: 'docs/deep/child',
-				operation: 'create',
-				before: { kind: 'dir' },
-			},
-			{
-				vaultPath: 'docs/nested/a.txt',
-				operation: 'delete',
-				before: expect.objectContaining({
-					kind: 'file',
-					contentCompressed: {
-						compress: 'deflate',
-						blob: expect.any(Blob),
-					},
-				}),
-			},
-			{
-				vaultPath: 'docs/nested',
-				operation: 'delete',
-				before: { kind: 'dir' },
-			},
-			{
-				vaultPath: 'docs-copy',
-				operation: 'create',
-				before: { kind: 'dir' },
-			},
-			{
-				vaultPath: 'docs-copy/deep',
-				operation: 'create',
-				before: { kind: 'dir' },
-			},
-			{
-				vaultPath: 'docs-copy/deep/child',
-				operation: 'create',
-				before: { kind: 'dir' },
-			},
-			{
-				vaultPath: 'docs-copy/existing.md',
-				operation: 'create',
-				before: { kind: 'file' },
-			},
-			{
-				vaultPath: 'docs-copy/new.md',
-				operation: 'create',
-				before: { kind: 'file' },
-			},
-			{
-				vaultPath: 'moved',
-				operation: 'create',
-				before: { kind: 'dir' },
-			},
-			{
-				vaultPath: 'docs/new.md',
-				operation: 'delete',
-				before: expect.objectContaining({
-					kind: 'file',
-					contentCompressed: {
-						compress: 'deflate',
-						blob: expect.any(Blob),
-					},
-				}),
-			},
-			{
-				vaultPath: 'moved/new.md',
-				operation: 'create',
-				before: { kind: 'file' },
-			},
+		const operations = await recorder.getNetOperations()
+		expect(
+			operations.map(({ vaultPath, operation }) => [vaultPath, operation]),
+		).toEqual([
+			['/docs-copy', 'create'],
+			['/moved', 'create'],
+			['/docs-copy/deep', 'create'],
+			['/docs-copy/existing.md', 'create'],
+			['/docs-copy/new.md', 'create'],
+			['/docs/deep', 'create'],
+			['/docs/existing.md', 'update'],
+			['/docs/nested', 'delete'],
+			['/moved/new.md', 'create'],
+			['/docs-copy/deep/child', 'create'],
+			['/docs/deep/child', 'create'],
+			['/docs/nested/a.txt', 'delete'],
 		])
+		expect(
+			operations.every((operation) => operation.vaultPath.startsWith('/')),
+		).toBe(true)
 	})
 
 	it('checks cp destination and mv source plus destination in permission guard', async () => {
@@ -804,58 +763,136 @@ describe('vault bash runtime', () => {
 			['docs'],
 		)
 		const recorder = new ReversibleOpRecorder()
-		const fs = new ObsidianVaultFs(
-			vault,
-			[
-				'/',
-				'/docs',
-				'/docs/src-copy.md',
-				'/docs/src-move.md',
-				'/docs/dest-copy.md',
-				'/docs/dest-move.md',
-			],
-			undefined,
+		const fs = new ReversibleFs(
+			new ObsidianVaultFs(
+				vault,
+				[
+					'/',
+					'/docs',
+					'/docs/src-copy.md',
+					'/docs/src-move.md',
+					'/docs/dest-copy.md',
+					'/docs/dest-move.md',
+				],
+				undefined,
+			),
 			recorder,
 		)
 
 		await fs.cp('/docs/src-copy.md', '/docs/dest-copy.md')
 		await fs.mv('/docs/src-move.md', '/docs/dest-move.md')
 
-		expect(recorder.getOperations()).toEqual([
-			{
-				vaultPath: 'docs/dest-copy.md',
-				operation: 'update',
-				before: expect.objectContaining({
-					kind: 'file',
-					contentCompressed: {
-						compress: 'deflate',
-						blob: expect.any(Blob),
-					},
-				}),
-			},
-			{
-				vaultPath: 'docs/src-move.md',
-				operation: 'delete',
-				before: expect.objectContaining({
-					kind: 'file',
-					contentCompressed: {
-						compress: 'deflate',
-						blob: expect.any(Blob),
-					},
-				}),
-			},
-			{
-				vaultPath: 'docs/dest-move.md',
-				operation: 'update',
-				before: expect.objectContaining({
-					kind: 'file',
-					contentCompressed: {
-						compress: 'deflate',
-						blob: expect.any(Blob),
-					},
-				}),
-			},
+		expect(
+			(await recorder.getNetOperations()).map(({ vaultPath, operation }) => [
+				vaultPath,
+				operation,
+			]),
+		).toEqual([
+			['/docs/dest-copy.md', 'update'],
+			['/docs/dest-move.md', 'update'],
+			['/docs/src-move.md', 'delete'],
 		])
+	})
+
+	it('records delete + create when a directory is replaced by a file at the same path', async () => {
+		const { vault } = createMockVault(
+			{
+				'docs/case/note.md': 'keep',
+			},
+			['docs', 'docs/case'],
+		)
+		const recorder = new ReversibleOpRecorder()
+		const fs = new ReversibleFs(
+			new ObsidianVaultFs(
+				vault,
+				['/', '/docs', '/docs/case', '/docs/case/note.md'],
+				undefined,
+			),
+			recorder,
+		)
+
+		await fs.rm('/docs/case', { recursive: true })
+		await fs.writeFile('/docs/case', 'now a file')
+
+		const operations = await recorder.getNetOperations()
+		expect(
+			operations.map(({ vaultPath, operation }) => [vaultPath, operation]),
+		).toEqual([
+			['/docs/case', 'delete'],
+			['/docs/case', 'create'],
+			['/docs/case/note.md', 'delete'],
+		])
+
+		const deleteOp = operations[0]
+		const createOp = operations[1]
+		expect(deleteOp).toMatchObject({
+			operation: 'delete',
+			before: { kind: 'dir' },
+		})
+		expect(createOp).toMatchObject({
+			operation: 'create',
+			after: { kind: 'file' },
+		})
+	})
+
+	it('records delete + create when a file is replaced by a directory at the same path', async () => {
+		const { vault } = createMockVault(
+			{
+				'docs/case.md': 'content',
+			},
+			['docs'],
+		)
+		const recorder = new ReversibleOpRecorder()
+		const fs = new ReversibleFs(
+			new ObsidianVaultFs(vault, ['/', '/docs', '/docs/case.md'], undefined),
+			recorder,
+		)
+
+		await fs.rm('/docs/case.md')
+		await fs.mkdir('/docs/case.md', { recursive: true })
+
+		const operations = await recorder.getNetOperations()
+		expect(
+			operations.map(({ vaultPath, operation }) => [vaultPath, operation]),
+		).toEqual([
+			['/docs/case.md', 'delete'],
+			['/docs/case.md', 'create'],
+		])
+		const deleteOp = operations[0]
+		const createOp = operations[1]
+		expect(deleteOp).toMatchObject({
+			operation: 'delete',
+			before: { kind: 'file' },
+		})
+		expect(createOp).toMatchObject({
+			operation: 'create',
+			after: { kind: 'dir' },
+		})
+	})
+
+	it('keeps an unchanged directory out of net operations', async () => {
+		const { vault } = createMockVault(
+			{
+				'docs/touch.md': 'x',
+			},
+			['docs', 'docs/touch-dir'],
+		)
+		const recorder = new ReversibleOpRecorder()
+		const fs = new ReversibleFs(
+			new ObsidianVaultFs(
+				vault,
+				['/', '/docs', '/docs/touch.md', '/docs/touch-dir'],
+				undefined,
+			),
+			recorder,
+		)
+
+		await fs.mkdir('/docs/touch-dir', { recursive: true })
+
+		const operations = await recorder.getNetOperations()
+		expect(
+			operations.map(({ vaultPath, operation }) => [vaultPath, operation]),
+		).toEqual([])
 	})
 
 	describe('onRead callback', () => {
@@ -865,7 +902,6 @@ describe('vault bash runtime', () => {
 			const fs = new ObsidianVaultFs(
 				vault,
 				['/', '/notes', '/notes/file.md'],
-				undefined,
 				undefined,
 				(path) => reads.push(path),
 			)
@@ -883,7 +919,6 @@ describe('vault bash runtime', () => {
 				vault,
 				['/', '/notes', '/notes/file.md'],
 				undefined,
-				undefined,
 				(path) => reads.push(path),
 			)
 
@@ -899,7 +934,6 @@ describe('vault bash runtime', () => {
 			const fs = new ObsidianVaultFs(
 				vault,
 				['/', '/notes', '/notes/file.md'],
-				undefined,
 				undefined,
 				(path) => reads.push(path),
 			)
@@ -919,7 +953,6 @@ describe('vault bash runtime', () => {
 				vault,
 				['/', '/notes', '/notes/a.md', '/notes/b.md'],
 				undefined,
-				undefined,
 				(path) => reads.push(path),
 			)
 
@@ -931,12 +964,8 @@ describe('vault bash runtime', () => {
 		it('does not fire onRead when reading a non-existent file (ENOENT)', async () => {
 			const { vault } = createMockVault({}, [])
 			const reads: string[] = []
-			const fs = new ObsidianVaultFs(
-				vault,
-				['/'],
-				undefined,
-				undefined,
-				(path) => reads.push(path),
+			const fs = new ObsidianVaultFs(vault, ['/'], undefined, (path) =>
+				reads.push(path),
 			)
 
 			await expect(fs.readFile('/missing.md')).rejects.toThrow()
@@ -949,7 +978,6 @@ describe('vault bash runtime', () => {
 			const fs = new ObsidianVaultFs(
 				vault,
 				['/', '/notes', '/notes/file.md'],
-				undefined,
 				undefined,
 				(path) => reads.push(path),
 			)
@@ -964,7 +992,6 @@ describe('vault bash runtime', () => {
 			const fs = new ObsidianVaultFs(
 				vault,
 				['/', '/notes', '/notes/file.md'],
-				undefined,
 				undefined,
 				(path) => reads.push(path),
 			)
@@ -1030,7 +1057,6 @@ describe('vault bash runtime', () => {
 				vault,
 				['/', '/docs', '/docs/file.md'],
 				undefined,
-				undefined,
 				(path) => reads.push(path),
 			)
 
@@ -1045,7 +1071,6 @@ describe('vault bash runtime', () => {
 			const fs = new ObsidianVaultFs(
 				vault,
 				['/', '/docs', '/docs/file.md'],
-				undefined,
 				undefined,
 				(path) => reads.push(path),
 			)
@@ -1120,5 +1145,154 @@ EOF`,
 				'你好世界\n',
 			)
 		})
+	})
+})
+
+describe('settings virtual file through bash', () => {
+	function makeSettings(): NutstoreSettings {
+		return {
+			account: '',
+			credential: '',
+			nutstoreEnterpriseBaseUrl: '',
+			remoteDir: '',
+			conflictStrategy:
+				'no-conflict-merge' as NutstoreSettings['conflictStrategy'],
+			oauthResponseText: '',
+			loginMode: 'sso',
+			confirmBeforeSync: true,
+			confirmBeforeDeleteInAutoSync: true,
+			syncMode: 'loose' as NutstoreSettings['syncMode'],
+			filterRules: {
+				rules: [
+					{
+						expr: '**/.DS_Store',
+						options: { caseSensitive: false },
+						type: 'exclude',
+					},
+				],
+			},
+			skipLargeFiles: { maxSize: '30 MB' },
+			mobileAppDownloadFileChunkSize: '16 MiB',
+			realtimeSync: false,
+			startupSyncDelaySeconds: 0,
+			autoSyncIntervalSeconds: 300,
+			language: undefined,
+			ai: { providers: {} },
+			configDirSyncMode: 'none',
+		}
+	}
+
+	it('reads the whitelist and applies a written file to settings', async () => {
+		const { vault } = createMockVault()
+		const app = createApp(vault)
+		const settings = makeSettings()
+		const updates: NormalizedSettingsPatch[] = []
+		const filePath = '/.config/nutstore-sync/settings.json'
+		const requests: PermissionRequest[] = []
+
+		const read = await execVaultBash(app, `cat ${filePath}`, {
+			getSettingsSnapshot: () => settings,
+			updateSettings: async (patch) => {
+				updates.push(patch)
+				applyNormalizedSettingsPatch(settings, patch)
+			},
+			permissionGuard: async (request) => {
+				requests.push(request)
+			},
+		})
+		expect(read.exitCode).toBe(0)
+		expect(read.stdout).toContain('"filterRules"')
+		expect(read.stdout).not.toContain('credential')
+
+		const write = await execVaultBash(
+			app,
+			`printf '{"realtimeSync":true}' > ${filePath}`,
+			{
+				getSettingsSnapshot: () => settings,
+				updateSettings: async (patch) => {
+					updates.push(patch)
+					applyNormalizedSettingsPatch(settings, patch)
+				},
+				permissionGuard: async (request) => {
+					requests.push(request)
+				},
+			},
+		)
+		expect(write.exitCode).toBe(0)
+		expect(updates).toEqual([{ realtimeSync: true }])
+		expect(settings.realtimeSync).toBe(true)
+		expect(requests).toEqual([
+			{
+				type: 'settings',
+				settings: {
+					action: 'update',
+					summary: expect.stringContaining('Realtime sync'),
+					changes: { realtimeSync: true },
+				},
+			},
+		])
+	})
+
+	it('records and restores a bilingual settings update through the recall path', async () => {
+		const { vault } = createMockVault()
+		const app = createApp(vault)
+		const settings = makeSettings()
+		const filePath = '/.config/nutstore-sync/settings.json'
+		const settingsIo = {
+			getSettingsSnapshot: () => settings,
+			updateSettings: async (patch: NormalizedSettingsPatch) => {
+				applyNormalizedSettingsPatch(settings, patch)
+			},
+		}
+
+		const write = await execVaultBash(
+			app,
+			`printf '{"realtimeSync":true,"language":"zh"}' > ${filePath}`,
+			settingsIo,
+		)
+
+		expect(settings.realtimeSync).toBe(true)
+		expect(settings.language).toBe('zh')
+		expect(write.reversibleOps).toHaveLength(1)
+		const operation = write.reversibleOps[0]
+		expect(operation).toMatchObject({
+			vaultPath: filePath,
+			operation: 'update',
+			before: { kind: 'file' },
+			after: { kind: 'file' },
+		})
+		if (operation.operation !== 'update' || !operation.after) {
+			throw new Error('expected a settings update operation')
+		}
+		const before = new TextDecoder().decode(
+			await decodeReversibleFileSnapshot(operation.before),
+		)
+		const after = new TextDecoder().decode(
+			await decodeReversibleFileSnapshot(operation.after),
+		)
+		expect(before).toContain('"realtimeSync": false')
+		expect(after).toContain('"realtimeSync": true')
+		expect(after).toContain('"language": "zh"')
+
+		await restoreVirtualReversibleOperations(app, write.reversibleOps, {
+			settingsIo,
+		})
+
+		expect(settings.realtimeSync).toBe(false)
+		expect(settings.language).toBeUndefined()
+	})
+
+	it('rejects an invalid settings write through bash', async () => {
+		const { vault } = createMockVault()
+		const app = createApp(vault)
+		const settings = makeSettings()
+		const filePath = '/.config/nutstore-sync/settings.json'
+
+		await expect(
+			execVaultBash(app, `printf '{oops' > ${filePath}`, {
+				getSettingsSnapshot: () => settings,
+				updateSettings: async () => {},
+			}),
+		).rejects.toThrow(/not valid JSON/)
 	})
 })

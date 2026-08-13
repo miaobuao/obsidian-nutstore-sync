@@ -18,7 +18,9 @@ describe('main system prompt Skills guidance', () => {
 			'paths under /.agents/nutstore-sync/builtin-skills are bundled built-in Skills',
 		)
 		expect(prompt).toContain('These namespaces are distinct')
-		expect(prompt).toContain('retry the exact catalog path')
+		expect(prompt).toContain(
+			'Treat every Skill path as an opaque absolute path',
+		)
 		expect(prompt).not.toContain('call use_skill')
 		expect(prompt).not.toContain('background_output')
 		expect(prompt).not.toContain('subagent_type')
@@ -33,6 +35,26 @@ describe('main system prompt Skills guidance', () => {
 		expect(prompt).toContain('Nutstore Sync Obsidian plugin')
 		expect(prompt).toContain('Obsidian vault')
 		expect(prompt).toContain('WebDAV')
+	})
+})
+
+describe('user-facing path convention', () => {
+	it('instructs the master agent to use vault-relative paths when replying to the user', () => {
+		const definition = getAgentDefinition('master')
+		if (!definition) throw new Error('Expected master agent definition')
+		const prompt = createSystemPromptForAgent(definition)
+
+		expect(prompt).toContain('vault-relative path')
+		expect(prompt).toMatch(/never the \/vault absolute path/)
+	})
+
+	it('instructs the explorer agent to cite vault files without the /vault prefix', () => {
+		const definition = getAgentDefinition('explorer')
+		if (!definition) throw new Error('Expected explorer agent definition')
+		const prompt = createSystemPromptForAgent(definition)
+
+		expect(prompt).toContain('vault-relative path')
+		expect(prompt).toMatch(/never the internal \/vault\/\.\.\. virtual path/)
 	})
 })
 

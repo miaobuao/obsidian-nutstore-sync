@@ -26,9 +26,20 @@ export interface FSDualPathPermissionRequest {
 	sessionTitle?: string
 }
 
+export interface SettingsPermissionRequest {
+	type: 'settings'
+	settings: {
+		action: 'update'
+		summary: string
+		changes: unknown
+	}
+	sessionTitle?: string
+}
+
 export type PermissionRequest =
 	| FSSinglePathPermissionRequest
 	| FSDualPathPermissionRequest
+	| SettingsPermissionRequest
 export type PermissionGuard = (request: PermissionRequest) => Promise<void>
 
 interface RuntimeAutoApproveOperationStore {
@@ -39,16 +50,25 @@ interface RuntimeAutoApproveOperationStore {
 function isDualPathRequest(
 	request: PermissionRequest,
 ): request is FSDualPathPermissionRequest {
-	return request.fs.kind === 'copy' || request.fs.kind === 'move'
+	return (
+		request.type === 'fs' &&
+		(request.fs.kind === 'copy' || request.fs.kind === 'move')
+	)
 }
 
 export function getPermissionRequestOperationSignature(
 	request: PermissionRequest,
 ) {
+	if (request.type === 'settings') {
+		return `settings:${request.settings.action}`
+	}
 	return request.fs.kind
 }
 
 function formatDeniedSummary(request: PermissionRequest) {
+	if (request.type === 'settings') {
+		return request.settings.summary
+	}
 	const { kind } = request.fs
 	if (isDualPathRequest(request)) {
 		return `${kind} from ${request.fs.src} to ${request.fs.dest}`
