@@ -125,6 +125,72 @@ describe('SyncExecutorService', () => {
 		expect(startMock).not.toHaveBeenCalled()
 	})
 
+	it('coalesces an auto sync triggered while running into a single rerun', async () => {
+		type StartResult = {
+			ended: boolean
+			ranTasks: boolean
+			shouldReloadSettings: boolean
+		}
+		let releaseFirst!: (value: StartResult) => void
+		startMock.mockImplementationOnce(
+			() =>
+				new Promise<StartResult>((resolve) => {
+					releaseFirst = resolve
+				}),
+		)
+		startMock.mockResolvedValueOnce({
+			ended: true,
+			ranTasks: true,
+			shouldReloadSettings: false,
+		})
+		const plugin = createPlugin()
+		const service = new SyncExecutorService(plugin)
+
+		const first = service.executeSync({ mode: SyncStartMode.AUTO_SYNC })
+		await expect(
+			service.executeSync({ mode: SyncStartMode.AUTO_SYNC }),
+		).resolves.toBe(false)
+
+		expect(nutstoreSyncCtor).toHaveBeenCalledTimes(1)
+		expect(startMock).toHaveBeenCalledTimes(1)
+
+		releaseFirst({ ended: true, ranTasks: true, shouldReloadSettings: false })
+		await first
+		await vi.waitFor(() => expect(startMock).toHaveBeenCalledTimes(2))
+		expect(nutstoreSyncCtor).toHaveBeenCalledTimes(2)
+	})
+
+	it('does not schedule a rerun when a manual sync is blocked by a running sync', async () => {
+		type StartResult = {
+			ended: boolean
+			ranTasks: boolean
+			shouldReloadSettings: boolean
+		}
+		let releaseFirst!: (value: StartResult) => void
+		startMock.mockImplementationOnce(
+			() =>
+				new Promise<StartResult>((resolve) => {
+					releaseFirst = resolve
+				}),
+		)
+		const plugin = createPlugin()
+		const service = new SyncExecutorService(plugin)
+
+		const first = service.executeSync({ mode: SyncStartMode.AUTO_SYNC })
+		await expect(
+			service.executeSync({ mode: SyncStartMode.MANUAL_SYNC }),
+		).resolves.toBe(false)
+
+		expect(nutstoreSyncCtor).toHaveBeenCalledTimes(1)
+
+		releaseFirst({ ended: true, ranTasks: true, shouldReloadSettings: false })
+		await first
+		await new Promise((resolve) => setTimeout(resolve, 20))
+
+		expect(startMock).toHaveBeenCalledTimes(1)
+		expect(nutstoreSyncCtor).toHaveBeenCalledTimes(1)
+	})
+
 	it('stops gc and continues sync when gc is running', async () => {
 		startMock.mockResolvedValue({
 			ended: true,

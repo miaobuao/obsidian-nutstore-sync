@@ -19,6 +19,7 @@ export interface SyncOptions {
 
 export default class SyncExecutorService extends BaseService {
 	private inFlight = false
+	private pendingAutoSync = false
 
 	constructor(private plugin: NutstorePlugin) {
 		super()
@@ -30,11 +31,16 @@ export default class SyncExecutorService extends BaseService {
 
 	async executeSync(options: SyncOptions) {
 		if (this.isRunning()) {
+			if (options.mode === SyncStartMode.AUTO_SYNC) {
+				this.pendingAutoSync = true
+				return false
+			}
 			new Notice(i18n.t('sync.blockedBySync'))
 			return false
 		}
 
 		this.inFlight = true
+		this.pendingAutoSync = false
 		const syncPolicy =
 			options.syncPolicy ?? this.plugin.localSettings.syncPolicy
 
@@ -97,6 +103,10 @@ export default class SyncExecutorService extends BaseService {
 				await this.plugin.gcService.runBlobGc().catch((error) => {
 					logger.error('Error running auto GC after sync end:', error)
 				})
+			}
+			if (this.pendingAutoSync && !this.plugin.isSyncing) {
+				this.pendingAutoSync = false
+				void this.executeSync({ mode: SyncStartMode.AUTO_SYNC })
 			}
 		}
 	}
