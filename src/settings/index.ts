@@ -156,16 +156,13 @@ export interface NutstoreSettings {
 	configDirSyncMode?: 'none' | 'bookmarks' | 'all'
 }
 
-function createGlobMathOptions(
-	expr: string,
-	type: 'include' | 'exclude' = 'exclude',
-): GlobFilterRule {
+function exclude(expr: string): GlobFilterRule {
 	return {
 		expr,
 		options: {
 			caseSensitive: false,
 		},
-		type,
+		type: 'exclude',
 	}
 }
 
@@ -182,6 +179,7 @@ export const DEFAULT_SETTINGS: NutstoreSettings = {
 	syncMode: SyncMode.LOOSE,
 	filterRules: {
 		rules: [
+			'**/*.nutstore-sync-*.download',
 			'**/__MACOSX',
 			'**/.DS_Store',
 			'**/.env',
@@ -204,7 +202,7 @@ export const DEFAULT_SETTINGS: NutstoreSettings = {
 			'**/desktop.ini',
 			'**/node_modules',
 			'**/Thumbs.db',
-		].map((expr) => createGlobMathOptions(expr)),
+		].map(exclude),
 	},
 	skipLargeFiles: {
 		maxSize: '30 MB',
