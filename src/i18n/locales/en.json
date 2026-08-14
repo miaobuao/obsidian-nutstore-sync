@@ -132,7 +132,7 @@
 		"tabs": {
 			"sync": "Sync",
 			"ai": "AI",
-			"troubleshooting": "Troubleshooting"
+			"troubleshooting": "Troubleshoot"
 		},
 		"ai": {
 			"saved": "AI settings saved",
@@ -385,7 +385,7 @@
 			"clearDesc": "Delete all console output records"
 		},
 		"troubleshooting": {
-			"title": "Troubleshooting"
+			"title": "Troubleshoot"
 		},
 		"cache": {
 			"title": "Cache management",

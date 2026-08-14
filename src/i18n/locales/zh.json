@@ -90,7 +90,7 @@
 		"tabs": {
 			"sync": "同步",
 			"ai": "AI",
-			"troubleshooting": "故障排查"
+			"troubleshooting": "排障"
 		},
 		"ai": {
 			"saved": "AI 设置已保存",
@@ -385,7 +385,7 @@
 			"clearDesc": "删除所有控制台输出记录"
 		},
 		"troubleshooting": {
-			"title": "故障排查"
+			"title": "排障"
 		},
 		"cache": {
 			"title": "缓存管理",
