@@ -16,6 +16,7 @@ export default class FilterEditorModal extends Modal {
 		plugin: NutstorePlugin,
 		rules: GlobFilterRule[] = [],
 		private onSave: (filters: GlobFilterRule[]) => void,
+		private highlightIndex?: number,
 	) {
 		super(plugin.app)
 		this.rules = cloneDeep(rules)
@@ -43,6 +44,9 @@ export default class FilterEditorModal extends Modal {
 				const itemContainer = listContainer.createDiv({
 					cls: ':uno: flex gap-2 items-center',
 				})
+				if (index === this.highlightIndex) {
+					addClassTokens(itemContainer, ':uno: ns-filter-rule-conflict')
+				}
 				const activeToggle = listContainer.createEl('input', {
 					type: 'checkbox',
 					cls: ':uno: cursor-pointer self-center',

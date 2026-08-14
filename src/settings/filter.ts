@@ -77,14 +77,22 @@ export default class FilterSettings extends BaseSettings {
 			.setDesc(i18n.t('settings.filters.desc'))
 			.addButton((button) => {
 				button.setButtonText(i18n.t('settings.filters.edit')).onClick(() => {
+					const rules = this.plugin.settings.filterRules.rules
+					const pruningRule =
+						(this.plugin.settings.configDirSyncMode ?? 'none') === 'all'
+							? getConfigDirPruningRule(configDir, rules)
+							: undefined
+					const highlightIndex =
+						pruningRule === undefined ? undefined : rules.indexOf(pruningRule)
 					new FilterEditorModal(
 						this.plugin,
-						this.plugin.settings.filterRules.rules,
+						rules,
 						async (filters) => {
 							this.plugin.settings.filterRules.rules = filters
 							await this.plugin.settingsService.saveSettings()
 							this.display()
 						},
+						highlightIndex,
 					).open()
 				})
 			})
