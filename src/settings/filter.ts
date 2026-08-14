@@ -1,5 +1,7 @@
 import { App, Modal, Setting } from 'obsidian'
 import FilterEditorModal from '~/components/FilterEditorModal'
+import { getConfigDirPruningRule } from '~/utils/config-dir-rules'
+import type { GlobFilterRule } from '~/utils/glob-match'
 import i18n from '~/i18n'
 import BaseSettings from './settings.base'
 
@@ -45,9 +47,14 @@ export default class FilterSettings extends BaseSettings {
 								},
 							).open()
 						} else if (value === 'all') {
+							const pruningRule = getConfigDirPruningRule(
+								configDir,
+								this.plugin.settings.filterRules.rules,
+							)
 							new ConfigDirSyncWarningModal(
 								this.app,
 								configDir,
+								pruningRule,
 								async (confirmed) => {
 									if (confirmed) {
 										this.plugin.settings.configDirSyncMode = 'all'
@@ -85,6 +92,8 @@ export default class FilterSettings extends BaseSettings {
 }
 
 class ConfigDirSyncBookmarksModal extends Modal {
+	private resolved = false
+
 	constructor(
 		app: App,
 		private configDir: string,
@@ -109,6 +118,7 @@ class ConfigDirSyncBookmarksModal extends Modal {
 					.setButtonText(i18n.t('settings.configDirSync.confirm'))
 					.setCta()
 					.onClick(() => {
+						this.resolved = true
 						this.close()
 						this.onResult(true)
 					}),
@@ -117,6 +127,7 @@ class ConfigDirSyncBookmarksModal extends Modal {
 				btn
 					.setButtonText(i18n.t('settings.configDirSync.cancel'))
 					.onClick(() => {
+						this.resolved = true
 						this.close()
 						this.onResult(false)
 					}),
@@ -125,13 +136,19 @@ class ConfigDirSyncBookmarksModal extends Modal {
 
 	onClose() {
 		this.contentEl.empty()
+		if (!this.resolved) {
+			this.onResult(false)
+		}
 	}
 }
 
 class ConfigDirSyncWarningModal extends Modal {
+	private resolved = false
+
 	constructor(
 		app: App,
 		private configDir: string,
+		private pruningRule: GlobFilterRule | undefined,
 		private onResult: (confirmed: boolean) => void,
 	) {
 		super(app)
@@ -155,12 +172,22 @@ class ConfigDirSyncWarningModal extends Modal {
 		for (const text of warningKeys) {
 			contentEl.createEl('p', { text: text })
 		}
+		if (this.pruningRule) {
+			contentEl.createEl('p', {
+				text: i18n.t('settings.configDirSync.warnPruned', {
+					configDir: this.configDir,
+					rule: this.pruningRule.expr,
+				}),
+				cls: ':uno: ns-config-dir-warning',
+			})
+		}
 		new Setting(contentEl)
 			.addButton((btn) =>
 				btn
 					.setButtonText(i18n.t('settings.configDirSync.confirm'))
 					.setCta()
 					.onClick(() => {
+						this.resolved = true
 						this.close()
 						this.onResult(true)
 					}),
@@ -169,6 +196,7 @@ class ConfigDirSyncWarningModal extends Modal {
 				btn
 					.setButtonText(i18n.t('settings.configDirSync.cancel'))
 					.onClick(() => {
+						this.resolved = true
 						this.close()
 						this.onResult(false)
 					}),
@@ -177,5 +205,8 @@ class ConfigDirSyncWarningModal extends Modal {
 
 	onClose() {
 		this.contentEl.empty()
+		if (!this.resolved) {
+			this.onResult(false)
+		}
 	}
 }

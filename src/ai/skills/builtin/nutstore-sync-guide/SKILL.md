@@ -20,12 +20,13 @@ configuration workflow.
 
 ## Read only the reference you need
 
-| Topic                                                                        | Reference                   |
-| ---------------------------------------------------------------------------- | --------------------------- |
-| Synchronization, account connection, conflicts, large files, troubleshooting | `references/sync.md`        |
-| Plugin settings file, filters, sync timing, toggles, enums                   | `references/settings.md`    |
-| AI provider setup, ChatBox, approval behavior                                | `references/ai-chatbox.md`  |
-| Adding, editing, removing, diagnosing an MCP server                          | `references/mcp-servers.md` |
+| Topic                                                                        | Reference                    |
+| ---------------------------------------------------------------------------- | ---------------------------- |
+| Synchronization, account connection, conflicts, large files, troubleshooting | `references/sync.md`         |
+| Plugin settings file, sync timing, toggles, enums                            | `references/settings.md`     |
+| Filter rule semantics, include/exclude patterns, case sensitivity            | `references/filter-rules.md` |
+| AI provider setup, ChatBox, approval behavior                                | `references/ai-chatbox.md`   |
+| Adding, editing, removing, diagnosing an MCP server                          | `references/mcp-servers.md`  |
 
 For a request spanning several topics, read each relevant reference before
 answering or acting. Read the MCP reference before making any MCP change, and

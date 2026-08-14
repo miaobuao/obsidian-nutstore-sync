@@ -386,3 +386,34 @@ describe('migrateLegacyFilterRules', () => {
 		expect(twice.migrated).toBe(false)
 	})
 })
+
+describe('disabled filter rules', () => {
+	it('a disabled exclude no longer matches', () => {
+		const rules: GlobFilterRule[] = [
+			{ expr: '*.log', options, type: 'exclude', disabled: true },
+		]
+		expect(decide('debug.log', rules)).toBe(true)
+	})
+
+	it('a disabled include does not resurrect paths', () => {
+		const rules: GlobFilterRule[] = [
+			{ expr: '*.log', options, type: 'exclude' },
+			{ expr: 'important.log', options, type: 'include', disabled: true },
+		]
+		expect(decide('important.log', rules)).toBe(false)
+	})
+
+	it('absent disabled means the rule stays active', () => {
+		const rules: GlobFilterRule[] = [
+			{ expr: '*.log', options, type: 'exclude' },
+		]
+		expect(decide('debug.log', rules)).toBe(false)
+	})
+
+	it('disabled rules do not prune their subtree', () => {
+		const rules: GlobFilterRule[] = [
+			{ expr: 'private', options, type: 'exclude', disabled: true },
+		]
+		expect(decide('private/note.md', rules)).toBe(true)
+	})
+})

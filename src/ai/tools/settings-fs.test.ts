@@ -95,6 +95,47 @@ describe('serializeSettingsWhitelist', () => {
 		expect(result.patch.skipLargeFilesMaxSize).toBe('30 MB')
 		expect(result.patch.filterRules?.[0]?.expr).toBe('**/.DS_Store')
 	})
+
+	it('serializes and round-trips a disabled rule', () => {
+		const settings = makeSettings()
+		settings.filterRules.rules = [
+			{
+				expr: '**/.env',
+				options: { caseSensitive: false },
+				type: 'exclude',
+				disabled: true,
+			},
+		]
+		const file = JSON.parse(serializeSettingsWhitelist(settings)) as {
+			filterRules: { rules: Array<Record<string, unknown>> }
+		}
+		expect(file.filterRules.rules[0]?.disabled).toBe(true)
+
+		const result = parseSettingsWhitelistJson(
+			serializeSettingsWhitelist(settings),
+		)
+		expect(result.ok).toBe(true)
+		if (!result.ok) return
+		expect(result.patch.filterRules?.[0]?.disabled).toBe(true)
+	})
+
+	it('omits disabled for an active rule in the serialized file', () => {
+		const file = JSON.parse(serializeSettingsWhitelist(makeSettings())) as {
+			filterRules: { rules: Array<Record<string, unknown>> }
+		}
+		expect(file.filterRules.rules[0]).not.toHaveProperty('disabled')
+	})
+
+	it('rejects a non-boolean disabled value', () => {
+		const result = parseSettingsWhitelistJson(
+			JSON.stringify({
+				filterRules: {
+					rules: [{ expr: '*.md', type: 'exclude', disabled: 'yes' }],
+				},
+			}),
+		)
+		expect(result.ok).toBe(false)
+	})
 })
 
 describe('SettingsFs read surface', () => {

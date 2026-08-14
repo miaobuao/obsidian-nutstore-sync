@@ -1,9 +1,10 @@
 import type NutstorePlugin from '~/index'
-import {
+import GlobMatch, {
 	compileFilterRules,
 	type GlobFilterRule,
 	type GlobMatchOptions,
 	isPathIncluded,
+	isVoidGlobMatchOptions,
 } from './glob-match'
 import {
 	REMOTE_SYNC_CACHE_DIR,
@@ -78,6 +79,31 @@ export function shouldUseRemoteTraversalCache(
 		getSyncCacheLocalPath(configDir),
 		compileFilterRules(filterRules.rules),
 	)
+}
+
+/**
+ * Returns the filter rule that last matches the config directory directory
+ * node when it is an exclude — the rule that actually prunes the config
+ * directory subtree in `all` mode. Returns undefined when no rule prunes it.
+ *
+ * Used to tell the user exactly which rule prevents "Sync all" from syncing
+ * the config directory.
+ */
+export function getConfigDirPruningRule(
+	configDir: string,
+	rules: GlobFilterRule[],
+): GlobFilterRule | undefined {
+	const candidate = `${configDir}/`
+	let last: GlobFilterRule | undefined
+	for (const rule of rules) {
+		if (rule.disabled === true || isVoidGlobMatchOptions(rule)) {
+			continue
+		}
+		if (new GlobMatch(rule.expr, rule.options).test(candidate)) {
+			last = rule
+		}
+	}
+	return last?.type === 'exclude' ? last : undefined
 }
 
 export function computeEffectiveFilterRulesFromParts(

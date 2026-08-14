@@ -69,6 +69,15 @@
 	border-color: var(--background-modifier-error);
 }
 
+.ns-config-dir-warning {
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 1px solid color-mix(in srgb, var(--text-warning) 45%, transparent);
+	border-radius: var(--radius-s);
+	background: color-mix(in srgb, var(--text-warning) 10%, transparent);
+	color: var(--text-warning);
+	font-weight: 600;
+}
+
 .settings-helper-badge {
 	display: inline-flex;
 	align-items: center;

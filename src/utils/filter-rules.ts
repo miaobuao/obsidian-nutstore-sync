@@ -9,6 +9,11 @@ export type FilterRuleType = 'include' | 'exclude'
 
 export interface GlobFilterRule extends GlobMatchOptions {
 	type: FilterRuleType
+	/**
+	 * When true the rule is skipped during matching. Absent or false means the
+	 * rule is active.
+	 */
+	disabled?: boolean
 }
 
 export interface CompiledFilterRule {
@@ -20,7 +25,7 @@ export function compileFilterRules(
 	rules: GlobFilterRule[] = [],
 ): CompiledFilterRule[] {
 	return rules
-		.filter((rule) => !isVoidGlobMatchOptions(rule))
+		.filter((rule) => rule.disabled !== true && !isVoidGlobMatchOptions(rule))
 		.map((rule) => ({
 			match: new GlobMatch(rule.expr, rule.options),
 			type: rule.type,

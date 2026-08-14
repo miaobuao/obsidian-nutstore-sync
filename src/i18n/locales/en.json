@@ -330,6 +330,7 @@
 			"remove": "Remove",
 			"confirmRemove": "Confirm remove",
 			"edit": "Edit rules",
+			"toggle": "Enable or disable this rule",
 			"save": "Save",
 			"cancel": "Cancel",
 			"placeholder": "e.g.: .DS_Store, *.pdf",
@@ -343,7 +344,7 @@
 			"desc": "Control whether {{configDir}} is included in sync.",
 			"none": "Do not sync",
 			"bookmarks": "Sync bookmarks only",
-			"all": "Sync all (experimental)",
+			"all": "Sync all",
 			"bookmarksTitle": "Enable bookmark sync",
 			"bookmarksDesc": "Only {{configDir}}/bookmarks.json will be synced. Other config files are not affected.",
 			"warnTitle": "Enable full config directory sync?",
@@ -351,6 +352,8 @@
 			"warnExcludes": "Auto-excluded: {{configDir}}/plugins/**/node_modules, {{configDir}}/plugins/**/.git, and {{configDir}}/plugins/**/.pnpm-store.",
 			"warnConflict": "Conflict resolution: when both sides have changes, the more recently modified version wins and the other side is overwritten.",
 			"warnRisk": "Risks: running Obsidian on multiple devices simultaneously increases conflict risk; config changes may require restarting Obsidian to take effect.",
+			"warnPruned": "Rule `{{rule}}` excludes {{configDir}} itself, so the config folder won't sync. To sync the config folder, disable this rule in the filter rules first.",
+			"syncNotice": "Config folder won't sync: rule `{{rule}}` excludes {{configDir}}. Disable this rule first to sync it.",
 			"confirm": "Enable",
 			"cancel": "Cancel"
 		},
@@ -448,7 +451,8 @@
 			"fields": {
 				"filterRules": {
 					"name": "Filter rules",
-					"empty": "(empty)"
+					"empty": "(empty)",
+					"disabled": "(disabled)"
 				},
 				"skipLargeFiles": {
 					"name": "Max file size to skip"

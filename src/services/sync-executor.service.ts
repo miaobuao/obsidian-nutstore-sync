@@ -4,6 +4,7 @@ import { IN_DEV } from '~/consts'
 import { emitStopGc, emitSyncError } from '~/events'
 import i18n from '~/i18n'
 import type { SyncStartResult } from '~/sync'
+import { getConfigDirPruningRule } from '~/utils/config-dir-rules'
 import { getSyncPolicyLabel, getSyncTriggerLabel } from '~/sync/log'
 import { type SyncPolicy } from '~/settings'
 import logger from '~/utils/logger'
@@ -57,6 +58,25 @@ export default class SyncExecutorService extends BaseService {
 			if (!this.plugin.isAccountConfigured()) {
 				new Notice(i18n.t('sync.error.accountNotConfigured'))
 				return false
+			}
+
+			if (
+				options.mode === SyncStartMode.MANUAL_SYNC &&
+				(this.plugin.settings.configDirSyncMode ?? 'none') === 'all'
+			) {
+				const configDir = this.plugin.app.vault.configDir
+				const pruningRule = getConfigDirPruningRule(
+					configDir,
+					this.plugin.settings.filterRules.rules,
+				)
+				if (pruningRule) {
+					new Notice(
+						i18n.t('settings.configDirSync.syncNotice', {
+							configDir,
+							rule: pruningRule.expr,
+						}),
+					)
+				}
 			}
 
 			logger.info('Sync starting with settings:', {

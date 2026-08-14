@@ -20,6 +20,7 @@ describe('built-in Skills', () => {
 		expect(skill!.content).toContain('MCP server configuration')
 		expect(skill!.resources?.map((resource) => resource.path)).toEqual([
 			'references/ai-chatbox.md',
+			'references/filter-rules.md',
 			'references/mcp-servers.md',
 			'references/settings.md',
 			'references/sync.md',

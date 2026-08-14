@@ -330,6 +330,7 @@
 			"remove": "删除",
 			"confirmRemove": "确认删除",
 			"edit": "编辑规则",
+			"toggle": "启用或禁用该规则",
 			"save": "保存",
 			"cancel": "取消",
 			"placeholder": "例如: .DS_Store, *.pdf",
@@ -343,7 +344,7 @@
 			"desc": "控制 {{configDir}} 目录是否参与同步。",
 			"none": "不同步",
 			"bookmarks": "仅同步书签",
-			"all": "同步全部（实验性）",
+			"all": "同步全部",
 			"bookmarksTitle": "启用书签同步",
 			"bookmarksDesc": "仅同步 {{configDir}}/bookmarks.json，其他配置文件不受影响。",
 			"warnTitle": "启用完整配置目录同步？",
@@ -351,6 +352,8 @@
 			"warnExcludes": "自动排除：{{configDir}}/plugins/**/node_modules、{{configDir}}/plugins/**/.git 和 {{configDir}}/plugins/**/.pnpm-store。",
 			"warnConflict": "冲突处理：两端同一文件均有修改时，保留修改时间较新的版本，另一端的修改将被覆盖。",
 			"warnRisk": "风险：多台设备同时运行 Obsidian 容易引发冲突；插件设置变更后可能需要重启 Obsidian 才能生效。",
+			"warnPruned": "规则 `{{rule}}` 会排除 {{configDir}} 本身，导致配置文件夹无法同步。若要同步配置文件夹，请先在过滤规则里禁用这条规则。",
+			"syncNotice": "配置文件夹无法同步：规则 `{{rule}}` 排除了 {{configDir}}。若要同步，请先禁用这条规则。",
 			"confirm": "启用",
 			"cancel": "取消"
 		},
@@ -448,7 +451,8 @@
 			"fields": {
 				"filterRules": {
 					"name": "过滤规则",
-					"empty": "(空)"
+					"empty": "(空)",
+					"disabled": "（已禁用）"
 				},
 				"skipLargeFiles": {
 					"name": "跳过的大文件上限"

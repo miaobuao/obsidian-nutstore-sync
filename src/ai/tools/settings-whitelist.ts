@@ -18,6 +18,7 @@ export type WhitelistFilterRule = {
 	expr: string
 	type: 'include' | 'exclude'
 	caseSensitive?: boolean
+	disabled?: boolean
 }
 
 export type SettingsWhitelistFile = {
@@ -154,11 +155,16 @@ function normalizeFilterRule(
 	if (caseSensitive !== undefined && typeof caseSensitive !== 'boolean') {
 		return jsonError(`${name}.caseSensitive`, 'a boolean')
 	}
+	const disabled = value.disabled
+	if (disabled !== undefined && typeof disabled !== 'boolean') {
+		return jsonError(`${name}.disabled`, 'a boolean')
+	}
 	const options = { caseSensitive: caseSensitive === true }
 	const rule: GlobFilterRule = {
 		expr,
 		options,
 		type: type as 'include' | 'exclude',
+		...(disabled === true ? { disabled: true } : {}),
 	}
 	if (isVoidGlobMatchOptions(rule)) {
 		return jsonError(`${name}.expr`, 'a non-empty pattern')
@@ -428,6 +434,7 @@ export function serializeSettingsWhitelist(settings: NutstoreSettings): string {
 				expr: rule.expr,
 				type: rule.type,
 				caseSensitive: rule.options.caseSensitive === true,
+				disabled: rule.disabled === true ? true : undefined,
 			})),
 		},
 		skipLargeFiles: { maxSize: settings.skipLargeFiles?.maxSize },
@@ -451,7 +458,14 @@ function describeFilterRules(patch: NormalizedSettingsPatch): string {
 	}
 	return rules
 		.slice(0, 5)
-		.map((rule) => `${rule.type === 'include' ? '+' : '-'} ${rule.expr}`)
+		.map(
+			(rule) =>
+				`${rule.type === 'include' ? '+' : '-'} ${rule.expr}${
+					rule.disabled === true
+						? ` ${i18n.t('aiPermission.settings.fields.filterRules.disabled')}`
+						: ''
+				}`,
+		)
 		.join('; ')
 }
 

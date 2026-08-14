@@ -43,6 +43,29 @@ export default class FilterEditorModal extends Modal {
 				const itemContainer = listContainer.createDiv({
 					cls: ':uno: flex gap-2 items-center',
 				})
+				const activeToggle = listContainer.createEl('input', {
+					type: 'checkbox',
+					cls: ':uno: cursor-pointer self-center',
+				})
+				activeToggle.checked = rule.disabled !== true
+				activeToggle.title = i18n.t('settings.filters.toggle')
+				const updateRowState = () => {
+					if (rule.disabled === true) {
+						addClassTokens(itemContainer, ':uno: opacity-50')
+					} else {
+						removeClassTokens(itemContainer, ':uno: opacity-50')
+					}
+				}
+				updateRowState()
+				activeToggle.addEventListener('change', () => {
+					if (activeToggle.checked) {
+						delete rule.disabled
+					} else {
+						rule.disabled = true
+					}
+					this.rules[index] = rule
+					updateRowState()
+				})
 				const typeSelect = listContainer.createEl('select', {
 					cls: ':uno: shadow-none!',
 				})
@@ -144,6 +167,7 @@ export default class FilterEditorModal extends Modal {
 					trash.setText(i18n.t('settings.filters.remove'))
 					removeClassTokens(trash, ':uno: mod-warning')
 				})
+				itemContainer.appendChild(activeToggle)
 				itemContainer.appendChild(typeSelect)
 				itemContainer.appendChild(input)
 				itemContainer.appendChild(upBtn)

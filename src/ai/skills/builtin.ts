@@ -2,6 +2,7 @@ import { InMemoryFs, type IFileSystem } from 'just-bash/browser'
 import { posix as pathPosix } from 'path-browserify'
 import { BUILTIN_SKILLS_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 import aiChatboxReferenceContent from './builtin/nutstore-sync-guide/references/ai-chatbox.md?raw'
+import filterRulesReferenceContent from './builtin/nutstore-sync-guide/references/filter-rules.md?raw'
 import mcpServersReferenceContent from './builtin/nutstore-sync-guide/references/mcp-servers.md?raw'
 import settingsReferenceContent from './builtin/nutstore-sync-guide/references/settings.md?raw'
 import nutstoreSyncGuideContent from './builtin/nutstore-sync-guide/SKILL.md?raw'
@@ -22,6 +23,10 @@ export const BUILTIN_SKILLS: readonly BuiltinSkill[] = [
 			{
 				path: 'references/ai-chatbox.md',
 				content: aiChatboxReferenceContent,
+			},
+			{
+				path: 'references/filter-rules.md',
+				content: filterRulesReferenceContent,
 			},
 			{
 				path: 'references/mcp-servers.md',

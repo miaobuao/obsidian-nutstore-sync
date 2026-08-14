@@ -24,6 +24,20 @@ vi.mock('~/sync', () => ({
 	})),
 }))
 
+const noticeCtor = vi.hoisted(() => vi.fn())
+
+vi.mock('obsidian', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('obsidian')>()
+	return {
+		...actual,
+		Notice: class {
+			constructor(...args: unknown[]) {
+				noticeCtor(...args)
+			}
+		},
+	}
+})
+
 import { SyncStartMode } from '~/sync'
 import type { SyncPolicy } from '~/settings'
 import SyncExecutorService from './sync-executor.service'
@@ -37,6 +51,7 @@ function createPlugin(): any {
 		remoteBaseDir: '/remote',
 		app: {
 			vault: {
+				configDir: '.obsidian',
 				getName: vi.fn(() => 'vault'),
 			},
 		},
@@ -57,6 +72,7 @@ function createPlugin(): any {
 			confirmBeforeSync: false,
 			confirmBeforeDeleteInAutoSync: true,
 			configDirSyncMode: 'bookmarks',
+			filterRules: { rules: [] },
 		},
 		localSettings: {
 			syncPolicy: 'two-way',
@@ -73,6 +89,7 @@ describe('SyncExecutorService', () => {
 		emitSyncErrorMock.mockReset()
 		startMock.mockReset()
 		nutstoreSyncCtor.mockClear()
+		noticeCtor.mockClear()
 	})
 
 	it('delegates directly to NutstoreSync.start and returns its result', async () => {
@@ -280,5 +297,39 @@ describe('SyncExecutorService', () => {
 			confirmBeforeDeleteInAutoSync: true,
 			configDirSyncMode: 'bookmarks',
 		})
+	})
+
+	it('shows a notice on manual sync when a filter rule prunes the config dir', async () => {
+		startMock.mockResolvedValue({
+			ended: true,
+			ranTasks: true,
+			shouldReloadSettings: false,
+		})
+		const plugin = createPlugin()
+		plugin.settings.configDirSyncMode = 'all'
+		plugin.settings.filterRules.rules = [
+			{ expr: '**/.*', options: { caseSensitive: false }, type: 'exclude' },
+		]
+		const service = new SyncExecutorService(plugin)
+
+		await service.executeSync({ mode: SyncStartMode.MANUAL_SYNC })
+
+		expect(noticeCtor).toHaveBeenCalledWith(expect.stringContaining('**/.*'))
+	})
+
+	it('does not show the notice on manual sync without a pruning rule', async () => {
+		startMock.mockResolvedValue({
+			ended: true,
+			ranTasks: true,
+			shouldReloadSettings: false,
+		})
+		const plugin = createPlugin()
+		plugin.settings.configDirSyncMode = 'all'
+		plugin.settings.filterRules.rules = []
+		const service = new SyncExecutorService(plugin)
+
+		await service.executeSync({ mode: SyncStartMode.MANUAL_SYNC })
+
+		expect(noticeCtor).not.toHaveBeenCalled()
 	})
 })
