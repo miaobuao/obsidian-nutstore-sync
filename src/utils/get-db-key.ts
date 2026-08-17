@@ -1,6 +1,6 @@
-import { sha256 } from 'hash-wasm'
 import { normalizePath } from 'obsidian'
 import { objectHash } from 'ohash'
+import { sha256Hex } from '~/utils/sha256'
 import { stdRemotePath } from './std-remote-path'
 
 export function getDBKey(vaultName: string, remoteBaseDir: string) {
@@ -17,7 +17,7 @@ export async function getTraversalWebDAVDBKey(
 ) {
 	return objectHash({
 		remoteEndpoint,
-		accountHash: await sha256(remoteAccountId),
+		accountHash: await sha256Hex(new TextEncoder().encode(remoteAccountId)),
 		remoteBaseDir: normalizePath(remoteBaseDir),
 	})
 }

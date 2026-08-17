@@ -1,4 +1,5 @@
-import { generateText } from 'ai'
+import { generateText, type ModelMessage, type ToolSet } from 'ai'
+import type { App } from 'obsidian'
 import type { ChatSession } from '~/ai/chat/domain'
 import { findLatestTodos, resolveUsedContextTokens } from '~/ai/chat/domain'
 import type { MessageFactory } from '~/ai/chat/messages/message-factory'
@@ -7,7 +8,8 @@ import {
 	selectContextTimeline,
 	uiMessagesToModelMessages,
 } from '~/ai/chat/messages/ui-message'
-import { COMPRESSION_PROMPT } from '~/ai/chat/prompts'
+import { buildAgentSystemPrompt, COMPRESSION_PROMPT } from '~/ai/chat/prompts'
+import type { ToolExecutor } from '~/ai/chat/runtime/tool-executor'
 import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { AppUIMessage, ChatAgentState } from '~/ai/chat/types'
 import {
@@ -132,8 +134,42 @@ interface CompressContextRunnerOptions {
 	agent: ChatAgentState
 	store: SessionStore
 	messageFactory: MessageFactory
+	/** System prompt identical to the main loop's, so the summarizer replays the warm prefix. */
+	system?: string
+	/** Per-agent tools identical to the main loop's, for the same prefix reason. */
+	tools?: ToolSet
+	/** Builds the message transcript exactly like the agent loop (user-context aware). */
+	buildMessages?: (
+		agent: ChatAgentState,
+		tools: ToolSet,
+	) => Promise<ModelMessage[]>
 	isCancelled?: () => boolean
 	abortSignal?: AbortSignal
+}
+
+/**
+ * Resolve the system prompt + per-agent tools both callers (auto and manual)
+ * reuse so the summarizer request is a byte-for-byte prefix of the last routed
+ * turn. Degrades gracefully ({} on failure) so a tool-creation hiccup never
+ * blocks compression.
+ */
+export async function resolveSummaryContext(
+	agent: ChatAgentState,
+	session: ChatSession,
+	model: AIModelConfig,
+	toolExecutor: ToolExecutor,
+	app: App,
+): Promise<{ system?: string; tools?: ToolSet }> {
+	try {
+		const definition = toolExecutor.getAgentDefinition(agent.type)
+		const [system, tools] = await Promise.all([
+			buildAgentSystemPrompt(app, agent.type, session.systemPrompt),
+			toolExecutor.createTools(0, definition, session, model),
+		])
+		return { system, tools }
+	} catch {
+		return {}
+	}
 }
 
 export async function runContextCompression({
@@ -143,22 +179,39 @@ export async function runContextCompression({
 	agent,
 	store,
 	messageFactory,
+	system,
+	tools,
+	buildMessages,
 	isCancelled,
 	abortSignal,
 }: CompressContextRunnerOptions) {
 	const contextTimeline = selectContextTimeline(agent.timeline)
 	if (contextTimeline.length === 0) return
-	const messages = await uiMessagesToModelMessages(contextTimeline)
 	const { model: languageModel } = resolveLanguageModel(provider, model.id)
+	const messageSequence =
+		buildMessages && tools
+			? await buildMessages(agent, tools)
+			: await uiMessagesToModelMessages(contextTimeline, tools)
+	const preparedMessages = prepareMessagesForModel(
+		provider,
+		model.id,
+		messageSequence,
+	)
+	// Append the compaction instruction as a separate final user message AFTER
+	// preparation: adjacent-user merging must never fold it into the last turn,
+	// so the summarizer request stays a genuine prefix of the last routed turn.
+	const summarizerMessages: ModelMessage[] = [
+		...preparedMessages,
+		{
+			role: 'user',
+			content: [{ type: 'text', text: COMPRESSION_PROMPT }],
+		},
+	]
 	const response = await generateText({
 		model: languageModel,
-		messages: prepareMessagesForModel(provider, model.id, [
-			...messages,
-			{
-				role: 'user',
-				content: [{ type: 'text', text: COMPRESSION_PROMPT }],
-			},
-		]),
+		...(system === undefined ? {} : { system }),
+		...(tools === undefined ? {} : { tools }),
+		messages: summarizerMessages,
 		abortSignal,
 		temperature: session.inferenceParams?.temperature,
 		maxOutputTokens: session.inferenceParams?.maxTokens,

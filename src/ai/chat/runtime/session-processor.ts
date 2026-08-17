@@ -1,4 +1,4 @@
-import type { ModelMessage, ToolSet, UserModelMessage } from 'ai'
+import type { ModelMessage, ToolSet } from 'ai'
 import type { ChatSession } from '~/ai/chat/domain'
 
 import type { ChatAgentState } from '~/ai/chat/types'
@@ -24,10 +24,8 @@ import type { ToolCallRepeatState } from '~/ai/core/tool-call-repeat'
 import type { AIModelConfig, AIProviderConfig } from '~/ai/core/types'
 import { AgentRunner } from '~/ai/chat/runtime/agent-runner'
 import {
+	buildAgentMessages,
 	consumePendingInputs,
-	getUserContextItems,
-	selectContextTimeline,
-	uiMessagesToModelMessages,
 } from '~/ai/chat/messages/ui-message'
 
 export class SessionProcessor {
@@ -256,6 +254,12 @@ export class SessionProcessor {
 					agent,
 					store: this.store,
 					messageFactory: this.messageFactory,
+					...(await this.agentRunner.resolveSummaryContext(
+						agent,
+						session,
+						model,
+					)),
+					buildMessages: (a, tools) => this.buildMessagesForAgent(a, tools),
 					isCancelled: () =>
 						this.runtimeStates.get(session.id).stopRequested ||
 						this.state.deletedSessionIds.has(session.id),
@@ -323,32 +327,6 @@ export class SessionProcessor {
 		agent: ChatAgentState,
 		tools: ToolSet,
 	): Promise<ModelMessage[]> {
-		const timeline = selectContextTimeline(agent.timeline)
-		const messages = await Promise.all(
-			timeline.map(async (item) => {
-				const converted = await uiMessagesToModelMessages([item], tools)
-				if (item.role !== 'user' || converted.length === 0) return converted
-				const modelMessage = converted[0]
-				const userContext = getUserContextItems(item)
-				const dedupedContext = userContext.length
-					? this.userContextManager.dedupeUserContextItems(userContext)
-					: []
-				const contextParts =
-					await this.userContextManager.buildMessagePartsFromUserContext(
-						dedupedContext,
-					)
-				if (!contextParts.length) return converted
-				const userContent = Array.isArray(modelMessage.content)
-					? (modelMessage as UserModelMessage).content
-					: []
-				return [
-					{
-						...modelMessage,
-						content: [...contextParts, ...userContent],
-					} as ModelMessage,
-				]
-			}),
-		)
-		return messages.flat()
+		return buildAgentMessages(agent, tools, this.userContextManager)
 	}
 }

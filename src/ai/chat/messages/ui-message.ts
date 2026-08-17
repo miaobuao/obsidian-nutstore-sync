@@ -5,6 +5,7 @@ import type {
 	TextPart,
 	ToolCallPart,
 	DynamicToolUIPart,
+	UserModelMessage,
 } from 'ai'
 import { convertToModelMessages, type ToolSet } from 'ai'
 import type {
@@ -18,6 +19,8 @@ import type {
 	WorkspaceContextDelta,
 } from '~/ai/chat/types'
 import { MASTER_AGENT_ID } from '~/ai/chat/agents/registry'
+import { CHECKPOINT_PREAMBLE } from '~/ai/chat/prompts'
+import type { UserContextManager } from '~/ai/chat/context/user-context-manager'
 
 function modelFilePartToDataPart(file: FilePart): AppUIMessagePart {
 	return { type: 'data-model-file', data: { file } }
@@ -346,7 +349,7 @@ export async function uiMessagesToModelMessages(
 				if (part.data.mode === 'reset' || !part.data.summary) return undefined
 				return {
 					type: 'text',
-					text: `<ConversationSummary>${part.data.summary}</ConversationSummary>`,
+					text: `<ConversationSummary>\n${CHECKPOINT_PREAMBLE}\n\n${part.data.summary}\n</ConversationSummary>`,
 				}
 			}
 			if (part.type === 'data-system-notification') {
@@ -367,6 +370,45 @@ export function consumePendingInputs(agent: ChatAgentState) {
 	const inputs = agent.pendingInputs.splice(0)
 	agent.timeline.push(...inputs)
 	return inputs.length > 0
+}
+
+/**
+ * Build the model message transcript exactly as the agent loop does — the
+ * shared builder behind both main turns and the compression summarizer call,
+ * so both requests carry the same byte-for-byte prefix.
+ */
+export async function buildAgentMessages(
+	agent: ChatAgentState,
+	tools: ToolSet,
+	userContextManager: UserContextManager,
+): Promise<ModelMessage[]> {
+	const timeline = selectContextTimeline(agent.timeline)
+	const messages = await Promise.all(
+		timeline.map(async (item) => {
+			const converted = await uiMessagesToModelMessages([item], tools)
+			if (item.role !== 'user' || converted.length === 0) return converted
+			const modelMessage = converted[0]
+			const userContext = getUserContextItems(item)
+			const dedupedContext = userContext.length
+				? userContextManager.dedupeUserContextItems(userContext)
+				: []
+			const contextParts =
+				await userContextManager.buildMessagePartsFromUserContext(
+					dedupedContext,
+				)
+			if (!contextParts.length) return converted
+			const userContent = Array.isArray(modelMessage.content)
+				? (modelMessage as UserModelMessage).content
+				: []
+			return [
+				{
+					...modelMessage,
+					content: [...contextParts, ...userContent],
+				} as ModelMessage,
+			]
+		}),
+	)
+	return messages.flat()
 }
 
 export function createEmptyMasterAgent(createdAt: number): ChatAgentState {

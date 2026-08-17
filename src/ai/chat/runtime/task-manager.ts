@@ -138,6 +138,11 @@ export class TaskManager {
 				agent,
 				store: this.store,
 				messageFactory: this.messageFactory,
+				...(await this.agentRunner.resolveSummaryContext(
+					agent,
+					session,
+					model,
+				)),
 				isCancelled: () =>
 					isCancelled() || this.state.deletedSessionIds.has(session.id),
 			})

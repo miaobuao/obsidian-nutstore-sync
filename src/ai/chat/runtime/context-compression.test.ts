@@ -10,6 +10,7 @@ import {
 	runContextCompression,
 	shouldAutoCompressAgent,
 } from '~/ai/chat/runtime/context-compression'
+import { COMPRESSION_PROMPT } from '~/ai/chat/prompts'
 import type { AppUIMessage } from '~/ai/chat/types'
 
 const generateText = vi.hoisted(() => vi.fn())
@@ -215,5 +216,130 @@ describe('context compression', () => {
 		expect(
 			shouldAutoCompressAgent(agent, { limit: { context: 100_000 } } as never),
 		).toBe(true)
+	})
+
+	it('forwards the shared system prompt and tools to the summarizer', async () => {
+		const master = createEmptyMasterAgent(1)
+		master.timeline = [message('u1', 'user', 1)]
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const store = {
+			upsertSessionIndexItem: vi.fn(),
+			persistSession: vi.fn(async () => undefined),
+			persistMetaAndIndex: vi.fn(async () => undefined),
+		}
+		const factory = new MessageFactory({} as never, {} as never, vi.fn())
+		const tools = { bash: { execute: 1 } } as never
+
+		await runContextCompression({
+			provider: {} as never,
+			model: { id: 'model' } as never,
+			session,
+			agent: master,
+			store: store as never,
+			messageFactory: factory,
+			system: 'SYSTEM',
+			tools,
+		})
+
+		expect(generateText).toHaveBeenCalledWith(
+			expect.objectContaining({ system: 'SYSTEM', tools }),
+		)
+	})
+
+	it('keeps the compaction instruction as a separate final user message', async () => {
+		const master = createEmptyMasterAgent(1)
+		master.timeline = [
+			message('u1', 'user', 1),
+			message('a1', 'assistant', 2),
+			message('u2', 'user', 3),
+		]
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const store = {
+			upsertSessionIndexItem: vi.fn(),
+			persistSession: vi.fn(async () => undefined),
+			persistMetaAndIndex: vi.fn(async () => undefined),
+		}
+		const factory = new MessageFactory({} as never, {} as never, vi.fn())
+
+		await runContextCompression({
+			provider: {} as never,
+			model: { id: 'model' } as never,
+			session,
+			agent: master,
+			store: store as never,
+			messageFactory: factory,
+		})
+
+		const callArgs = generateText.mock.calls.at(-1)![0] as {
+			messages: Array<{
+				role: string
+				content: Array<{ type: string; text: string }>
+			}>
+		}
+		const roles = callArgs.messages.map((message) => message.role)
+		expect(roles).toEqual(['user', 'assistant', 'user', 'user'])
+		const last = callArgs.messages.at(-1)!
+		expect(last).toMatchObject({ role: 'user' })
+		expect(last.content[0]).toMatchObject({
+			type: 'text',
+			text: COMPRESSION_PROMPT,
+		})
+	})
+
+	it('uses buildMessages when both tools and a builder are provided', async () => {
+		const master = createEmptyMasterAgent(1)
+		master.timeline = [message('u1', 'user', 1)]
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const store = {
+			upsertSessionIndexItem: vi.fn(),
+			persistSession: vi.fn(async () => undefined),
+			persistMetaAndIndex: vi.fn(async () => undefined),
+		}
+		const factory = new MessageFactory({} as never, {} as never, vi.fn())
+		const buildMessages = vi.fn(
+			async () =>
+				[{ role: 'user', content: [{ type: 'text', text: 'BUILT' }] }] as never,
+		)
+
+		await runContextCompression({
+			provider: {} as never,
+			model: { id: 'model' } as never,
+			session,
+			agent: master,
+			store: store as never,
+			messageFactory: factory,
+			tools: {} as never,
+			buildMessages: buildMessages as never,
+		})
+
+		expect(buildMessages).toHaveBeenCalledTimes(1)
+		const callArgs = generateText.mock.calls.at(-1)![0] as {
+			messages: Array<{
+				role: string
+				content: Array<{ type: string; text: string }>
+			}>
+		}
+		expect(callArgs.messages.map((m) => m.content[0].text)).toEqual([
+			'BUILT',
+			COMPRESSION_PROMPT,
+		])
 	})
 })
