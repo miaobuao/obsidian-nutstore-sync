@@ -183,6 +183,7 @@ export const DEFAULT_SETTINGS: NutstoreSettings = {
 			'**/__MACOSX',
 			'**/.DS_Store',
 			'**/.env',
+			'**/.nomedia',
 			'**/.env.*',
 			'**/.git',
 			'**/.github',
