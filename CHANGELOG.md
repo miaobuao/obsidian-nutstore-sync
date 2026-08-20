@@ -2,7 +2,7 @@
 
 本项目的所有重要更改都将记录在此文件中。All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.4.1] - 2026-08-20
 
 - 在默认忽略规则中添加 `.nomedia` 文件支持。 Add `.nomedia` to default ignore rules.
 - 确保文件夹列表遍历失败时立即中止，防止扫描结果不完整。 Ensure traversal aborts on folder listing failures to prevent incomplete scans.
