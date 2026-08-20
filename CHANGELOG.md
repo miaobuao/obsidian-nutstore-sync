@@ -2,6 +2,23 @@
 
 本项目的所有重要更改都将记录在此文件中。All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+- 在默认忽略规则中添加 `.nomedia` 文件支持。 Add `.nomedia` to default ignore rules.
+- 确保文件夹列表遍历失败时立即中止，防止扫描结果不完整。 Ensure traversal aborts on folder listing failures to prevent incomplete scans.
+- 在编辑模式下高亮显示冲突的过滤规则。 Highlight conflict filter rules while editing in the editor modal.
+- 实现虚拟任务列表，提升大规模任务处理性能。 Implement virtual task list for improved performance.
+- 默认排除临时下载分片文件。 Exclude temporary download chunks by default.
+- 更新中英文语言包中的故障排除术语。 Update troubleshooting terminology in English and Chinese locales.
+- 增加禁用过滤规则的功能，并添加配置目录同步清理警告。 Add ability to disable filter rules and implement config directory sync pruning warnings.
+- 重构 `createMount` 函数，移除 `delegateEvents` 选项。 Refactor `createMount` function by removing the `delegateEvents` option.
+- 增强同步功能，支持自动同步合并（Coalescing）和手动同步锁定机制。 Enhance sync functionality with auto sync coalescing and manual sync blocking.
+- 通过虚拟白名单文件向 AI 暴露插件设置。 Expose plugin settings to AI via a virtual whitelisted file.
+- 为 Bash 工具添加用途字段并优化相关的显示逻辑。 Add purpose field to bash tool and implement related display logic.
+- 实现 zip/unzip 命令支持以及 gzip/gunzip 功能，并包含 browser zlib shim 测试。 Implement zip/unzip/gzip/gunzip functionality with archive support and browser zlib shim tests.
+- 实现基于 gitignore 风格的统一有序过滤规则列表。 Implement gitignore-style filter rules with a unified ordered list.
+
+
 ## [1.4.0] - 2026-08-07
 
 - 增强坚果云同步指南与内置技能结构 | Enhanced Nutstore Sync guide and built-in skills structure.
