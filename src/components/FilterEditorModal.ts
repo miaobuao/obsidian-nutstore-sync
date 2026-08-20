@@ -16,7 +16,9 @@ export default class FilterEditorModal extends Modal {
 		plugin: NutstorePlugin,
 		rules: GlobFilterRule[] = [],
 		private onSave: (filters: GlobFilterRule[]) => void,
-		private highlightIndex?: number,
+		private getHighlightedRule?: (
+			rules: GlobFilterRule[],
+		) => GlobFilterRule | undefined,
 	) {
 		super(plugin.app)
 		this.rules = cloneDeep(rules)
@@ -38,15 +40,25 @@ export default class FilterEditorModal extends Modal {
 			cls: ':uno: flex flex-col gap-2 pb-2',
 		})
 
+		const rows: Array<{ rule: GlobFilterRule; container: HTMLElement }> = []
+		const refreshHighlight = () => {
+			const highlightedRule = this.getHighlightedRule?.(this.rules)
+			for (const { rule, container } of rows) {
+				if (rule === highlightedRule) {
+					addClassTokens(container, ':uno: ns-filter-rule-conflict')
+				} else {
+					removeClassTokens(container, ':uno: ns-filter-rule-conflict')
+				}
+			}
+		}
 		const updateList = () => {
 			listContainer.empty()
+			rows.length = 0
 			this.rules.forEach((rule, index) => {
 				const itemContainer = listContainer.createDiv({
 					cls: ':uno: flex gap-2 items-center',
 				})
-				if (index === this.highlightIndex) {
-					addClassTokens(itemContainer, ':uno: ns-filter-rule-conflict')
-				}
+				rows.push({ rule, container: itemContainer })
 				const activeToggle = listContainer.createEl('input', {
 					type: 'checkbox',
 					cls: ':uno: cursor-pointer self-center',
@@ -69,6 +81,7 @@ export default class FilterEditorModal extends Modal {
 					}
 					this.rules[index] = rule
 					updateRowState()
+					refreshHighlight()
 				})
 				const typeSelect = listContainer.createEl('select', {
 					cls: ':uno: shadow-none!',
@@ -87,6 +100,7 @@ export default class FilterEditorModal extends Modal {
 				typeSelect.addEventListener('change', () => {
 					rule.type = typeSelect.value as FilterRuleType
 					this.rules[index] = rule
+					refreshHighlight()
 				})
 
 				const input = listContainer.createEl('input', {
@@ -99,6 +113,7 @@ export default class FilterEditorModal extends Modal {
 				input.addEventListener('input', () => {
 					rule.expr = input.value
 					this.rules[index] = rule
+					refreshHighlight()
 				})
 
 				const upBtn = listContainer.createEl('button', {
@@ -179,6 +194,7 @@ export default class FilterEditorModal extends Modal {
 				itemContainer.appendChild(forceCaseBtn)
 				itemContainer.appendChild(trash)
 			})
+			refreshHighlight()
 		}
 
 		updateList()

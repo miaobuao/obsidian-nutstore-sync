@@ -78,12 +78,11 @@ export default class FilterSettings extends BaseSettings {
 			.addButton((button) => {
 				button.setButtonText(i18n.t('settings.filters.edit')).onClick(() => {
 					const rules = this.plugin.settings.filterRules.rules
-					const pruningRule =
+					const getHighlightedRule =
 						(this.plugin.settings.configDirSyncMode ?? 'none') === 'all'
-							? getConfigDirPruningRule(configDir, rules)
+							? (currentRules: GlobFilterRule[]) =>
+									getConfigDirPruningRule(configDir, currentRules)
 							: undefined
-					const highlightIndex =
-						pruningRule === undefined ? undefined : rules.indexOf(pruningRule)
 					new FilterEditorModal(
 						this.plugin,
 						rules,
@@ -92,7 +91,7 @@ export default class FilterSettings extends BaseSettings {
 							await this.plugin.settingsService.saveSettings()
 							this.display()
 						},
-						highlightIndex,
+						getHighlightedRule,
 					).open()
 				})
 			})
