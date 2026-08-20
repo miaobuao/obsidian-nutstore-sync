@@ -56,9 +56,11 @@ export default class SettingsService extends BaseService {
 		) {
 			this.plugin.settings.conflictStrategy = DEFAULT_SETTINGS.conflictStrategy
 		}
-		const currentFilterRules = this.plugin.settings.filterRules
+		// Stored data may predate the unified `{ rules }` shape and still use
+		// the legacy `{ exclusionRules, inclusionRules }` split; the parameter
+		// type accepts both.
 		const migratedFilterRules = migrateLegacyFilterRules(
-			currentFilterRules as never,
+			this.plugin.settings.filterRules,
 		)
 		// Always normalize so the runtime never sees an undefined rules list;
 		// persist only when a legacy split shape actually required migration.
