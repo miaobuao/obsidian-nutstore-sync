@@ -9,40 +9,40 @@ import {
 	type ToolSet,
 } from 'ai'
 import type { App } from 'obsidian'
+import type { ChatSession } from '~/ai/chat/domain'
+import type { MessageFactory } from '~/ai/chat/messages/message-factory'
+import { messageToText } from '~/ai/chat/messages/message-utils'
+import {
+	selectContextTimeline,
+	uiMessagesToModelMessages,
+} from '~/ai/chat/messages/ui-message'
+import { buildAgentSystemPrompt } from '~/ai/chat/prompts'
+import { AgentEventProjector } from '~/ai/chat/runtime/agent-event-projector'
+import type { SessionRuntimeState } from '~/ai/chat/runtime/chat-state'
+import { resolveSummaryContext } from '~/ai/chat/runtime/context-compression'
+import type { ToolExecutor } from '~/ai/chat/runtime/tool-executor'
+import type { SessionStore } from '~/ai/chat/session/session-store'
+import type { ChatAgentState, ChatMessageMeta } from '~/ai/chat/types'
+import {
+	prepareMessagesForModel,
+	resolveLanguageModel,
+} from '~/ai/core/runtime'
+import {
+	REPEATED_TOOL_CALL_THRESHOLD,
+	updateToolCallRepeatState,
+	type ToolCallRepeatState,
+} from '~/ai/core/tool-call-repeat'
 import type {
 	AIModelConfig,
 	AIProviderConfig,
 	AppToolMetadata,
 } from '~/ai/core/types'
 import type { RecordMetadataFn } from '~/ai/tools/tool-context'
-import { buildAgentSystemPrompt } from '~/ai/chat/prompts'
-import type { ChatSession } from '~/ai/chat/domain'
-import { AgentEventProjector } from '~/ai/chat/runtime/agent-event-projector'
-import type { SessionRuntimeState } from '~/ai/chat/runtime/chat-state'
-import type { MessageFactory } from '~/ai/chat/messages/message-factory'
-import type { SessionStore } from '~/ai/chat/session/session-store'
-import type { ToolExecutor } from '~/ai/chat/runtime/tool-executor'
-import type { ChatAgentState, ChatMessageMeta } from '~/ai/chat/types'
-import { messageToText } from '~/ai/chat/messages/message-utils'
-import {
-	REPEATED_TOOL_CALL_THRESHOLD,
-	type ToolCallRepeatState,
-	updateToolCallRepeatState,
-} from '~/ai/core/tool-call-repeat'
-import {
-	prepareMessagesForModel,
-	resolveLanguageModel,
-} from '~/ai/core/runtime'
-import { resolveSummaryContext } from '~/ai/chat/runtime/context-compression'
-import {
-	selectContextTimeline,
-	uiMessagesToModelMessages,
-} from '~/ai/chat/messages/ui-message'
-import i18n from '~/i18n'
 import {
 	createViewImageAttachmentMessage,
 	InMemoryViewImageAttachmentRegistry,
 } from '~/ai/tools/view-image-attachments'
+import i18n from '~/i18n'
 
 export type AgentRunResult =
 	| { status: 'completed'; text: string }
@@ -145,11 +145,6 @@ export class AgentRunner {
 				scratch: stableContext.scratch,
 				getSettingsSnapshot: stableContext.getSettingsSnapshot,
 				updateSettings: stableContext.updateSettings,
-			},
-			note_neighborhood: {
-				app: stableContext.app,
-				session,
-				agentId: agent.id,
 			},
 			view_image: {
 				app: stableContext.app,

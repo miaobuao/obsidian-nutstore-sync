@@ -54,7 +54,6 @@ function createMasterAgentDefinition({
 		tools: [
 			'bash',
 			'apply_patch',
-			'note_neighborhood',
 			'view_image',
 			'todowrite',
 			'update_session_title',
@@ -71,7 +70,7 @@ function createExplorerAgentDefinition(): AgentDefinition {
 		description:
 			'Read-only subagent for exploring the vault and answering questions about its contents without modifying files.',
 		systemPrompt: EXPLORER_SYSTEM_PROMPT,
-		tools: ['bash', 'note_neighborhood', 'view_image', 'task'],
+		tools: ['bash', 'view_image', 'task'],
 		permissionMode: 'readonly',
 		dispatchable: true,
 	}
