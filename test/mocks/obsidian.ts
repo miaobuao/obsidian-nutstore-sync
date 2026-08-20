@@ -75,6 +75,24 @@ export class Component {
 	load() {}
 	unload() {}
 }
+
+export class PluginSettingTab {
+	containerEl = {
+		empty() {},
+		createDiv() {
+			return {
+				createDiv() {
+					return {}
+				},
+			}
+		},
+	}
+
+	constructor(_app: App, _plugin?: unknown) {}
+
+	display() {}
+	hide() {}
+}
 export class ItemView {}
 export class WorkspaceLeaf {}
 
@@ -85,6 +103,30 @@ export const MarkdownRenderer = {
 export const Platform = {
 	isAndroidApp: false,
 	isMobileApp: false,
+	isDesktopApp: true,
+}
+
+export class Vault {
+	configDir = '.obsidian'
+
+	getName() {
+		return 'default-vault'
+	}
+
+	getRoot() {
+		return { path: '' }
+	}
+}
+
+export function moment(value?: number | string | Date) {
+	return {
+		format(fmt: string) {
+			return fmt
+		},
+		valueOf() {
+			return value instanceof Date ? value.getTime() : Date.now()
+		},
+	}
 }
 
 export function requireApiVersion(_version: string) {

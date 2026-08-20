@@ -15,8 +15,8 @@
 		},
 		"credential": {
 			"name": "Credential",
-			"desc": "Enter your WebDAV credential",
-			"placeholder": "Enter your credential"
+			"desc": "Enter the app password you created in Nutstore (Account info → Security options), not your login password.",
+			"placeholder": "Your Nutstore app password"
 		},
 		"checkConnection": {
 			"name": "Check connection",
@@ -28,8 +28,8 @@
 		},
 		"remoteDir": {
 			"name": "Remote directory",
-			"desc": "Enter the remote directory",
-			"placeholder": "Enter the remote directory"
+			"desc": "Which Nutstore folder this vault syncs with. Use the folder button to pick one visually.",
+			"placeholder": "e.g. /MyNotes"
 		},
 		"login": {
 			"name": "Login",
@@ -68,7 +68,7 @@
 			"name": "Conflict resolution strategy",
 			"desc": "Choose how to resolve file conflicts. \nNote: We recommend backing up important files before using auto-merge to prevent data loss.",
 			"noConflictMerge": "Conflict-free merge",
-			"diff3": "Diff3 merge (with Git-style conflict markers)",
+			"diff3": "Auto-merge (keeps both sides' edits, marked inline)",
 			"localPriority": "Local priority (overwrite server)",
 			"serverPriority": "Server priority (overwrite local)"
 		},
@@ -86,13 +86,13 @@
 		},
 		"syncMode": {
 			"name": "Sync mode",
-			"desc": "Choose between strict or loose sync mode. Loose mode is recommended for users with many files for faster syncing. In loose mode, files with the same name and equal size that have no sync record will be ignored.",
+			"desc": "Loose mode is faster when you have many files: it skips files with the same name and size that were never synced. Strict mode compares everything.",
 			"strict": "Strict",
 			"loose": "Loose"
 		},
 		"syncPolicy": {
 			"name": "Sync policy",
-			"desc": "Controls how data is reconciled between your device and the cloud. Override and revert policies delete extra files on the target side.",
+			"desc": "Controls how changes are shared between this device and the cloud. Policies with \"Override\" or \"Revert\" delete files on the other side — use with care.",
 			"twoWay": "Two Way",
 			"sendOnly": "Send Only",
 			"sendOnlyOverrideChanges": "Send Only: Override Changes",
@@ -102,7 +102,7 @@
 				"title": "Confirm sync policy",
 				"twoWayDesc": "Local and cloud sync in both directions — additions and deletions on either side are applied to the other.\nIf the same file is edited on both sides, conflicts are resolved by your configured strategy.",
 				"sendOnlyDesc": "Send all local changes (additions, modifications, deletions) to the cloud.\n\n• Local new/modified files → uploaded to the cloud\n• Files deleted locally with no cloud changes → removed from the cloud\n• Cloud-only new or modified files → preserved\n• Deleted locally while the cloud also has changes → skipped (to protect cloud edits)\n\nBest for: local as source of truth, cloud as secondary.",
-				"sendOnlyOverrideChangesDesc": "Overwrite the cloud with the full current state of your local vault.\nFiles that exist on the cloud but not locally will be deleted.\nBest when you need to force the cloud to converge to local.",
+				"sendOnlyOverrideChangesDesc": "Overwrite the cloud with the full current state of your local vault.\nFiles on the cloud that do not exist locally will be deleted.\nUse when you want the cloud to match this device exactly.",
 				"receiveOnlyDesc": "Receive all cloud changes (additions, modifications, deletions) into your local vault.\n\n• Cloud new/modified files → downloaded to local\n• Files deleted on the cloud with no local changes → removed from local\n• Local-only new or modified files → preserved\n• Deleted on the cloud while local also has changes → skipped (to protect local edits)\n\nBest for: read-only devices, or cloud as source of truth.",
 				"receiveOnlyRevertLocalChangesDesc": "Revert your local vault to the full current state of the cloud.\nFiles that exist locally but not on the cloud will be deleted.\nBest for read-only devices or when the cloud must be the source of truth.",
 				"confirm": "Confirm",
@@ -110,14 +110,14 @@
 			}
 		},
 		"startupSyncDelay": {
-			"name": "Auto-sync on startup",
+			"name": "Auto-sync on startup (seconds)",
 			"desc": "Set the number of seconds after startup to automatically perform a sync. Set to 0 to disable auto-sync on startup.",
 			"placeholder": "Enter seconds (e.g., 5, 0 to disable)",
 			"invalidValue": "Invalid value, reset to 0",
 			"exceedsMax": "Value exceeds maximum limit of {{max}} seconds (1 day), automatically adjusted"
 		},
 		"autoSyncInterval": {
-			"name": "Auto-sync interval",
+			"name": "Auto-sync interval (minutes)",
 			"desc": "Set the interval for automatic background synchronization (in minutes). Set to 0 to disable automatic sync.",
 			"placeholder": "Enter minutes (e.g., 5, 0 to disable)",
 			"invalidValue": "Invalid value, reset to 0",
@@ -132,7 +132,7 @@
 		"tabs": {
 			"sync": "Sync",
 			"ai": "AI",
-			"troubleshooting": "Troubleshooting"
+			"troubleshooting": "Troubleshoot"
 		},
 		"ai": {
 			"saved": "AI settings saved",
@@ -177,6 +177,7 @@
 				"name": "Providers",
 				"desc": "Manage available AI providers",
 				"summary": "{{count}} provider(s) configured",
+				"emptyHint": "No providers configured yet. Click “Manage providers” to add one.",
 				"manage": "Manage providers",
 				"add": "Add provider",
 				"refreshPresetName": "Get latest model list",
@@ -296,7 +297,7 @@
 			},
 			"yolo": {
 				"name": "Full access",
-				"desc": "⚠️ When enabled, AI can read and write vault files directly without user confirmation"
+				"desc": "⚠️ When on, the AI can edit files and change plugin settings without asking for confirmation each time."
 			},
 			"errors": {
 				"saveFailed": "Failed to save AI settings",
@@ -323,20 +324,19 @@
 			"name": "How to get WebDAV account and credential?"
 		},
 		"filters": {
+			"name": "Filter rules",
+			"desc": "Choose which files and folders are skipped or forced into sync. Use simple paths or wildcards, e.g. \"图片\" or \"*.tmp\". The last matching rule wins; the Aa switch controls case sensitivity.",
 			"add": "Add rule",
 			"remove": "Remove",
 			"confirmRemove": "Confirm remove",
 			"edit": "Edit rules",
+			"toggle": "Enable or disable this rule",
 			"save": "Save",
 			"cancel": "Cancel",
 			"placeholder": "e.g.: .DS_Store, *.pdf",
-			"exclude": {
-				"name": "Exclusion rules",
-				"desc": "Files/folders matching these patterns will NOT be synced."
-			},
-			"include": {
-				"name": "Inclusion rules",
-				"desc": "Files/folders matching these patterns WILL be synced (if defined)."
+			"types": {
+				"exclude": "Exclude",
+				"include": "Include"
 			}
 		},
 		"configDirSync": {
@@ -344,7 +344,7 @@
 			"desc": "Control whether {{configDir}} is included in sync.",
 			"none": "Do not sync",
 			"bookmarks": "Sync bookmarks only",
-			"all": "Sync all (experimental)",
+			"all": "Sync all",
 			"bookmarksTitle": "Enable bookmark sync",
 			"bookmarksDesc": "Only {{configDir}}/bookmarks.json will be synced. Other config files are not affected.",
 			"warnTitle": "Enable full config directory sync?",
@@ -352,19 +352,21 @@
 			"warnExcludes": "Auto-excluded: {{configDir}}/plugins/**/node_modules, {{configDir}}/plugins/**/.git, and {{configDir}}/plugins/**/.pnpm-store.",
 			"warnConflict": "Conflict resolution: when both sides have changes, the more recently modified version wins and the other side is overwritten.",
 			"warnRisk": "Risks: running Obsidian on multiple devices simultaneously increases conflict risk; config changes may require restarting Obsidian to take effect.",
+			"warnPruned": "Rule `{{rule}}` excludes {{configDir}} itself, so the config folder won't sync. To sync the config folder, disable this rule in the filter rules first.",
+			"syncNotice": "Config folder won't sync: rule `{{rule}}` excludes {{configDir}}. Disable this rule first to sync it.",
 			"confirm": "Enable",
 			"cancel": "Cancel"
 		},
 		"skipLargeFiles": {
 			"name": "Skip large files",
-			"desc": "Files exceeding this size will be skipped during synchronization. If sync issues occur, try lowering this value.",
+			"desc": "Files larger than this are not synced, e.g. 100MB or 1GB. Lower it if sync is slow or error-prone.",
 			"placeholder": "e.g., 10 MiB or 500 KiB",
 			"invalidFormat": "Invalid file size format. Please use formats like \"10MB\" or \"500KB\"",
 			"exceedsMaxSize": "File size exceeds maximum limit of 500MB"
 		},
 		"mobileAppDownloadFileChunkSize": {
-			"name": "Mobile download chunk size",
-			"desc": "Chunk size used when downloading files on mobile. Smaller values reduce memory usage; larger values reduce request count.",
+			"name": "Mobile download chunk size (advanced)",
+			"desc": "Only change this when mobile downloads fail. Controls how large each download chunk is.",
 			"placeholder": "e.g., 16 MiB",
 			"invalidFormat": "Invalid chunk size format. Please use formats like \"16 MiB\" or \"512 KiB\"",
 			"belowMinSize": "Chunk size cannot be below 64 KiB and was adjusted",
@@ -383,7 +385,7 @@
 			"clearDesc": "Delete all console output records"
 		},
 		"troubleshooting": {
-			"title": "Troubleshooting"
+			"title": "Troubleshoot"
 		},
 		"cache": {
 			"title": "Cache management",
@@ -439,7 +441,51 @@
 			"delete": "delete",
 			"mkdir": "create directory",
 			"copy": "copy",
-			"move": "move"
+			"move": "move",
+			"updateSettings": "update plugin settings"
+		},
+		"settings": {
+			"emptySummary": "No readable settings change detected.",
+			"on": "on",
+			"off": "off",
+			"fields": {
+				"filterRules": {
+					"name": "Filter rules",
+					"empty": "(empty)",
+					"disabled": "(disabled)"
+				},
+				"skipLargeFiles": {
+					"name": "Max file size to skip"
+				},
+				"startupSyncDelay": {
+					"name": "Auto sync after startup"
+				},
+				"autoSyncInterval": {
+					"name": "Scheduled auto sync interval"
+				},
+				"realtimeSync": {
+					"name": "Realtime sync"
+				},
+				"confirmBeforeSync": {
+					"name": "Confirm before manual sync"
+				},
+				"confirmBeforeDeleteInAutoSync": {
+					"name": "Confirm before auto delete"
+				},
+				"syncMode": {
+					"name": "Sync mode"
+				},
+				"conflictStrategy": {
+					"name": "Conflict strategy"
+				},
+				"configDirSyncMode": {
+					"name": "Config directory sync"
+				},
+				"language": {
+					"name": "Language",
+					"auto": "auto"
+				}
+			}
 		}
 	},
 	"sync": {
@@ -532,7 +578,7 @@
 	"taskList": {
 		"title": "Sync task list",
 		"instruction": "Please review the tasks below. Click \"Continue\" to execute the selected tasks, or \"Cancel\" to skip this sync.",
-		"continue": "Continue",
+		"continue": "Continue ({{count}})",
 		"cancel": "Cancel"
 	},
 	"deleteConfirm": {
@@ -749,13 +795,14 @@
 		}
 	},
 	"taskSelectionVirtualList": {
-		"pagination": {
-			"first": "First",
-			"previous": "Prev",
-			"next": "Next",
-			"last": "Last",
-			"pageInfo": "Page {{ current }} / {{ total }}",
-			"totalItems": "Total {{ count }} items"
+		"filter": {
+			"all": "All ({{ count }})",
+			"searchPlaceholder": "Search by path…",
+			"empty": "No matching tasks."
+		},
+		"footer": {
+			"totalItems": "Total {{ count }} items",
+			"filtered": "{{ count }} shown"
 		},
 		"labels": {
 			"execute": "Execute",

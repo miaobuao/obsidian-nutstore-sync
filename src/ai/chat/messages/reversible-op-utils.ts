@@ -1,5 +1,6 @@
 import type { ReversibleToolOp } from '~/ai/chat/types'
 import { normalizePath } from 'obsidian'
+import { VAULT_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 import { hasCompressedFileContent } from '~/ai/chat/messages/reversible-content'
 
 function copyFileSnapshot(
@@ -75,6 +76,15 @@ export function normalizeReversibleVaultPath(path: string) {
 	const trimmed = path.trim()
 	if (!trimmed) {
 		return ''
+	}
+	if (trimmed.startsWith(`${VAULT_MOUNT_POINT}/`)) {
+		const normalized = normalizePath(
+			trimmed.slice(VAULT_MOUNT_POINT.length + 1),
+		)
+		return normalized === '.' ? '' : normalized
+	}
+	if (trimmed.startsWith('/')) {
+		return `/${normalizePath(trimmed).replace(/^\/+/, '')}`
 	}
 	const normalized = normalizePath(trimmed.replace(/^\/+/, ''))
 	return normalized === '.' ? '' : normalized

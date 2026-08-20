@@ -1,4 +1,4 @@
-import { isEqual } from 'ohash'
+import { arrayBufferEquals } from '~/utils/array-buffer-equals'
 import { blobStore } from '~/storage/blob'
 import { SyncRecord } from '~/storage/sync-record'
 import { existsLocalPath, readLocalBinary } from '~/utils/local-vault-io'
@@ -85,7 +85,7 @@ export default abstract class BaseSyncDecider {
 			const exists = await existsLocalPath(this.vault, filePath)
 			if (!exists) return false
 			const currentContent = await readLocalBinary(this.vault, filePath)
-			return isEqual(baseContent, currentContent)
+			return arrayBufferEquals(baseContent, currentContent)
 		}
 
 		const getBaseContent = async (key: string): Promise<ArrayBuffer | null> => {

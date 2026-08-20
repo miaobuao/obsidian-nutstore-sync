@@ -15,7 +15,7 @@ import type {
 	AppToolMetadata,
 } from '~/ai/core/types'
 import type { RecordMetadataFn } from '~/ai/tools/tool-context'
-import { createSystemPromptForAgent } from '~/ai/chat/prompts'
+import { buildAgentSystemPrompt } from '~/ai/chat/prompts'
 import type { ChatSession } from '~/ai/chat/domain'
 import { AgentEventProjector } from '~/ai/chat/runtime/agent-event-projector'
 import type { SessionRuntimeState } from '~/ai/chat/runtime/chat-state'
@@ -33,6 +33,7 @@ import {
 	prepareMessagesForModel,
 	resolveLanguageModel,
 } from '~/ai/core/runtime'
+import { resolveSummaryContext } from '~/ai/chat/runtime/context-compression'
 import {
 	selectContextTimeline,
 	uiMessagesToModelMessages,
@@ -90,11 +91,10 @@ export class AgentRunner {
 			session,
 			definition,
 		)
-		const vaultInstructions = await this.readVaultInstructions()
-		const systemPrompt = createSystemPromptForAgent(
-			definition,
+		const systemPrompt = await buildAgentSystemPrompt(
+			this.app,
+			agent.type,
 			session.systemPrompt,
-			vaultInstructions,
 		)
 		const messages = options.buildMessages
 			? await options.buildMessages(agent, tools)
@@ -137,8 +137,15 @@ export class AgentRunner {
 			bash: {
 				...fileToolsContext,
 				scratch: stableContext.scratch,
+				getSettingsSnapshot: stableContext.getSettingsSnapshot,
+				updateSettings: stableContext.updateSettings,
 			},
-			apply_patch: fileToolsContext,
+			apply_patch: {
+				...fileToolsContext,
+				scratch: stableContext.scratch,
+				getSettingsSnapshot: stableContext.getSettingsSnapshot,
+				updateSettings: stableContext.updateSettings,
+			},
 			note_neighborhood: {
 				app: stableContext.app,
 				session,
@@ -304,12 +311,23 @@ export class AgentRunner {
 		}
 	}
 
-	private async readVaultInstructions(): Promise<string | undefined> {
-		try {
-			const content = await this.app.vault.adapter.read('AGENTS.md')
-			return content.trim() || undefined
-		} catch {
-			return undefined
-		}
+	/**
+	 * Resolve the system prompt + per-agent tools used by the summarizer so the
+	 * compression call replays a genuine prefix of the last routed request.
+	 * Delegates to {@link resolveSummaryContext} with this runner's own
+	 * tool executor and Obsidian app.
+	 */
+	async resolveSummaryContext(
+		agent: ChatAgentState,
+		session: ChatSession,
+		model: AIModelConfig,
+	): Promise<{ system?: string; tools?: ToolSet }> {
+		return resolveSummaryContext(
+			agent,
+			session,
+			model,
+			this.toolExecutor,
+			this.app,
+		)
 	}
 }

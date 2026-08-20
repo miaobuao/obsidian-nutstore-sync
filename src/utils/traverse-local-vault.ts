@@ -28,8 +28,20 @@ export async function traverseLocalVault(vault: Vault, from: string) {
 				try {
 					listed = await vault.adapter.list(folderPath)
 				} catch (error) {
-					logger.warn('Failed to list folder, skipping:', folderPath, error)
-					return { contents: [], folders: [] }
+					// Fail closed: a folder we cannot list means the scan is incomplete.
+					// Returning an empty listing here would make the decider treat the
+					// whole subtree as locally deleted and wipe the remote copy.
+					logger.error(
+						'Failed to list folder, aborting traversal:',
+						folderPath,
+						error,
+					)
+					throw new Error(
+						`Local scan failed: cannot list folder '${folderPath}'. ` +
+							`Sync aborted to avoid propagating an incomplete scan as deletions. ` +
+							`Fix the folder (permissions/locks, e.g. another sync client holding it) or exclude it via filter rules.`,
+						{ cause: error },
+					)
 				}
 				const { files, folders } = listed
 				const normalizedFiles = files.map((path) => normalizePath(path))

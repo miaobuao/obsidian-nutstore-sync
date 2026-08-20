@@ -25,6 +25,53 @@ import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { RecallMessageResult } from '~/ai/chat/ui/types'
 import logger from '~/utils/logger'
 import type { SkillRepository } from '~/ai/skills/repository'
+import { createVaultFileSystem } from '~/ai/tools/vault-filesystem'
+import type {
+	SettingsSnapshotFn,
+	SettingsUpdater,
+} from '~/ai/tools/tool-context'
+import { posix as pathPosix } from 'path-browserify'
+import type { IFileSystem } from 'just-bash/browser'
+
+export async function restoreVirtualReversibleOperations(
+	app: App,
+	operations: ReversibleToolOp[],
+	options: {
+		scratch?: IFileSystem
+		settingsIo?: {
+			getSettingsSnapshot: SettingsSnapshotFn
+			updateSettings: SettingsUpdater
+		}
+	} = {},
+) {
+	const fs = await createVaultFileSystem(app, {
+		scratch: options.scratch,
+		getSettingsSnapshot: options.settingsIo?.getSettingsSnapshot,
+		updateSettings: options.settingsIo?.updateSettings,
+	})
+	const earliest = new Map<string, ReversibleToolOp>()
+	for (const operation of operations) {
+		if (!earliest.has(operation.vaultPath)) {
+			earliest.set(operation.vaultPath, operation)
+		}
+	}
+	for (const operation of [...earliest.values()].reverse()) {
+		const path = operation.vaultPath
+		if (operation.operation === 'create') {
+			if (await fs.exists(path)) await fs.rm(path, { recursive: true })
+			continue
+		}
+		if (operation.before.kind === 'dir') {
+			await fs.mkdir(path, { recursive: true })
+			continue
+		}
+		await fs.mkdir(pathPosix.dirname(path), { recursive: true })
+		await fs.writeFile(
+			path,
+			new Uint8Array(await decodeReversibleFileSnapshot(operation.before)),
+		)
+	}
+}
 
 export class MessageOps {
 	constructor(
@@ -37,6 +84,10 @@ export class MessageOps {
 		private validateSelection: (session: ChatSession) => boolean,
 		private requestRun: (sessionId: string) => Promise<void> | void,
 		private skillRepository?: SkillRepository,
+		private settingsIo?: {
+			getSettingsSnapshot: SettingsSnapshotFn
+			updateSettings: SettingsUpdater
+		},
 	) {}
 
 	deleteMessage(messageId: string) {
@@ -196,12 +247,19 @@ export class MessageOps {
 		if (normalizedOperations.length === 0) {
 			return
 		}
+		const virtualOperations = normalizedOperations.filter((operation) =>
+			operation.vaultPath.startsWith('/'),
+		)
+		if (virtualOperations.length > 0) {
+			await this.restoreVirtualFilesForRecall(virtualOperations)
+		}
+		const legacyOperations = normalizedOperations.filter(
+			(operation) => !operation.vaultPath.startsWith('/'),
+		)
+		if (legacyOperations.length === 0) return
 
-		const earliestByPath = new Map<
-			string,
-			(typeof normalizedOperations)[number]
-		>()
-		for (const operation of normalizedOperations) {
+		const earliestByPath = new Map<string, (typeof legacyOperations)[number]>()
+		for (const operation of legacyOperations) {
 			if (!earliestByPath.has(operation.vaultPath)) {
 				earliestByPath.set(operation.vaultPath, operation)
 			}
@@ -267,6 +325,17 @@ export class MessageOps {
 		}
 
 		logger.info('Recall restore completed.')
+	}
+
+	private async restoreVirtualFilesForRecall(operations: ReversibleToolOp[]) {
+		const session = this.getLoadedActiveSession()
+		const scratch = session
+			? this.runtimeStates.get(session.id).bashScratch
+			: undefined
+		await restoreVirtualReversibleOperations(this.app, operations, {
+			scratch,
+			settingsIo: this.settingsIo,
+		})
 	}
 
 	private async deleteVaultPathIfExists(path: string) {

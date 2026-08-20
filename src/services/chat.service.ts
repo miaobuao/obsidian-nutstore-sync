@@ -15,7 +15,10 @@ import { exportSessionToMarkdownFile } from '~/ai/chat/messages/export-session'
 import { MessageFactory } from '~/ai/chat/messages/message-factory'
 import { MessageOps } from '~/ai/chat/messages/message-ops'
 import { deriveTitle } from '~/ai/chat/messages/message-utils'
-import { createEmptyMasterAgent } from '~/ai/chat/messages/ui-message'
+import {
+	buildAgentMessages,
+	createEmptyMasterAgent,
+} from '~/ai/chat/messages/ui-message'
 import { MASTER_AGENT_ID } from '~/ai/chat/agents/registry'
 import { Notifier } from '~/ai/chat/notifier'
 import {
@@ -24,6 +27,7 @@ import {
 } from '~/ai/chat/runtime/chat-state'
 import {
 	resolveContextWindow,
+	resolveSummaryContext,
 	runContextCompression,
 } from '~/ai/chat/runtime/context-compression'
 import {
@@ -134,6 +138,11 @@ export default class ChatService extends BaseService {
 			this.state,
 			this.runtimeStates,
 			plugin.mcpService,
+			{
+				getSettingsSnapshot: () => plugin.settings,
+				updateSettings: (patch) =>
+					plugin.settingsService.applySettingsPatch(patch),
+			},
 		)
 		this.userContextManager = new UserContextManager(
 			this.state,
@@ -179,6 +188,11 @@ export default class ChatService extends BaseService {
 			(session) => this.selection.validateSessionSelection(session),
 			(sessionId) => this.sessionProcessor.start(sessionId),
 			this.skillRepository,
+			{
+				getSettingsSnapshot: () => plugin.settings,
+				updateSettings: (patch) =>
+					plugin.settingsService.applySettingsPatch(patch),
+			},
 		)
 		this.sessionProcessor = new SessionProcessor(
 			ensureProviderReady,
@@ -776,6 +790,15 @@ export default class ChatService extends BaseService {
 							agent,
 							store: this.store,
 							messageFactory: this.messageFactory,
+							...(await resolveSummaryContext(
+								agent,
+								session,
+								model,
+								this.toolExecutor,
+								this.plugin.app,
+							)),
+							buildMessages: (a, tools) =>
+								buildAgentMessages(a, tools, this.userContextManager),
 							isCancelled: () =>
 								runtime.stopRequested ||
 								this.state.deletedSessionIds.has(session.id),

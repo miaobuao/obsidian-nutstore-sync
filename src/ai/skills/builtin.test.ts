@@ -20,19 +20,26 @@ describe('built-in Skills', () => {
 		expect(skill!.content).toContain('MCP server configuration')
 		expect(skill!.resources?.map((resource) => resource.path)).toEqual([
 			'references/ai-chatbox.md',
+			'references/filter-rules.md',
 			'references/mcp-servers.md',
+			'references/settings.md',
 			'references/sync.md',
 		])
 	})
 
 	it('mounts Nutstore Sync references below the guide', async () => {
 		const fs = await createBuiltinSkillsFs()
-		const [mcpContent, syncContent] = await Promise.all([
+		const [mcpContent, settingsContent, syncContent] = await Promise.all([
 			fs.readFile('/nutstore-sync-guide/references/mcp-servers.md'),
+			fs.readFile('/nutstore-sync-guide/references/settings.md'),
 			fs.readFile('/nutstore-sync-guide/references/sync.md'),
 		])
 
-		expect(mcpContent).toContain('MCP server configuration')
+		expect(mcpContent).toContain('MCP Server Configuration')
+		expect(mcpContent).toContain('/.agents/nutstore-sync/mcp.json')
+		expect(settingsContent).toContain('Plugin Settings File')
+		expect(settingsContent).toContain('filterRules')
+		expect(settingsContent).toContain('/.config/nutstore-sync/settings.json')
 		expect(syncContent).toContain('Sync policies')
 		expect(syncContent).toContain('Diff3')
 	})

@@ -4,6 +4,10 @@ import {
 	sanitizeDefaultSelections,
 	sanitizeProviders,
 } from '~/ai/catalog/config'
+import {
+	applyNormalizedSettingsPatch,
+	type NormalizedSettingsPatch,
+} from '~/ai/tools/settings-whitelist'
 import i18n from '~/i18n'
 import {
 	DEFAULT_LOCAL_SETTINGS,
@@ -13,6 +17,7 @@ import {
 } from '~/settings'
 import { ConflictStrategy } from '~/sync/tasks/conflict-resolve.task'
 import { DEFAULT_MOBILE_APP_DOWNLOAD_FILE_CHUNK_SIZE } from '~/utils/download-chunk-size'
+import { migrateLegacyFilterRules } from '~/utils/glob-match'
 import logger from '~/utils/logger'
 import { BaseService } from './service.interface'
 import type NutstorePlugin from '..'
@@ -50,6 +55,18 @@ export default class SettingsService extends BaseService {
 			!Object.values(ConflictStrategy).includes(storedSettings.conflictStrategy)
 		) {
 			this.plugin.settings.conflictStrategy = DEFAULT_SETTINGS.conflictStrategy
+		}
+		const currentFilterRules = this.plugin.settings.filterRules
+		const migratedFilterRules = migrateLegacyFilterRules(
+			currentFilterRules as never,
+		)
+		// Always normalize so the runtime never sees an undefined rules list;
+		// persist only when a legacy split shape actually required migration.
+		this.plugin.settings.filterRules = { rules: migratedFilterRules.rules }
+		if (migratedFilterRules.migrated) {
+			// saveData is used instead of saveSettings to avoid touching
+			// services that may not be initialized during onload.
+			await this.plugin.saveData(this.plugin.settings)
 		}
 		this.plugin.settings.mobileAppDownloadFileChunkSize ||=
 			(this.plugin.settings as { downloadChunkSize?: string })
@@ -92,6 +109,22 @@ export default class SettingsService extends BaseService {
 		await this.plugin.saveData(this.plugin.settings)
 		await this.plugin.chatService.handleSettingsChanged()
 		await this.plugin.aiConflictResolverService.refresh()
+	}
+
+	/**
+	 * Applies an AI-originated, already-validated settings patch and runs the
+	 * same side-effect chain used after reloading settings from disk (language
+	 * refresh, chat coordination, conflict refresh, schedule update, settings
+	 * tab rerender).
+	 */
+	async applySettingsPatch(patch: NormalizedSettingsPatch) {
+		applyNormalizedSettingsPatch(this.plugin.settings, patch)
+		await this.plugin.saveData(this.plugin.settings)
+		await this.plugin.i18nService.update()
+		await this.plugin.chatService.handleSettingsChanged()
+		await this.plugin.aiConflictResolverService.refresh()
+		await this.plugin.scheduledSyncService.updateInterval()
+		await this.plugin.settingTab?.rerenderIfVisible()
 	}
 
 	async loadLocalSettings() {

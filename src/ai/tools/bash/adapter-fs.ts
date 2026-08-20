@@ -11,29 +11,13 @@ import type {
 	RmOptions,
 } from 'just-bash/browser'
 import type { PermissionGuard } from '~/ai/tools/permission-guard'
-import { createCompressedFileContent } from '~/ai/chat/messages/reversible-content'
-import { sha256Base64 } from '~/utils/sha256'
-import {
-	decodeContent,
-	encodeContent,
-	ReversibleOpRecorder,
-	toArrayBuffer,
-} from './fs'
+import { decodeContent, encodeContent, toArrayBuffer } from './fs'
+import { VAULT_MOUNT_POINT } from './mount-points'
 
 const FILE_MODE = 0o644
 const DIR_MODE = 0o755
 type ReadFileOptions = { encoding?: BufferEncoding | null }
 type WriteFileOptions = { encoding?: BufferEncoding }
-
-interface AdapterSnapshot {
-	path: string
-	kind: 'file' | 'dir'
-	contentHash?: string
-	contentCompressed?: {
-		compress: 'deflate'
-		blob: Blob
-	}
-}
 
 function normalizeVirtualPath(path: string) {
 	return pathPosix.normalize(pathPosix.resolve('/', path))
@@ -51,7 +35,6 @@ export class ObsidianAdapterFs implements IFileSystem {
 		private readonly adapter: DataAdapter,
 		private readonly adapterRoot: string,
 		private readonly permissionGuard?: PermissionGuard,
-		private readonly recorder?: ReversibleOpRecorder,
 		private readonly onRead?: (vaultPath: string) => void,
 		private readonly permissionMountPoint?: string,
 	) {}
@@ -60,7 +43,6 @@ export class ObsidianAdapterFs implements IFileSystem {
 		adapter: DataAdapter,
 		adapterRoot: string,
 		permissionGuard?: PermissionGuard,
-		recorder?: ReversibleOpRecorder,
 		onRead?: (vaultPath: string) => void,
 		permissionMountPoint?: string,
 	) {
@@ -68,7 +50,6 @@ export class ObsidianAdapterFs implements IFileSystem {
 			adapter,
 			normalizePath(adapterRoot),
 			permissionGuard,
-			recorder,
 			onRead,
 			permissionMountPoint,
 		)
@@ -133,7 +114,7 @@ export class ObsidianAdapterFs implements IFileSystem {
 				? this.permissionMountPoint
 				: `${this.permissionMountPoint}${normalized}`
 		}
-		return `/vault/${this.toVaultPath(path)}`
+		return `${VAULT_MOUNT_POINT}/${this.toVaultPath(path)}`
 	}
 
 	private toVirtualPath(adapterPath: string) {
@@ -180,42 +161,6 @@ export class ObsidianAdapterFs implements IFileSystem {
 		}
 	}
 
-	private async snapshot(path: string): Promise<AdapterSnapshot[]> {
-		if (!(await this.exists(path))) return []
-		const stat = await this.stat(path)
-		if (stat.isDirectory) {
-			const snapshots: AdapterSnapshot[] = []
-			for (const child of await this.readdir(path)) {
-				snapshots.push(...(await this.snapshot(joinVirtualPath(path, child))))
-			}
-			snapshots.push({ path, kind: 'dir' })
-			return snapshots
-		}
-		const content = new Uint8Array(
-			await this.adapter.readBinary(this.toAdapterPath(path)),
-		)
-		const [contentHash, contentCompressed] = await Promise.all([
-			sha256Base64(toArrayBuffer(content)),
-			createCompressedFileContent(content),
-		])
-		return [{ path, kind: 'file', contentHash, contentCompressed }]
-	}
-
-	private recordDeletes(snapshots: AdapterSnapshot[]) {
-		for (const snapshot of snapshots) {
-			this.recorder?.recordDelete(
-				snapshot.kind === 'dir'
-					? { path: this.toVaultPath(snapshot.path), kind: 'dir' }
-					: {
-							path: this.toVaultPath(snapshot.path),
-							kind: 'file',
-							contentHash: snapshot.contentHash!,
-							contentCompressed: snapshot.contentCompressed!,
-						},
-			)
-		}
-	}
-
 	async readFile(
 		path: string,
 		options?: ReadFileOptions | BufferEncoding,
@@ -251,22 +196,11 @@ export class ObsidianAdapterFs implements IFileSystem {
 			await this.mkdir(pathPosix.dirname(normalizeVirtualPath(path)), {
 				recursive: true,
 			})
-			const before = await this.snapshot(path)
 			const encoded = encodeContent(content, options)
 			await this.adapter.writeBinary(
 				this.toAdapterPath(path),
 				toArrayBuffer(encoded),
 			)
-			if (before[0]?.kind === 'file') {
-				this.recorder?.recordUpdate(this.toVaultPath(path), {
-					path: this.toVaultPath(path),
-					kind: 'file',
-					contentHash: before[0].contentHash!,
-					contentCompressed: before[0].contentCompressed!,
-				})
-			} else {
-				this.recorder?.recordCreate(this.toVaultPath(path), 'file')
-			}
 			this.recordPath(path)
 		})
 	}
@@ -326,7 +260,6 @@ export class ObsidianAdapterFs implements IFileSystem {
 			await this.withBatch(() => this.mkdir(parent, { recursive: true }))
 		}
 		await this.adapter.mkdir(this.toAdapterPath(normalized))
-		this.recorder?.recordCreate(this.toVaultPath(normalized), 'dir')
 		this.recordPath(normalized)
 	}
 
@@ -369,7 +302,6 @@ export class ObsidianAdapterFs implements IFileSystem {
 			if (options?.force) return
 			throw new Error(`ENOENT: no such file or directory, remove '${path}'`)
 		}
-		const before = await this.snapshot(normalized)
 		const stat = await this.stat(normalized)
 		if (stat.isDirectory) {
 			if (!options?.recursive && (await this.readdir(normalized)).length > 0) {
@@ -379,7 +311,6 @@ export class ObsidianAdapterFs implements IFileSystem {
 		} else {
 			await this.adapter.remove(this.toAdapterPath(normalized))
 		}
-		this.recordDeletes(before)
 		this.forgetPath(normalized)
 	}
 

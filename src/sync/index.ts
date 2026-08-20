@@ -286,6 +286,7 @@ export class NutstoreSync {
 						shouldReloadSettings: false,
 					}
 				}
+				emitEndSync({ showNotice: false, failedCount: 0 })
 				return {
 					ended: false,
 					ranTasks: false,

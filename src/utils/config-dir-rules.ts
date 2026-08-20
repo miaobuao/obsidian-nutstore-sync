@@ -1,7 +1,10 @@
 import type NutstorePlugin from '~/index'
 import GlobMatch, {
+	compileFilterRules,
+	type GlobFilterRule,
 	type GlobMatchOptions,
-	needIncludeFromGlobRules,
+	isPathIncluded,
+	isVoidGlobMatchOptions,
 } from './glob-match'
 import {
 	REMOTE_SYNC_CACHE_DIR,
@@ -12,15 +15,13 @@ import {
 export type ConfigDirSyncMode = 'none' | 'bookmarks' | 'all'
 
 export interface EffectiveFilterRules {
-	exclusionRules: GlobMatchOptions[]
-	inclusionRules: GlobMatchOptions[]
+	rules: GlobFilterRule[]
 	configDir: string
 	configDirSyncMode: ConfigDirSyncMode
 }
 
 export interface ConfigDirFilterRuleInput {
-	exclusionRules: GlobMatchOptions[]
-	inclusionRules: GlobMatchOptions[]
+	rules: GlobFilterRule[]
 }
 
 const CONFIG_DIR_SYSTEM_EXCLUSION_SUFFIXES = [
@@ -33,8 +34,11 @@ const CONFIG_DIR_SYSTEM_EXCLUSION_SUFFIXES = [
 	'workspace.json',
 ] as const
 
-function makeCaseSensitiveRule(expr: string): GlobMatchOptions {
-	return { expr, options: { caseSensitive: true } }
+function makeCaseSensitiveRule(
+	expr: string,
+	type: 'include' | 'exclude' = 'exclude',
+): GlobFilterRule {
+	return { expr, options: { caseSensitive: true }, type }
 }
 
 export function getConfigDirSystemTraversalRules(
@@ -47,10 +51,10 @@ export function getConfigDirSystemTraversalRules(
 
 export function getConfigDirSystemFilterRules(
 	configDir: string,
-): GlobMatchOptions[] {
-	return getConfigDirSystemTraversalRules(configDir).flatMap((rule) => [
-		makeCaseSensitiveRule(rule.expr),
-		makeCaseSensitiveRule(`${rule.expr}/**`),
+): GlobFilterRule[] {
+	return CONFIG_DIR_SYSTEM_EXCLUSION_SUFFIXES.flatMap((suffix) => [
+		makeCaseSensitiveRule(`${configDir}/${suffix}`),
+		makeCaseSensitiveRule(`${configDir}/${suffix}/**`),
 	])
 }
 
@@ -71,18 +75,35 @@ export function shouldUseRemoteTraversalCache(
 	if (mode !== 'all') {
 		return false
 	}
-
-	const inclusions = filterRules.inclusionRules.map(
-		({ expr, options }) => new GlobMatch(expr, options),
-	)
-	const exclusions = filterRules.exclusionRules.map(
-		({ expr, options }) => new GlobMatch(expr, options),
-	)
-	return needIncludeFromGlobRules(
+	return isPathIncluded(
 		getSyncCacheLocalPath(configDir),
-		inclusions,
-		exclusions,
+		compileFilterRules(filterRules.rules),
 	)
+}
+
+/**
+ * Returns the filter rule that last matches the config directory directory
+ * node when it is an exclude — the rule that actually prunes the config
+ * directory subtree in `all` mode. Returns undefined when no rule prunes it.
+ *
+ * Used to tell the user exactly which rule prevents "Sync all" from syncing
+ * the config directory.
+ */
+export function getConfigDirPruningRule(
+	configDir: string,
+	rules: GlobFilterRule[],
+): GlobFilterRule | undefined {
+	const candidate = `${configDir}/`
+	let last: GlobFilterRule | undefined
+	for (const rule of rules) {
+		if (rule.disabled === true || isVoidGlobMatchOptions(rule)) {
+			continue
+		}
+		if (new GlobMatch(rule.expr, rule.options).test(candidate)) {
+			last = rule
+		}
+	}
+	return last?.type === 'exclude' ? last : undefined
 }
 
 export function computeEffectiveFilterRulesFromParts(
@@ -90,27 +111,41 @@ export function computeEffectiveFilterRulesFromParts(
 	mode: ConfigDirSyncMode,
 	filterRules: ConfigDirFilterRuleInput,
 ): EffectiveFilterRules {
-	const exclusionRules = [...filterRules.exclusionRules]
-	const inclusionRules = [...filterRules.inclusionRules]
-	exclusionRules.push(...getConfigDirSystemFilterRules(configDir))
+	const rules: GlobFilterRule[] = [...filterRules.rules]
 
 	if (mode === 'none') {
-		exclusionRules.push({ expr: configDir, options: { caseSensitive: false } })
+		rules.push({
+			expr: configDir,
+			options: { caseSensitive: false },
+			type: 'exclude',
+		})
 	} else if (mode === 'bookmarks') {
-		exclusionRules.push({
+		// gitignore-style: re-include the config dir itself first so the
+		// parent is not pruned. Root-anchor this slashless rule so it does not
+		// re-include nested directories with the same name.
+		rules.push({
+			expr: `/${configDir}`,
+			options: { caseSensitive: false },
+			type: 'include',
+		})
+		rules.push({
 			expr: `${configDir}/**`,
 			options: { caseSensitive: false },
+			type: 'exclude',
 		})
-		inclusionRules.push({
+		rules.push({
 			expr: `${configDir}/bookmarks.json`,
 			options: { caseSensitive: false },
+			type: 'include',
 		})
 	}
 	// mode === 'all': no additional rules — configDir traversed freely
 
+	// System hard-exclusions come last so they always win (highest priority).
+	rules.push(...getConfigDirSystemFilterRules(configDir))
+
 	return {
-		exclusionRules,
-		inclusionRules,
+		rules,
 		configDir,
 		configDirSyncMode: mode,
 	}

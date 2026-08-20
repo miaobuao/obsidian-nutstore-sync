@@ -27,6 +27,21 @@
 	padding: 0;
 }
 
+.modal.sync-confirm-modal {
+	max-height: calc(100% - 2rem);
+}
+
+.modal-content.sync-confirm-modal__content {
+	display: flex;
+	flex-direction: column;
+	max-height: 90vh;
+	min-height: 0;
+}
+
+.sync-confirm-modal__footer {
+	flex: 0 0 auto;
+}
+
 .nutstore-sync-result__icon {
 	display: flex;
 	align-items: center;
@@ -67,6 +82,21 @@
 	background-color: var(--background-modifier-error);
 	color: var(--background-primary);
 	border-color: var(--background-modifier-error);
+}
+
+.ns-config-dir-warning {
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 1px solid color-mix(in srgb, var(--text-warning) 45%, transparent);
+	border-radius: var(--radius-s);
+	background: color-mix(in srgb, var(--text-warning) 10%, transparent);
+	color: var(--text-warning);
+	font-weight: 600;
+}
+
+.ns-filter-rule-conflict {
+	border: 1px solid color-mix(in srgb, var(--text-warning) 60%, transparent);
+	border-radius: var(--radius-s);
+	background: color-mix(in srgb, var(--text-warning) 8%, transparent);
 }
 
 .settings-helper-badge {

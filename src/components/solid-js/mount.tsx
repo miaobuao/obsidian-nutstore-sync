@@ -7,19 +7,12 @@ export interface MountController<T> {
 	destroy: () => void
 }
 
-export interface MountOptions {
-	delegateEvents?: boolean
-}
-
 export function createMount<T extends object>(
 	Component: (props: T) => JSX.Element,
 	el: Element,
 	initialProps: T,
-	options?: MountOptions,
 ): MountController<T> {
-	if (options?.delegateEvents) {
-		delegateEvents(Array.from(DelegatedEvents), el.ownerDocument ?? document)
-	}
+	delegateEvents(Array.from(DelegatedEvents), el.ownerDocument ?? document)
 
 	let setState!: (next: T) => void
 

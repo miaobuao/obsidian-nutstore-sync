@@ -8,7 +8,7 @@ import type NutstorePlugin from '~/index'
 import type { NutstoreLlmGatewayAuthSettings } from '~/services/nutstore-llm-gateway.service'
 import { ConflictStrategy } from '~/sync/tasks/conflict-resolve.task'
 import { DEFAULT_MOBILE_APP_DOWNLOAD_FILE_CHUNK_SIZE } from '~/utils/download-chunk-size'
-import { GlobMatchOptions } from '~/utils/glob-match'
+import { GlobFilterRule } from '~/utils/glob-match'
 import AccountSettings from './account'
 import AISettings from './ai'
 import CommonSettings from './common'
@@ -137,8 +137,7 @@ export interface NutstoreSettings {
 	confirmBeforeDeleteInAutoSync: boolean
 	syncMode: SyncMode
 	filterRules: {
-		exclusionRules: GlobMatchOptions[]
-		inclusionRules: GlobMatchOptions[]
+		rules: GlobFilterRule[]
 	}
 	skipLargeFiles: {
 		maxSize: string
@@ -157,13 +156,14 @@ export interface NutstoreSettings {
 	configDirSyncMode?: 'none' | 'bookmarks' | 'all'
 }
 
-function createGlobMathOptions(expr: string) {
+function exclude(expr: string): GlobFilterRule {
 	return {
 		expr,
 		options: {
 			caseSensitive: false,
 		},
-	} satisfies GlobMatchOptions
+		type: 'exclude',
+	}
 }
 
 export const DEFAULT_SETTINGS: NutstoreSettings = {
@@ -178,15 +178,24 @@ export const DEFAULT_SETTINGS: NutstoreSettings = {
 	confirmBeforeDeleteInAutoSync: true,
 	syncMode: SyncMode.LOOSE,
 	filterRules: {
-		exclusionRules: [
+		rules: [
+			'**/*.nutstore-sync-*.download',
 			'**/__MACOSX',
-			'**/.*',
 			'**/.DS_Store',
+			'**/.env',
+			'**/.nomedia',
+			'**/.env.*',
 			'**/.git',
 			'**/.github',
 			'**/.gitlab',
+			'**/.idea',
 			'**/.svn',
 			'**/.trash',
+			'**/.vscode',
+			'**/.codex',
+			'**/.opencode',
+			'**/.claude',
+			'**/.cursor',
 			'**/~$*.doc',
 			'**/~$*.docx',
 			'**/~$*.ppt',
@@ -196,8 +205,7 @@ export const DEFAULT_SETTINGS: NutstoreSettings = {
 			'**/desktop.ini',
 			'**/node_modules',
 			'**/Thumbs.db',
-		].map(createGlobMathOptions),
-		inclusionRules: [],
+		].map(exclude),
 	},
 	skipLargeFiles: {
 		maxSize: '30 MB',

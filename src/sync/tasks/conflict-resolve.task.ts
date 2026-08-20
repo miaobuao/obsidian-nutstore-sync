@@ -1,10 +1,10 @@
-import { isEqual } from 'lodash-es'
 import { BufferLike } from 'webdav'
 import i18n from '~/i18n'
 import { StatModel } from '~/model/stat.model'
 import { SyncRecordModel } from '~/model/sync-record.model'
 import { blobStore } from '~/storage/blob'
 import { isMergeablePath } from '~/sync/utils/is-mergeable-path'
+import { arrayBufferEquals } from '~/utils/array-buffer-equals'
 import { downloadRemoteFile } from '~/utils/chunked-download'
 import {
 	existsLocalPath,
@@ -160,7 +160,7 @@ export default class ConflictResolveTask extends BaseTask {
 				details: false,
 			})) as BufferLike
 
-			if (isEqual(localBuffer, remoteBuffer)) {
+			if (arrayBufferEquals(localBuffer, remoteBuffer)) {
 				return { success: true } as const
 			}
 

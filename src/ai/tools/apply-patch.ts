@@ -1,20 +1,27 @@
-import { normalizePath, TFile } from 'obsidian'
+import { normalizePath } from 'obsidian'
 import { posix as pathPosix } from 'path-browserify'
 import { tool } from 'ai'
 import { z } from 'zod/mini'
 import i18n from '~/i18n'
+import { ReversibleOpRecorder } from '~/ai/tools/bash/fs'
 import {
-	listVaultPaths,
-	ObsidianVaultFs,
-	ReversibleOpRecorder,
-} from '~/ai/tools/bash/fs'
-import { VAULT_MOUNT_POINT } from '~/ai/tools/bash/runtime'
+	AGENTS_MOUNT_POINT,
+	AGENTS_VAULT_PATH,
+	BASH_TMP_MOUNT_POINT,
+	BASH_TMP_VAULT_PATH,
+	SETTINGS_FILE_PATH,
+	VAULT_MOUNT_POINT,
+} from '~/ai/tools/bash/mount-points'
+import { createVaultFileSystem } from '~/ai/tools/vault-filesystem'
 import { textValue } from './shared'
 import {
 	appDep,
+	getSettingsSnapshotDep,
 	permissionGuardDep,
 	readTrackerDep,
 	recordMetadataDep,
+	scratchDep,
+	updateSettingsDep,
 } from './tool-context'
 
 type PatchLineKind = 'context' | 'add' | 'delete'
@@ -184,25 +191,51 @@ export function parsePatch(patch: string): PatchOperation[] {
 	return operations
 }
 
-function normalizePatchPath(path: string) {
-	if (path.startsWith('/') && !path.startsWith(`${VAULT_MOUNT_POINT}/`)) {
-		throw new Error(
-			`apply_patch can only access files inside the vault. Use a vault-relative path or an absolute virtual path under ${VAULT_MOUNT_POINT}/.`,
-		)
+function readBinaryText(buffer: Uint8Array): string {
+	return new TextDecoder('utf-8').decode(buffer)
+}
+
+function resolveVirtualPath(rawPath: string): string {
+	const trimmed = rawPath.trim()
+	if (!trimmed) {
+		invalidPatch(`empty path`)
 	}
-	const stripped = path.startsWith(`${VAULT_MOUNT_POINT}/`)
-		? path.slice(VAULT_MOUNT_POINT.length + 1)
-		: path
-	const normalized = normalizePath(pathPosix.normalize(stripped))
-	if (
-		!normalized ||
-		normalized === '.' ||
-		normalized === '..' ||
-		normalized.startsWith('../')
-	) {
-		invalidPatch(`path escapes the vault: "${path}"`)
+	const normalized = pathPosix.normalize(trimmed)
+
+	if (normalized.startsWith('/')) {
+		return normalized
 	}
-	return normalized
+	const rel = normalizePath(pathPosix.normalize(trimmed))
+	if (!rel || rel === '.' || rel === '..' || rel.startsWith('../')) {
+		invalidPatch(`path escapes the vault: "${rawPath}"`)
+	}
+	return `${VAULT_MOUNT_POINT}/${rel}`
+}
+
+/**
+ * Key under which a virtual path is tracked as "read". Vault and adapter
+ * mounts (bash reports them via their vault-relative onRead), while the
+ * settings file is tracked by its full virtual path.
+ */
+function toReadKey(virtualPath: string): string {
+	if (virtualPath.startsWith(`${BASH_TMP_MOUNT_POINT}/`)) {
+		return `${BASH_TMP_VAULT_PATH}${virtualPath.slice(BASH_TMP_MOUNT_POINT.length)}`
+	}
+	if (virtualPath.startsWith(`${AGENTS_MOUNT_POINT}/`)) {
+		return `${AGENTS_VAULT_PATH}${virtualPath.slice(AGENTS_MOUNT_POINT.length)}`
+	}
+	if (virtualPath.startsWith(`${VAULT_MOUNT_POINT}/`)) {
+		return virtualPath.slice(VAULT_MOUNT_POINT.length + 1)
+	}
+	return virtualPath
+}
+
+/** User-facing path: vault-relative for vault (back-compat), virtual otherwise. */
+function toDisplayKey(virtualPath: string): string {
+	if (virtualPath.startsWith(`${VAULT_MOUNT_POINT}/`)) {
+		return virtualPath.slice(VAULT_MOUNT_POINT.length + 1)
+	}
+	return virtualPath
 }
 
 function findMatchingBlock(
@@ -294,28 +327,20 @@ export function applyHunks(content: string, hunks: PatchHunk[], path: string) {
 	return hasFinalNewline && lines.length > 0 ? `${result}${newline}` : result
 }
 
-function assertUniquePaths(operations: PatchOperation[]) {
+function assertUniqueVirtualPaths(paths: string[]) {
 	const claimed = new Set<string>()
-	for (const operation of operations) {
-		const paths = [
-			operation.path,
-			...(operation.kind === 'update' && operation.moveTo
-				? [operation.moveTo]
-				: []),
-		]
-		for (const path of paths) {
-			if (claimed.has(path)) {
-				invalidPatch(`multiple operations target "${path}"`)
-			}
-			claimed.add(path)
+	for (const virtual of paths) {
+		if (claimed.has(virtual)) {
+			invalidPatch(`multiple operations target "${virtual}"`)
 		}
+		claimed.add(virtual)
 	}
 }
 
 export const applyPatchTool = tool({
 	description: [
-		'Apply a file-oriented patch inside the Obsidian vault.',
-		'Use bash rather than this tool for files under /.agents.',
+		'Apply a file-oriented patch against the virtual filesystem.',
+		`Use a vault-relative path for files under ${VAULT_MOUNT_POINT}, or an absolute virtual path for any writable mounted filesystem. For example, scratch files live under ${BASH_TMP_MOUNT_POINT}, agent data under ${AGENTS_MOUNT_POINT}, and live plugin settings at ${SETTINGS_FILE_PATH}.`,
 		'Every patch, including one that only adds, deletes, updates, or moves a single file, MUST start with "*** Begin Patch" and end with "*** End Patch".',
 		'A Delete patch has this complete form: "*** Begin Patch\\n*** Delete File: notes/example.md\\n*** End Patch".',
 		'An Update patch has this complete form: "*** Begin Patch\\n*** Update File: notes/example.md\\n@@\\n-old text\\n+new text\\n*** End Patch".',
@@ -334,65 +359,87 @@ export const applyPatchTool = tool({
 		permissionGuard: permissionGuardDep,
 		readTracker: readTrackerDep,
 		recordMetadata: recordMetadataDep,
+		scratch: scratchDep,
+		getSettingsSnapshot: getSettingsSnapshotDep,
+		updateSettings: updateSettingsDep,
 	}),
 	outputSchema: z.object({
 		applied: z.literal(true),
 		files: z.array(z.string()),
 	}),
 	execute: async ({ patch }, { context, toolCallId }) => {
-		const { app, permissionGuard, readTracker, recordMetadata } = context
-		const operations = parsePatch(patch).map((operation) => ({
-			...operation,
-			path: normalizePatchPath(operation.path),
-			...(operation.kind === 'update' && operation.moveTo
-				? { moveTo: normalizePatchPath(operation.moveTo) }
-				: {}),
-		}))
-		assertUniquePaths(operations)
+		const {
+			app,
+			permissionGuard,
+			readTracker,
+			recordMetadata,
+			getSettingsSnapshot,
+			updateSettings,
+			scratch,
+		} = context
+		const operations = parsePatch(patch)
+
+		const virtualPaths = new Map<string, string>()
+		for (const operation of operations) {
+			virtualPaths.set(operation.path, resolveVirtualPath(operation.path))
+			if (operation.kind === 'update' && operation.moveTo) {
+				virtualPaths.set(operation.moveTo, resolveVirtualPath(operation.moveTo))
+			}
+		}
+		assertUniqueVirtualPaths([...virtualPaths.values()])
+
+		const recorder = new ReversibleOpRecorder()
+		const mountable = await createVaultFileSystem(app, {
+			permissionGuard,
+			recorder,
+			onRead: (vaultPath) => readTracker?.markRead(vaultPath),
+			scratch,
+			getSettingsSnapshot,
+			updateSettings,
+		})
 
 		const planned: PlannedOperation[] = []
 		for (const operation of operations) {
-			const target = app.vault.getAbstractFileByPath(operation.path)
+			const path = virtualPaths.get(operation.path)!
 			if (operation.kind === 'add') {
-				if (target) {
+				if (await mountable.exists(path)) {
 					invalidPatch(
 						`cannot add "${operation.path}" because it already exists`,
 					)
 				}
-				planned.push(operation)
+				planned.push({ kind: 'add', path, content: operation.content })
 				continue
 			}
-			if (!readTracker?.hasRead(operation.path)) {
+			if (
+				!readTracker?.hasRead(path) &&
+				!readTracker?.hasRead(toReadKey(path))
+			) {
 				throw new Error(
 					i18n.t('chatbox.errors.fileNotRead', { path: operation.path }),
 				)
 			}
-			if (!target) {
+			if (!(await mountable.exists(path))) {
 				throw new Error(
 					i18n.t('chatbox.errors.fileNotFound', { path: operation.path }),
 				)
 			}
-			if (!(target instanceof TFile)) {
-				throw new Error(
-					i18n.t('chatbox.errors.notFile', { path: operation.path }),
-				)
-			}
-			const before = await app.vault.cachedRead(target)
+			const before = readBinaryText(await mountable.readFileBuffer(path))
 			if (operation.kind === 'delete') {
-				planned.push({ ...operation, before })
+				planned.push({ kind: 'delete', path, before })
 				continue
 			}
-			if (
-				operation.moveTo &&
-				operation.moveTo !== operation.path &&
-				app.vault.getAbstractFileByPath(operation.moveTo)
-			) {
+			const moveTo = operation.moveTo
+				? virtualPaths.get(operation.moveTo)
+				: undefined
+			if (moveTo && moveTo !== path && (await mountable.exists(moveTo))) {
 				invalidPatch(
 					`cannot move "${operation.path}" to "${operation.moveTo}" because the destination exists`,
 				)
 			}
 			planned.push({
-				...operation,
+				kind: 'update',
+				path,
+				moveTo,
 				before,
 				after: applyHunks(before, operation.hunks, operation.path),
 			})
@@ -400,75 +447,27 @@ export const applyPatchTool = tool({
 
 		for (const operation of planned) {
 			if (operation.kind === 'add') {
-				await permissionGuard?.({
-					type: 'fs',
-					fs: {
-						kind: 'write',
-						path: `${VAULT_MOUNT_POINT}/${operation.path}`,
-					},
-				})
-				continue
-			}
-			if (operation.kind === 'delete') {
-				await permissionGuard?.({
-					type: 'fs',
-					fs: {
-						kind: 'delete',
-						path: `${VAULT_MOUNT_POINT}/${operation.path}`,
-					},
-				})
-				continue
-			}
-			await permissionGuard?.({
-				type: 'fs',
-				fs: {
-					kind: 'edit',
-					path: `${VAULT_MOUNT_POINT}/${operation.path}`,
-				},
-			})
-			if (operation.moveTo && operation.moveTo !== operation.path) {
-				await permissionGuard?.({
-					type: 'fs',
-					fs: {
-						kind: 'move',
-						src: `${VAULT_MOUNT_POINT}/${operation.path}`,
-						dest: `${VAULT_MOUNT_POINT}/${operation.moveTo}`,
-					},
-				})
-			}
-		}
-
-		const recorder = new ReversibleOpRecorder()
-		const fs = new ObsidianVaultFs(
-			app.vault,
-			await listVaultPaths(app),
-			undefined,
-			recorder,
-		)
-		for (const operation of planned) {
-			const path = `/${operation.path}`
-			if (operation.kind === 'add') {
-				await fs.writeFile(path, operation.content)
+				await mountable.writeFile(operation.path, operation.content)
 			} else if (operation.kind === 'delete') {
-				await fs.rm(path)
+				await mountable.rm(operation.path)
 			} else {
 				if (operation.after !== operation.before) {
-					await fs.writeFile(path, operation.after)
+					await mountable.writeFile(operation.path, operation.after)
 				}
 				if (operation.moveTo && operation.moveTo !== operation.path) {
-					await fs.mv(path, `/${operation.moveTo}`)
+					await mountable.mv(operation.path, operation.moveTo)
 				}
 			}
 		}
 
-		const reversibleOps = await recorder.getNetOperations(app.vault)
+		const reversibleOps = await recorder.getNetOperations()
 		recordMetadata?.(toolCallId, { reversibleOps })
 		const files = [
 			...new Set(
 				planned.flatMap((operation) =>
 					operation.kind === 'update' && operation.moveTo
-						? [operation.path, operation.moveTo]
-						: [operation.path],
+						? [toDisplayKey(operation.path), toDisplayKey(operation.moveTo)]
+						: [toDisplayKey(operation.path)],
 				),
 			),
 		]

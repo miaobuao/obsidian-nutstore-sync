@@ -14,6 +14,8 @@ import {
 	MASTER_AGENT_ID,
 } from '~/ai/chat/agents/registry'
 import type { ChatFragment, ChatSession } from '~/ai/chat/domain'
+import type { ReversibleToolOp } from '~/ai/chat/types'
+import type { AppToolMetadata } from '~/ai/core/types'
 import { createEmptyMasterAgent } from '~/ai/chat/messages/ui-message'
 import type { ChatState } from '~/ai/chat/runtime/chat-state'
 import { RuntimeStates } from '~/ai/chat/runtime/runtime-state'
@@ -27,6 +29,13 @@ import {
 } from '~/ai/chat/session/session-store'
 import { createFragmentReadTracker } from '~/ai/tools/file-operation'
 import { createAITools } from '~/ai/tools/tools'
+import { SETTINGS_FILE_PATH } from '~/ai/tools/bash/mount-points'
+import {
+	applyNormalizedSettingsPatch,
+	serializeSettingsWhitelist,
+	type NormalizedSettingsPatch,
+} from '~/ai/tools/settings-whitelist'
+import type { NutstoreSettings } from '~/settings'
 import {
 	createViewImageAttachmentMessage,
 	InMemoryViewImageAttachmentRegistry,
@@ -217,6 +226,19 @@ describe('tool registration', () => {
 
 	it('does not register a dedicated use_skill tool', () => {
 		expect('use_skill' in createAITools()).toBe(false)
+	})
+
+	it('requires a short plain-language purpose for the bash tool', async () => {
+		const tool = findTool(createAITools(), 'bash')
+		const jsonSchema = (await asSchema(
+			tool.inputSchema as FlexibleSchema<unknown>,
+		).jsonSchema) as {
+			required?: string[]
+			properties?: Record<string, unknown>
+		}
+
+		expect(jsonSchema.required).toContain('purpose')
+		expect(jsonSchema.properties?.purpose).toBeDefined()
 	})
 
 	it('does not register view_image when image input is unavailable', () => {
@@ -1057,7 +1079,7 @@ describe('normalizeSession preserves readVaultPaths (rehydration)', () => {
 			subagents: { master },
 		}
 
-		const normalized = store.normalizeSession(session)
+		const normalized = store.normalizeSession(session).session
 		expect(normalized.subagents.master.readVaultPaths).toEqual([
 			'notes/a.md',
 			'notes/b.md',
@@ -1087,7 +1109,7 @@ describe('normalizeSession preserves readVaultPaths (rehydration)', () => {
 			subagents: { master: createEmptyMasterAgent(0) },
 		}
 
-		const normalized = store.normalizeSession(session)
+		const normalized = store.normalizeSession(session).session
 		expect(normalized.subagents.master.readVaultPaths).toBeUndefined()
 	})
 })
@@ -1120,7 +1142,7 @@ describe('normalizeSession preserves disabledMcpServers (rehydration)', () => {
 			subagents: { master: createEmptyMasterAgent(0) },
 		}
 
-		const normalized = store.normalizeSession(session)
+		const normalized = store.normalizeSession(session).session
 		expect(normalized.disabledMcpServers).toEqual(['notes-server', '翻译工具'])
 	})
 
@@ -1135,7 +1157,7 @@ describe('normalizeSession preserves disabledMcpServers (rehydration)', () => {
 			subagents: { master: createEmptyMasterAgent(0) },
 		} as unknown as ChatSession
 
-		const normalized = store.normalizeSession(session)
+		const normalized = store.normalizeSession(session).session
 		expect(normalized.disabledMcpServers).toEqual(['valid-server'])
 	})
 
@@ -1149,7 +1171,7 @@ describe('normalizeSession preserves disabledMcpServers (rehydration)', () => {
 			subagents: { master: createEmptyMasterAgent(0) },
 		}
 
-		const normalized = store.normalizeSession(session)
+		const normalized = store.normalizeSession(session).session
 		expect(normalized.disabledMcpServers).toBeUndefined()
 	})
 })
@@ -1229,6 +1251,10 @@ describe('ToolExecutor SDK tool-round read-gate wiring', () => {
 			state,
 			runtimeStates,
 			mcpService as never,
+			{
+				getSettingsSnapshot: () => ({}) as never,
+				updateSettings: async (_patch: NormalizedSettingsPatch) => {},
+			},
 		)
 		return { executor, runtimeStates, state }
 	}
@@ -1409,6 +1435,10 @@ describe('ToolExecutor SDK tool-round read-gate wiring', () => {
 				refreshIfChanged: async () => {},
 				getToolsForSession: () => ({}),
 			} as never,
+			{
+				getSettingsSnapshot: () => plugin.settings as never,
+				updateSettings: async (_patch: NormalizedSettingsPatch) => {},
+			},
 		)
 		expect(executor.getAgentDefinition(MASTER_AGENT_ID).permissionMode).toBe(
 			'full',
@@ -1485,5 +1515,231 @@ describe('filterToolsForAgent', () => {
 		expect(names).toContain('todowrite')
 		expect(names).toContain('update_session_title')
 		expect(names).toContain('task')
+	})
+})
+
+describe('apply_patch against the virtual settings file', () => {
+	function makeSettingsFixture(): NutstoreSettings {
+		return {
+			account: '',
+			credential: '',
+			nutstoreEnterpriseBaseUrl: '',
+			remoteDir: '',
+			conflictStrategy:
+				'no-conflict-merge' as NutstoreSettings['conflictStrategy'],
+			oauthResponseText: '',
+			loginMode: 'sso',
+			confirmBeforeSync: true,
+			confirmBeforeDeleteInAutoSync: true,
+			syncMode: 'loose' as NutstoreSettings['syncMode'],
+			filterRules: {
+				rules: [
+					{
+						expr: '**/.DS_Store',
+						options: { caseSensitive: false },
+						type: 'exclude',
+					},
+				],
+			},
+			skipLargeFiles: { maxSize: '30 MB' },
+			mobileAppDownloadFileChunkSize: '16 MiB',
+			realtimeSync: false,
+			startupSyncDelaySeconds: 0,
+			autoSyncIntervalSeconds: 300,
+			language: undefined,
+			ai: { providers: {} },
+			configDirSyncMode: 'none',
+		}
+	}
+
+	it('routes a hunk edit to updateSettings and persists the change', async () => {
+		const { app } = createMockApp([{ path: 'notes/x.md', content: 'x' }])
+		const fragment: ChatFragment = {
+			id: 'f1',
+			createdAt: 0,
+			updatedAt: 0,
+			messages: [],
+		}
+		const session = makeSession(fragment)
+		const settings = makeSettingsFixture()
+		const updates: NormalizedSettingsPatch[] = []
+		let reversibleOps: ReversibleToolOp[] = []
+		const probe = createFragmentReadTracker(fragment)
+		probe.markRead(SETTINGS_FILE_PATH)
+		const tracker = createFragmentReadTracker(fragment)
+
+		const context = makeContext(app, session, {
+			readTracker: tracker,
+			permissionGuard: async () => {},
+			getSettingsSnapshot: () => settings,
+			updateSettings: async (patch: NormalizedSettingsPatch) => {
+				updates.push(patch)
+				applyNormalizedSettingsPatch(settings, patch)
+			},
+			recordMetadata: (_toolCallId: string, metadata: AppToolMetadata) => {
+				reversibleOps = metadata.reversibleOps ?? []
+			},
+		})
+
+		const result = await callApplyPatch(
+			[
+				'*** Begin Patch',
+				`*** Update File: ${SETTINGS_FILE_PATH}`,
+				'@@',
+				'-  "startupSyncDelaySeconds": 0,',
+				'+  "startupSyncDelaySeconds": 30,',
+				'*** End Patch',
+			].join('\n'),
+			context,
+		)
+
+		expect(result).toEqual({ applied: true, files: [SETTINGS_FILE_PATH] })
+		expect(updates).toHaveLength(1)
+		expect(settings.startupSyncDelaySeconds).toBe(30)
+		expect(reversibleOps).toMatchObject([
+			{ vaultPath: SETTINGS_FILE_PATH, operation: 'update' },
+		])
+		const reparsed = serializeSettingsWhitelist(settings).includes(
+			'"startupSyncDelaySeconds": 30',
+		)
+		expect(reparsed).toBe(true)
+	})
+
+	it('requires the settings file to have been read first', async () => {
+		const { app } = createMockApp([{ path: 'notes/x.md', content: 'x' }])
+		const fragment: ChatFragment = {
+			id: 'f1',
+			createdAt: 0,
+			updatedAt: 0,
+			messages: [],
+		}
+		const session = makeSession(fragment)
+		const settings = makeSettingsFixture()
+		const tracker = createFragmentReadTracker(fragment)
+		const context = makeContext(app, session, {
+			readTracker: tracker,
+			permissionGuard: async () => {},
+			getSettingsSnapshot: () => settings,
+			updateSettings: async (_patch: NormalizedSettingsPatch) => {},
+		})
+
+		await expect(
+			callApplyPatch(
+				[
+					'*** Begin Patch',
+					`*** Update File: ${SETTINGS_FILE_PATH}`,
+					'@@',
+					'-  "startupSyncDelaySeconds": 0,',
+					'+  "startupSyncDelaySeconds": 30,',
+					'*** End Patch',
+				].join('\n'),
+				context,
+			),
+		).rejects.toThrow(/read .*settings\.json/i)
+	})
+
+	it('rejects writes that are not valid whitelist JSON', async () => {
+		const { app } = createMockApp([{ path: 'notes/x.md', content: 'x' }])
+		const fragment: ChatFragment = {
+			id: 'f1',
+			createdAt: 0,
+			updatedAt: 0,
+			messages: [],
+		}
+		const session = makeSession(fragment)
+		const probe = createFragmentReadTracker(fragment)
+		probe.markRead(SETTINGS_FILE_PATH)
+		const tracker = createFragmentReadTracker(fragment)
+		const context = makeContext(app, session, {
+			readTracker: tracker,
+			permissionGuard: async () => {},
+			getSettingsSnapshot: () => makeSettingsFixture(),
+			updateSettings: async (_patch: NormalizedSettingsPatch) => {},
+		})
+
+		await expect(
+			callApplyPatch(
+				[
+					'*** Begin Patch',
+					`*** Update File: ${SETTINGS_FILE_PATH}`,
+					'@@',
+					'-  "startupSyncDelaySeconds": 0,',
+					'+  "startupSyncDelaySeconds": "many",',
+					'*** End Patch',
+				].join('\n'),
+				context,
+			),
+		).rejects.toThrow(/invalid setting/)
+	})
+})
+
+describe('apply_patch across the mountable filesystem', () => {
+	function makeSettings(): NutstoreSettings {
+		return {
+			account: '',
+			credential: '',
+			nutstoreEnterpriseBaseUrl: '',
+			remoteDir: '',
+			conflictStrategy:
+				'no-conflict-merge' as NutstoreSettings['conflictStrategy'],
+			oauthResponseText: '',
+			loginMode: 'sso',
+			confirmBeforeSync: true,
+			confirmBeforeDeleteInAutoSync: true,
+			syncMode: 'loose' as NutstoreSettings['syncMode'],
+			filterRules: { rules: [] },
+			skipLargeFiles: { maxSize: '30 MB' },
+			mobileAppDownloadFileChunkSize: '16 MiB',
+			realtimeSync: false,
+			startupSyncDelaySeconds: 0,
+			autoSyncIntervalSeconds: 300,
+			language: undefined,
+			ai: { providers: {} },
+			configDirSyncMode: 'none',
+		}
+	}
+
+	function makeReadTracker(fragment: ChatFragment, path: string) {
+		const probe = createFragmentReadTracker(fragment)
+		probe.markRead(path)
+		return createFragmentReadTracker(fragment)
+	}
+
+	it('edits scratch files under /tmp through the adapter mount', async () => {
+		const tmpPath = '.agents/nutstore-sync/tmp/test-apply-patch.txt'
+		const { app, store } = createMockApp([
+			{ path: tmpPath, content: 'hello world' },
+		])
+		const fragment: ChatFragment = {
+			id: 'f1',
+			createdAt: 0,
+			updatedAt: 0,
+			messages: [],
+		}
+		const session = makeSession(fragment)
+		const context = makeContext(app, session, {
+			readTracker: makeReadTracker(fragment, tmpPath),
+			permissionGuard: async () => {},
+			getSettingsSnapshot: () => makeSettings(),
+			updateSettings: async () => {},
+		})
+
+		const result = await callApplyPatch(
+			[
+				'*** Begin Patch',
+				'*** Update File: /tmp/test-apply-patch.txt',
+				'@@',
+				'-hello world',
+				'+hello from apply_patch',
+				'*** End Patch',
+			].join('\n'),
+			context,
+		)
+
+		expect(result).toEqual({
+			applied: true,
+			files: ['/tmp/test-apply-patch.txt'],
+		})
+		expect(store.get(tmpPath)).toBe('hello from apply_patch')
 	})
 })

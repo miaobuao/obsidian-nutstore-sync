@@ -15,13 +15,13 @@
 		},
 		"credential": {
 			"name": "凭证",
-			"desc": "输入你的 WebDAV 凭证",
-			"placeholder": "输入你的凭证"
+			"desc": "输入你在坚果云“安全选项”中创建的“应用密码”，不是你的登录密码",
+			"placeholder": "输入你的坚果云应用密码"
 		},
 		"remoteDir": {
 			"name": "远程目录",
-			"desc": "输入远程目录",
-			"placeholder": "输入远程目录"
+			"desc": "本仓库与坚果云的哪个文件夹同步。可点右侧文件夹按钮可视化选择。",
+			"placeholder": "例如 /MyNotes"
 		},
 		"checkConnection": {
 			"name": "检查连接",
@@ -44,7 +44,7 @@
 			"name": "冲突解决策略",
 			"desc": "选择解决文件冲突的方式。\n注意：建议在使用自动合并功能前，先手动备份重要文件，以防数据丢失。",
 			"noConflictMerge": "无冲突合并",
-			"diff3": "Diff3 合并（生成 Git 风格冲突标记）",
+			"diff3": "自动合并（保留双方改动并用标记标出）",
 			"localPriority": "本地优先（覆盖服务器）",
 			"serverPriority": "服务器优先（覆盖本地）"
 		},
@@ -90,7 +90,7 @@
 		"tabs": {
 			"sync": "同步",
 			"ai": "AI",
-			"troubleshooting": "故障排查"
+			"troubleshooting": "排障"
 		},
 		"ai": {
 			"saved": "AI 设置已保存",
@@ -135,6 +135,7 @@
 				"name": "模型提供商",
 				"desc": "管理可用的 AI 模型提供商",
 				"summary": "已配置 {{count}} 个模型提供商",
+				"emptyHint": "尚未配置模型提供商。点击“管理模型提供商”添加一个后再开始对话。",
 				"manage": "管理模型提供商",
 				"add": "新增模型提供商",
 				"refreshPresetName": "获取最新模型列表",
@@ -254,7 +255,7 @@
 			},
 			"yolo": {
 				"name": "完全访问权限",
-				"desc": "⚠️ 开启后，AI 可直接读写笔记库中的文件，无需用户确认"
+				"desc": "⚠️ 开启后，AI 可自动修改文件和插件设置，不再逐次询问确认"
 			},
 			"errors": {
 				"saveFailed": "AI 设置保存失败",
@@ -285,13 +286,13 @@
 		},
 		"syncMode": {
 			"name": "同步模式",
-			"desc": "建议在文件较多的情况下选择宽松模式，同步速度更快。宽松模式会忽略同名且大小相等但没有同步记录的文件。",
+			"desc": "文件很多时建议选“宽松”，速度更快：它会跳过两边都存在、同名且大小相同但从未同步过的文件。严格模式会逐一比对。",
 			"strict": "严格",
 			"loose": "宽松"
 		},
 		"syncPolicy": {
 			"name": "同步策略",
-			"desc": "控制本地与云端之间的数据协调方式。带覆盖或还原的策略会删除目标侧多余文件，请谨慎使用。",
+			"desc": "控制本机与云端如何同步变更。带“覆盖”或“还原”的策略会删除另一端的多余文件，请谨慎使用。",
 			"twoWay": "双向同步",
 			"sendOnly": "仅发送",
 			"sendOnlyOverrideChanges": "仅发送：覆盖云端变更",
@@ -301,7 +302,7 @@
 				"title": "确认同步策略",
 				"twoWayDesc": "本地和云端互相同步，各自的新增和删除都会同步到对方。\n同一文件两端都改动时，按冲突策略处理。",
 				"sendOnlyDesc": "把本地的所有变更（新增、修改、删除）发送到云端。\n\n• 本地新增/修改的文件 → 上传到云端\n• 本地删除且云端未改动的文件 → 从云端删除\n• 云端独立新增或修改的文件 → 保留不动\n• 本地删除时云端也有改动 → 跳过该项（避免误删云端改动）\n\n适合：以本地为主、云端为辅的场景。",
-				"sendOnlyOverrideChangesDesc": "以本地当前完整状态覆盖云端。\n云端有但本地没有的文件会被删除。\n适合需要强制让云端重新收敛为本地状态时使用。",
+				"sendOnlyOverrideChangesDesc": "以本地当前完整状态覆盖云端。\n云端有但本地没有的文件会被删除。\n适合希望让云端与本地完全一致的场景。",
 				"receiveOnlyDesc": "把云端的所有变更（新增、修改、删除）接收到本地。\n\n• 云端新增/修改的文件 → 下载到本地\n• 云端删除且本地未改动的文件 → 从本地删除\n• 本地独立新增或修改的文件 → 保留不动\n• 云端删除时本地也有改动 → 跳过该项（避免误删本地改动）\n\n适合：只读设备，或以云端为准的场景。",
 				"receiveOnlyRevertLocalChangesDesc": "以云端当前完整状态还原本地。\n本地有但云端没有的文件会被删除。\n适合只读设备，或需要强制以云端内容为准时使用。",
 				"confirm": "确认",
@@ -309,34 +310,33 @@
 			}
 		},
 		"startupSyncDelay": {
-			"name": "启动后自动同步",
+			"name": "启动后自动同步（秒）",
 			"desc": "设置启动后第几秒自动执行一次同步。设置为 0 则禁用启动时自动同步。",
 			"placeholder": "输入秒数 (例如 5, 0 则禁用)",
 			"invalidValue": "无效的数值，已重置为 0",
 			"exceedsMax": "数值超过最大限制 {{max}} 秒（1天），已自动调整"
 		},
 		"autoSyncInterval": {
-			"name": "定时自动同步",
+			"name": "定时自动同步（分钟）",
 			"desc": "设置每隔多长时间在后台自动执行一次同步（分钟）。设置为 0 则禁用定时自动同步。",
 			"placeholder": "输入分钟数 (例如 5, 0 则禁用)",
 			"invalidValue": "无效的数值，已重置为 0",
 			"exceedsMax": "数值超过最大限制 {{max}} 分钟（1天），已自动调整"
 		},
 		"filters": {
+			"name": "过滤规则",
+			"desc": "选择哪些文件或文件夹不参与同步。可用简单路径或通配符，例如“图片”或“*.tmp”。从上到下判定，最后命中的规则生效；每条规则的 Aa 开关控制是否区分大小写。",
 			"add": "添加规则",
 			"remove": "删除",
 			"confirmRemove": "确认删除",
 			"edit": "编辑规则",
+			"toggle": "启用或禁用该规则",
 			"save": "保存",
 			"cancel": "取消",
 			"placeholder": "例如: .DS_Store, *.pdf",
-			"exclude": {
-				"name": "排除规则",
-				"desc": "符合规则的文件/文件夹将不会被同步"
-			},
-			"include": {
-				"name": "包含规则",
-				"desc": "符合规则的文件/文件夹会被同步，如果和排除规则有冲突，会优先选择包含规则。"
+			"types": {
+				"exclude": "排除",
+				"include": "包含"
 			}
 		},
 		"configDirSync": {
@@ -344,7 +344,7 @@
 			"desc": "控制 {{configDir}} 目录是否参与同步。",
 			"none": "不同步",
 			"bookmarks": "仅同步书签",
-			"all": "同步全部（实验性）",
+			"all": "同步全部",
 			"bookmarksTitle": "启用书签同步",
 			"bookmarksDesc": "仅同步 {{configDir}}/bookmarks.json，其他配置文件不受影响。",
 			"warnTitle": "启用完整配置目录同步？",
@@ -352,19 +352,21 @@
 			"warnExcludes": "自动排除：{{configDir}}/plugins/**/node_modules、{{configDir}}/plugins/**/.git 和 {{configDir}}/plugins/**/.pnpm-store。",
 			"warnConflict": "冲突处理：两端同一文件均有修改时，保留修改时间较新的版本，另一端的修改将被覆盖。",
 			"warnRisk": "风险：多台设备同时运行 Obsidian 容易引发冲突；插件设置变更后可能需要重启 Obsidian 才能生效。",
+			"warnPruned": "规则 `{{rule}}` 会排除 {{configDir}} 本身，导致配置文件夹无法同步。若要同步配置文件夹，请先在过滤规则里禁用这条规则。",
+			"syncNotice": "配置文件夹无法同步：规则 `{{rule}}` 排除了 {{configDir}}。若要同步，请先禁用这条规则。",
 			"confirm": "启用",
 			"cancel": "取消"
 		},
 		"skipLargeFiles": {
 			"name": "跳过大文件",
-			"desc": "同步时将跳过超过此大小的文件。如遇同步崩溃，可尝试降低此值。",
+			"desc": "超过该大小的文件将不参与同步，例如 100MB 或 1GB。同步慢或报错时可适当调低。",
 			"placeholder": "例如：10 MiB 或 500 KiB",
 			"invalidFormat": "无效的文件大小格式，请使用如 \"10MB\" 或 \"500KB\" 的格式",
 			"exceedsMaxSize": "文件大小超过最大限制 500MB"
 		},
 		"mobileAppDownloadFileChunkSize": {
-			"name": "移动端下载时分块",
-			"desc": "移动端下载文件时使用的分块大小。较小的值可降低内存占用；较大的值可减少请求次数，但是有可能导致软件崩溃。",
+			"name": "移动端下载分块大小（高级）",
+			"desc": "仅当移动端下载文件失败时才需要调整。控制每次下载文件的分块大小。",
 			"placeholder": "例如：16 MiB",
 			"invalidFormat": "无效的分块大小格式，请使用如 \"16 MiB\" 或 \"512 KiB\" 的格式",
 			"belowMinSize": "分块大小不能小于 64 KiB，已自动调整",
@@ -383,7 +385,7 @@
 			"clearDesc": "删除所有控制台输出记录"
 		},
 		"troubleshooting": {
-			"title": "故障排查"
+			"title": "排障"
 		},
 		"cache": {
 			"title": "缓存管理",
@@ -439,7 +441,51 @@
 			"delete": "删除",
 			"mkdir": "创建目录",
 			"copy": "复制",
-			"move": "移动"
+			"move": "移动",
+			"updateSettings": "更新插件设置"
+		},
+		"settings": {
+			"emptySummary": "未检测到可读取的设置变更。",
+			"on": "开启",
+			"off": "关闭",
+			"fields": {
+				"filterRules": {
+					"name": "过滤规则",
+					"empty": "(空)",
+					"disabled": "（已禁用）"
+				},
+				"skipLargeFiles": {
+					"name": "跳过的大文件上限"
+				},
+				"startupSyncDelay": {
+					"name": "启动后自动同步（秒）"
+				},
+				"autoSyncInterval": {
+					"name": "定时自动同步间隔"
+				},
+				"realtimeSync": {
+					"name": "实时同步"
+				},
+				"confirmBeforeSync": {
+					"name": "同步前确认"
+				},
+				"confirmBeforeDeleteInAutoSync": {
+					"name": "自动同步删除前确认"
+				},
+				"syncMode": {
+					"name": "同步模式"
+				},
+				"conflictStrategy": {
+					"name": "冲突解决策略"
+				},
+				"configDirSyncMode": {
+					"name": "配置目录同步"
+				},
+				"language": {
+					"name": "语言",
+					"auto": "自动"
+				}
+			}
 		}
 	},
 	"sync": {
@@ -532,7 +578,7 @@
 	"taskList": {
 		"title": "同步任务列表",
 		"instruction": "请检查以下待执行的任务。点击\"继续\"将执行选中的任务，点击\"取消\"则跳过本次同步。",
-		"continue": "继续",
+		"continue": "继续（{{count}}）",
 		"cancel": "取消"
 	},
 	"deleteConfirm": {
@@ -749,13 +795,14 @@
 		}
 	},
 	"taskSelectionVirtualList": {
-		"pagination": {
-			"first": "首页",
-			"previous": "上一页",
-			"next": "下一页",
-			"last": "末页",
-			"pageInfo": "第 {{ current }} / {{ total }} 页",
-			"totalItems": "共 {{ count }} 项"
+		"filter": {
+			"all": "全部 ({{ count }})",
+			"searchPlaceholder": "按路径搜索……",
+			"empty": "没有匹配的任务。"
+		},
+		"footer": {
+			"totalItems": "共 {{ count }} 项",
+			"filtered": "筛选后 {{ count }} 项"
 		},
 		"labels": {
 			"execute": "执行",

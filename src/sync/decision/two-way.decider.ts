@@ -126,13 +126,26 @@ export async function twoWayDecider(
 				const remoteChanged = !isSameTime(remote.mtime, record.remote.mtime)
 				if (local) {
 					let localChanged = !isSameTime(local.mtime, record.local.mtime)
-					if (localChanged && record.base?.key) {
-						const baseContent = await getBaseContent(record.base.key)
-						if (baseContent) {
-							localChanged = !(await compareFileContent(
-								local.path,
-								baseContent,
-							))
+					if (
+						localChanged &&
+						record.base?.key &&
+						!local.isDir &&
+						!record.local.isDir
+					) {
+						// Short-circuit: base content is the local file at last sync, so
+						// its size equals the recorded local size. If the current size
+						// differs the content definitely changed — skip reading the blob
+						// and the file, which is the dominant cost when many files change.
+						if (local.size !== record.local.size) {
+							localChanged = true
+						} else {
+							const baseContent = await getBaseContent(record.base.key)
+							if (baseContent) {
+								localChanged = !(await compareFileContent(
+									local.path,
+									baseContent,
+								))
+							}
 						}
 					}
 					if (remoteChanged) {

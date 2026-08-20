@@ -17,6 +17,8 @@ import {
 	formatDuration,
 	formatToolDetailsMarkdown,
 	formatToolResult,
+	toolCallDisplayTitle,
+	toolCallPurpose,
 } from '../utils'
 import { TitledCollapsibleBlock } from './CollapsibleBlock'
 import { FileChangesBlock } from './FileChangesBlock'
@@ -89,6 +91,14 @@ export function ToolCallBlock(props: {
 					now={props.now}
 					getSubagent={props.getSubagent}
 					onOpenSubagent={props.onOpenSubagent}
+					onOpenFileChange={props.onOpenFileChange}
+					renderMarkdown={props.renderMarkdown}
+				/>
+			</Match>
+			<Match when={props.block.toolCall.toolName === 'bash'}>
+				<BashToolCallBlock
+					block={props.block}
+					now={props.now}
 					onOpenFileChange={props.onOpenFileChange}
 					renderMarkdown={props.renderMarkdown}
 				/>
@@ -287,6 +297,33 @@ function TaskToolCallBlock(props: {
 	)
 }
 
+function BashToolCallBlock(props: {
+	block: ChatDisplayToolCallBlock
+	now: number
+	onOpenFileChange?: (vaultPath: string, line?: number) => Promise<void> | void
+	renderMarkdown?: ChatboxProps['renderMarkdown']
+}) {
+	const visual = () => toolStatusVisual(props.block.toolCall)
+	const hasPurpose = () => toolCallPurpose(props.block.toolCall) !== undefined
+	return (
+		<CollapsibleToolCallBlock
+			title={
+				<ToolTitle
+					title={toolCallDisplayTitle(props.block.toolCall)}
+					duration={timingDuration(props.block.timing, props.now)}
+				/>
+			}
+			iconClass={visual().iconClass}
+			iconLabel={visual().label}
+			params={hasPurpose() ? undefined : props.block.toolCall.input}
+			result={formatToolResult(props.block.toolCall)}
+			fileChanges={props.block.fileChanges}
+			onOpenFileChange={props.onOpenFileChange}
+			renderMarkdown={props.renderMarkdown}
+		/>
+	)
+}
+
 function GenericToolCallBlock(props: {
 	block: ChatDisplayToolCallBlock
 	now: number
@@ -298,7 +335,7 @@ function GenericToolCallBlock(props: {
 		<CollapsibleToolCallBlock
 			title={
 				<ToolTitle
-					title={props.block.toolCall.toolName}
+					title={toolCallDisplayTitle(props.block.toolCall)}
 					duration={timingDuration(props.block.timing, props.now)}
 				/>
 			}

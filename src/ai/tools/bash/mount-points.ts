@@ -8,3 +8,5 @@ export const BASH_TMP_VAULT_PATH = `${NUTSTORE_SYNC_AGENTS_VAULT_PATH}/tmp`
 export const BUILTIN_SKILLS_MOUNT_POINT = `${NUTSTORE_SYNC_AGENTS_MOUNT_POINT}/builtin-skills`
 export const BUILTIN_SKILLS_RELATIVE_MOUNT_POINT =
 	'/nutstore-sync/builtin-skills'
+export const SETTINGS_MOUNT_POINT = '/.config/nutstore-sync'
+export const SETTINGS_FILE_PATH = `${SETTINGS_MOUNT_POINT}/settings.json`
