@@ -578,7 +578,7 @@
 	"taskList": {
 		"title": "Sync task list",
 		"instruction": "Please review the tasks below. Click \"Continue\" to execute the selected tasks, or \"Cancel\" to skip this sync.",
-		"continue": "Continue",
+		"continue": "Continue ({{count}})",
 		"cancel": "Cancel"
 	},
 	"deleteConfirm": {
@@ -795,13 +795,14 @@
 		}
 	},
 	"taskSelectionVirtualList": {
-		"pagination": {
-			"first": "First",
-			"previous": "Prev",
-			"next": "Next",
-			"last": "Last",
-			"pageInfo": "Page {{ current }} / {{ total }}",
-			"totalItems": "Total {{ count }} items"
+		"filter": {
+			"all": "All ({{ count }})",
+			"searchPlaceholder": "Search by path…",
+			"empty": "No matching tasks."
+		},
+		"footer": {
+			"totalItems": "Total {{ count }} items",
+			"filtered": "{{ count }} shown"
 		},
 		"labels": {
 			"execute": "Execute",

@@ -578,7 +578,7 @@
 	"taskList": {
 		"title": "同步任务列表",
 		"instruction": "请检查以下待执行的任务。点击\"继续\"将执行选中的任务，点击\"取消\"则跳过本次同步。",
-		"continue": "继续",
+		"continue": "继续（{{count}}）",
 		"cancel": "取消"
 	},
 	"deleteConfirm": {
@@ -795,13 +795,14 @@
 		}
 	},
 	"taskSelectionVirtualList": {
-		"pagination": {
-			"first": "首页",
-			"previous": "上一页",
-			"next": "下一页",
-			"last": "末页",
-			"pageInfo": "第 {{ current }} / {{ total }} 页",
-			"totalItems": "共 {{ count }} 项"
+		"filter": {
+			"all": "全部 ({{ count }})",
+			"searchPlaceholder": "按路径搜索……",
+			"empty": "没有匹配的任务。"
+		},
+		"footer": {
+			"totalItems": "共 {{ count }} 项",
+			"filtered": "筛选后 {{ count }} 项"
 		},
 		"labels": {
 			"execute": "执行",

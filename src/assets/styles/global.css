@@ -27,6 +27,21 @@
 	padding: 0;
 }
 
+.modal.sync-confirm-modal {
+	max-height: calc(100% - 2rem);
+}
+
+.modal-content.sync-confirm-modal__content {
+	display: flex;
+	flex-direction: column;
+	max-height: 90vh;
+	min-height: 0;
+}
+
+.sync-confirm-modal__footer {
+	flex: 0 0 auto;
+}
+
 .nutstore-sync-result__icon {
 	display: flex;
 	align-items: center;

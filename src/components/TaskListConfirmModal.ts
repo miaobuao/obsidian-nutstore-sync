@@ -28,45 +28,49 @@ export default class TaskListConfirmModal extends Modal {
 		const { contentEl } = this
 		contentEl.empty()
 
-		const instruction = contentEl.createEl('p')
-		instruction.setText(i18n.t('taskList.instruction'))
-
 		const listContainer = contentEl.createDiv({
-			cls: ':uno: h-[50vh] max-h-[50vh] min-h-[16rem] w-full',
+			cls: ':uno: h-[60vh] min-h-[16rem] w-full',
 		})
+		let updateContinueButtonText = () => {}
+		const updateList = () => {
+			this.listController?.update({
+				items: this.buildListItems(),
+				onToggle,
+				onToggleMany,
+			})
+			updateContinueButtonText()
+		}
 		const onToggle = (index: number, checked: boolean) => {
 			this.selectedTasks[index] = checked
-			this.listController?.update({
-				items: this.buildListItems(),
-				onToggle,
-				onToggleAll,
-			})
+			updateList()
 		}
-		const onToggleAll = (checked: boolean) => {
-			this.selectedTasks.fill(checked)
-			this.listController?.update({
-				items: this.buildListItems(),
-				onToggle,
-				onToggleAll,
-			})
+		const onToggleMany = (indices: number[], checked: boolean) => {
+			for (const index of indices) {
+				this.selectedTasks[index] = checked
+			}
+			updateList()
 		}
 		this.listController = mountTaskSelectionVirtualList(listContainer, {
 			items: this.buildListItems(),
 			onToggle,
-			onToggleAll,
+			onToggleMany,
 		})
 
 		const settingDiv = contentEl.createDiv()
 		settingDiv.style.marginTop = '1rem'
 		new Setting(settingDiv)
 			.addButton((button) => {
-				button
-					.setButtonText(i18n.t('taskList.continue'))
-					.setCta()
-					.onClick(() => {
-						this.result = true
-						this.close()
-					})
+				updateContinueButtonText = () =>
+					button.setButtonText(
+						i18n.t('taskList.continue', {
+							count: this.selectedTasks.filter(Boolean).length,
+						}),
+					)
+				updateContinueButtonText()
+				button.setCta().onClick(() => {
+					this.result = true
+					this.close()
+				})
 			})
 			.addButton((button) => {
 				button.setButtonText(i18n.t('taskList.cancel')).onClick(() => {

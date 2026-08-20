@@ -1,4 +1,5 @@
 import { App, Modal, Setting } from 'obsidian'
+import { addClassTokens, removeClassTokens } from '~/utils/class-tokens'
 import i18n from '../i18n'
 import {
 	getConflictStrategyI18nKey,
@@ -24,9 +25,17 @@ export default class SyncConfirmModal extends Modal {
 
 	async onOpen() {
 		const { contentEl } = this
+		addClassTokens(this.modalEl, ':uno: sync-confirm-modal')
+		addClassTokens(contentEl, ':uno: sync-confirm-modal__content')
+		const bodyEl = contentEl.createDiv({
+			cls: ':uno: min-h-0 flex-1 overflow-y-auto pr-1',
+		})
+		const footerEl = contentEl.createDiv({
+			cls: ':uno: sync-confirm-modal__footer',
+		})
 
-		contentEl.createEl('h2', { text: i18n.t('sync.confirmModal.title') })
-		const infoDiv = contentEl.createDiv({ cls: ':uno: sync-info' })
+		bodyEl.createEl('h2', { text: i18n.t('sync.confirmModal.title') })
+		const infoDiv = bodyEl.createDiv({ cls: ':uno: sync-info' })
 		infoDiv.createEl('p', {
 			text: i18n.t('sync.confirmModal.remoteDir', {
 				dir: this.settings.remoteDir,
@@ -40,11 +49,11 @@ export default class SyncConfirmModal extends Modal {
 			}),
 		})
 
-		contentEl.createEl('h3', {
+		bodyEl.createEl('h3', {
 			text: i18n.t('sync.confirmModal.policyTitle'),
 		})
 
-		const policySection = contentEl.createEl('section')
+		const policySection = bodyEl.createEl('section')
 		const policyOptions = policySection.createDiv({
 			cls: ':uno: grid gap-1.5 my-3',
 		})
@@ -80,11 +89,11 @@ export default class SyncConfirmModal extends Modal {
 			})
 		}
 		updatePolicyDescription()
-		contentEl.createEl('pre', {
+		bodyEl.createEl('pre', {
 			text: i18n.t('sync.confirmModal.message'),
 		}).style.whiteSpace = 'pre-wrap'
 
-		new Setting(contentEl)
+		new Setting(footerEl)
 			.addButton((button) =>
 				button
 					.setButtonText(i18n.t('sync.confirmModal.cancel'))
@@ -104,5 +113,7 @@ export default class SyncConfirmModal extends Modal {
 	onClose() {
 		const { contentEl } = this
 		contentEl.empty()
+		removeClassTokens(contentEl, ':uno: sync-confirm-modal__content')
+		removeClassTokens(this.modalEl, ':uno: sync-confirm-modal')
 	}
 }
