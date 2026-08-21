@@ -56,7 +56,7 @@ export default class FilterEditorModal extends Modal {
 			rows.length = 0
 			this.rules.forEach((rule, index) => {
 				const itemContainer = listContainer.createDiv({
-					cls: ':uno: flex gap-2 items-center',
+					cls: ':uno: flex gap-2 items-center ns-filter-rule-row',
 				})
 				rows.push({ rule, container: itemContainer })
 				const activeToggle = listContainer.createEl('input', {
@@ -116,7 +116,11 @@ export default class FilterEditorModal extends Modal {
 					refreshHighlight()
 				})
 
-				const upBtn = listContainer.createEl('button', {
+				const controls = itemContainer.createDiv({
+					cls: ':uno: flex gap-2 items-center ns-filter-controls',
+				})
+
+				const upBtn = controls.createEl('button', {
 					text: '↑',
 					cls: ':uno: shadow-none!',
 				})
@@ -129,7 +133,7 @@ export default class FilterEditorModal extends Modal {
 					updateList()
 				})
 
-				const downBtn = listContainer.createEl('button', {
+				const downBtn = controls.createEl('button', {
 					text: '↓',
 					cls: ':uno: shadow-none!',
 				})
@@ -142,7 +146,7 @@ export default class FilterEditorModal extends Modal {
 					updateList()
 				})
 
-				const forceCaseBtn = listContainer.createEl('button', {
+				const forceCaseBtn = controls.createEl('button', {
 					text: 'Aa',
 					cls: ':uno: shadow-none!',
 				})
@@ -167,7 +171,7 @@ export default class FilterEditorModal extends Modal {
 					updateButtonStatus()
 				})
 
-				const trash = listContainer.createEl('button', {
+				const trash = controls.createEl('button', {
 					text: i18n.t('settings.filters.remove'),
 				})
 				let confirmDelete = false
@@ -189,10 +193,7 @@ export default class FilterEditorModal extends Modal {
 				itemContainer.appendChild(activeToggle)
 				itemContainer.appendChild(typeSelect)
 				itemContainer.appendChild(input)
-				itemContainer.appendChild(upBtn)
-				itemContainer.appendChild(downBtn)
-				itemContainer.appendChild(forceCaseBtn)
-				itemContainer.appendChild(trash)
+				itemContainer.appendChild(controls)
 			})
 			refreshHighlight()
 		}
