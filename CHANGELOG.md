@@ -2,7 +2,7 @@
 
 本项目的所有重要更改都将记录在此文件中。All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.4.2] - 2026-08-21
 
 - 修复移动端设备下编辑器样式的过滤问题 | fix: filter editor style in small screen devices
 - 移除 `note_neighborhood` 工具及其相关测试用例 | refactor: remove note_neighborhood tool and related tests
