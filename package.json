@@ -37,7 +37,7 @@
 		"core-js": "^3.41.0",
 		"crypto-browserify": "^3.12.1",
 		"diff-match-patch": "^1.0.5",
-		"fast-xml-parser": "^4.5.1",
+		"fast-xml-parser": "^5.11.0",
 		"fflate": "^0.8.2",
 		"html-entities": "^2.6.0",
 		"http-status-codes": "^2.3.0",
@@ -52,11 +52,11 @@
 		"path-browserify": "^1.0.1",
 		"ramda": "^0.30.1",
 		"rxjs": "^7.8.1",
-		"solid-js": "^1.9.5",
+		"solid-js": "^1.9.15",
 		"stream-browserify": "^3.0.0",
 		"superjson": "^2.2.2",
 		"uuid": "^13.0.0",
-		"webdav": "^5.7.1",
+		"webdav": "^5.10.0",
 		"yjs": "^13.6.31",
 		"zod": "^4.3.6"
 	},
@@ -76,7 +76,7 @@
 		"@types/ramda": "^0.30.2",
 		"@typescript-eslint/eslint-plugin": "5.29.0",
 		"@typescript-eslint/parser": "5.29.0",
-		"@vitest/coverage-v8": "^3.1.2",
+		"@vitest/coverage-v8": "^3.2.7",
 		"baseline-browser-mapping": "^2.10.33",
 		"builtin-modules": "3.3.0",
 		"dotenv": "^16.4.7",
@@ -99,7 +99,7 @@
 		"typescript-eslint": "^8.59.4",
 		"unocss": "66.1.0-beta.3",
 		"unplugin-solid": "^1.0.0",
-		"vitest": "^3.1.2"
+		"vitest": "^3.2.7"
 	},
 	"browser": {
 		"path": "path-browserify",
