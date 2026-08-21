@@ -40,7 +40,6 @@ import {
 	createViewImageAttachmentMessage,
 	InMemoryViewImageAttachmentRegistry,
 } from '~/ai/tools/view-image-attachments'
-import i18n from '~/i18n'
 
 interface MockFile {
 	path: string
@@ -950,84 +949,6 @@ describe('update_session_title tool', () => {
 	})
 })
 
-describe('note_neighborhood path resolution', () => {
-	it('rejects a folder path with a clear error', async () => {
-		const folder = Object.assign(new TFolder(), {
-			path: 'projects',
-			name: 'projects',
-			children: [],
-		})
-		const app = {
-			vault: {
-				getAbstractFileByPath: (path: string) =>
-					path === folder.path ? folder : null,
-			},
-			metadataCache: {
-				getFirstLinkpathDest: () => null,
-			},
-		} as unknown as App
-		const tool = findTool(createAITools(), 'note_neighborhood')
-
-		await expect(
-			executeToolForTest(
-				tool,
-				{ note: folder.path, depth: 1 },
-				makeContext(app, makeSession()),
-			),
-		).rejects.toThrow(i18n.t('chatbox.errors.notFile', { path: folder.path }))
-	})
-
-	it('resolves an ambiguous link path relative to the current note', async () => {
-		const { app } = createMockApp([
-			{ path: 'projects/a/Shared.md', content: 'A' },
-			{ path: 'projects/b/Current.md', content: 'current' },
-			{ path: 'projects/b/Shared.md', content: 'B' },
-		])
-		app.metadataCache = {
-			resolvedLinks: {},
-			getFirstLinkpathDest(linkpath: string, sourcePath: string) {
-				if (linkpath !== 'Shared') return null
-				return app.vault.getAbstractFileByPath(
-					sourcePath.startsWith('projects/b/')
-						? 'projects/b/Shared.md'
-						: 'projects/a/Shared.md',
-				) as TFile | null
-			},
-		} as App['metadataCache']
-		const fragment: ChatFragment = {
-			id: 'f1',
-			createdAt: 0,
-			updatedAt: 0,
-			messages: [
-				{
-					id: 'm1',
-					createdAt: 0,
-					message: {
-						role: 'user',
-						content: [{ type: 'text', text: 'Show the neighborhood.' }],
-					},
-					workspaceContextDelta: [
-						{
-							key: 'activeFile',
-							content: 'projects/b/Current.md',
-							hash: 'active-file-hash',
-						},
-					],
-				},
-			],
-		}
-		const tool = findTool(createAITools(), 'note_neighborhood')
-
-		const result = await executeToolForTest(
-			tool,
-			{ note: 'Shared', depth: 1 },
-			makeContext(app, makeSession(fragment)),
-		)
-
-		expect(result).toMatchObject({ root: 'projects/b/Shared.md' })
-	})
-})
-
 function buildTestSessionStore(
 	state: ChatState,
 	runtimeStates: RuntimeStates,
@@ -1492,7 +1413,6 @@ describe('filterToolsForAgent', () => {
 		expect(names).not.toContain('todowrite')
 		expect(names).not.toContain('update_session_title')
 		expect(names).toContain('bash')
-		expect(names).toContain('note_neighborhood')
 		expect(names).toContain('view_image')
 		expect(names).toContain('task')
 	})
@@ -1510,7 +1430,6 @@ describe('filterToolsForAgent', () => {
 
 		expect(names).toContain('apply_patch')
 		expect(names).toContain('bash')
-		expect(names).toContain('note_neighborhood')
 		expect(names).toContain('view_image')
 		expect(names).toContain('todowrite')
 		expect(names).toContain('update_session_title')

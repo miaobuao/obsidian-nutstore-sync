@@ -99,6 +99,37 @@
 	background: color-mix(in srgb, var(--text-warning) 8%, transparent);
 }
 
+.ns-filter-rule-row {
+	flex-wrap: wrap;
+}
+
+/* Small screens: each rule row becomes a deterministic two-line grid —
+   row 1: [toggle] [type] [expr (fills remaining)]; 
+   row 2: the controls group (Aa / ↑ / ↓ / delete). */
+@media (max-width: 640px) {
+	.ns-filter-rule-row {
+		display: grid;
+		grid-template-columns: auto auto minmax(0, 1fr);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: var(--radius-m);
+		background: var(--background-secondary);
+		padding: var(--size-4-2) var(--size-4-3);
+	}
+
+	.ns-filter-rule-row.ns-filter-rule-conflict {
+		border-color: color-mix(in srgb, var(--text-warning) 60%, transparent);
+		background: color-mix(
+			in srgb,
+			var(--text-warning) 8%,
+			var(--background-secondary)
+		);
+	}
+
+	.ns-filter-rule-row .ns-filter-controls {
+		grid-column: 1 / -1;
+	}
+}
+
 .settings-helper-badge {
 	display: inline-flex;
 	align-items: center;
