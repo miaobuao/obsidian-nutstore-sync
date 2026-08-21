@@ -2,6 +2,13 @@
 
 本项目的所有重要更改都将记录在此文件中。All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+- 修复移动端设备下编辑器样式的过滤问题 | fix: filter editor style in small screen devices
+- 移除 `note_neighborhood` 工具及其相关测试用例 | refactor: remove note_neighborhood tool and related tests
+- 重构旧版过滤规则迁移函数，移除冗余的类型断言 | refactor: remove unnecessary type assertions in migrateLegacyFilterRules
+
+
 ## [1.4.1] - 2026-08-20
 
 - 在默认忽略规则中添加 `.nomedia` 文件支持。 Add `.nomedia` to default ignore rules.
