@@ -34,4 +34,5 @@ export class ChatState {
 	>()
 	chatModalHostEl?: HTMLElement
 	initialization?: Promise<void>
+	initialized = false
 }

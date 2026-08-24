@@ -230,7 +230,7 @@ export default class ChatService extends BaseService {
 	}
 
 	override onload() {
-		return this.initialize()
+		this.syncMemoryGate()
 	}
 
 	async initialize() {
@@ -238,17 +238,21 @@ export default class ChatService extends BaseService {
 			return this.state.initialization
 		}
 
-		this.state.initialization = this.initializeInternal().catch((error) => {
-			this.state.initialization = undefined
-			throw error
-		})
+		this.state.initialization = this.initializeInternal()
+			.then(() => {
+				this.state.initialized = true
+				this.notify()
+			})
+			.catch((error) => {
+				this.state.initialization = undefined
+				throw error
+			})
 		return this.state.initialization
 	}
 
 	private async initializeInternal() {
 		this.syncMemoryGate()
-		await this.toolExecutor.initialize()
-		await this.store.loadSessionIndex()
+		await this.store.loadInitialSession()
 
 		if (this.state.sessionIndex.length === 0) {
 			const session = await this.createEmptySession()
@@ -258,19 +262,6 @@ export default class ChatService extends BaseService {
 			await this.store.persistSession(session)
 			await this.store.persistMetaAndIndex()
 			return
-		}
-
-		const fallbackSessionId =
-			this.state.activeSessionId &&
-			this.state.sessionIndex.some(
-				(item) => item.id === this.state.activeSessionId,
-			)
-				? this.state.activeSessionId
-				: this.state.sessionIndex[0]?.id
-		this.state.activeSessionId = fallbackSessionId
-		if (fallbackSessionId) {
-			await this.store.loadSessionById(fallbackSessionId)
-			await this.store.persistMetaAndIndex()
 		}
 	}
 
@@ -291,10 +282,15 @@ export default class ChatService extends BaseService {
 	}
 
 	async handleSettingsChanged() {
-		await this.initialize()
 		this.syncMemoryGate()
-		const persisted: Promise<unknown>[] = []
 		this.selection.syncPendingSelectionWithSettings()
+		if (!this.state.initialization) {
+			this.notify()
+			return
+		}
+
+		await this.initialize()
+		const persisted: Promise<unknown>[] = []
 		for (const session of this.state.loadedSessions.values()) {
 			if (this.selection.sanitizeSessionSelection(session)) {
 				persisted.push(this.store.persistSession(session))
@@ -325,6 +321,7 @@ export default class ChatService extends BaseService {
 		)
 
 		return {
+			loading: !this.state.initialized,
 			title: this.getActiveSessionTitle(),
 			activeContextItems: [],
 			sessionHistory: this.state.sessionIndex.map((item) => ({ ...item })),

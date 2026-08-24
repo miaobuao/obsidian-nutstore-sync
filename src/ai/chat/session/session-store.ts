@@ -10,6 +10,7 @@ import type { ChatMetaRecord } from '~/storage'
 import {
 	SessionFileCorruptError,
 	SessionsFileBackend,
+	getChatSessionPath,
 	type ChatMetaFile,
 	type ChatSessionFilePayload,
 } from '~/ai/chat/session/session-files'
@@ -51,6 +52,16 @@ interface LegacyMigrationResult {
 	migrated: boolean
 }
 
+export class SessionUnavailableError extends Error {
+	constructor(
+		public readonly sessionId: string,
+		options?: { cause?: unknown },
+	) {
+		super(i18n.t('chatbox.errors.sessionNotFound'), options)
+		this.name = 'SessionUnavailableError'
+	}
+}
+
 export class SessionStore {
 	private persistQueues = new Map<string, Promise<void>>()
 
@@ -64,7 +75,37 @@ export class SessionStore {
 
 	async loadSessionIndex() {
 		const legacyMigration = await this.ensureMigratedFromLegacy()
-		await this.reconcileSessionIndex(legacyMigration)
+		const diskIds = new Set(await this.backend.listSessionIds())
+		const meta = await this.backend.readMetaFile()
+		const cachedIndex = legacyMigration?.migrated
+			? null
+			: buildSessionIndexFromMeta(meta, diskIds)
+		if (cachedIndex) {
+			this.state.sessionIndex = cachedIndex
+			this.state.activeSessionId =
+				meta?.activeSessionId && diskIds.has(meta.activeSessionId)
+					? meta.activeSessionId
+					: cachedIndex[0]?.id
+			return
+		}
+		await this.reconcileSessionIndex(legacyMigration, { diskIds, meta })
+	}
+
+	async loadInitialSession() {
+		await this.loadSessionIndex()
+		const activeSessionId = this.state.activeSessionId
+		if (!activeSessionId) return undefined
+
+		try {
+			return await this.loadSessionById(activeSessionId)
+		} catch (error) {
+			if (!(error instanceof SessionUnavailableError)) throw error
+		}
+
+		await this.reconcileSessionIndex(null)
+		const fallbackSessionId = this.state.activeSessionId
+		if (!fallbackSessionId) return undefined
+		return this.loadSessionById(fallbackSessionId)
 	}
 
 	/** Incrementally migrates IndexedDB sessions missing from vault storage. */
@@ -123,9 +164,14 @@ export class SessionStore {
 
 	private async reconcileSessionIndex(
 		legacyMigration: LegacyMigrationResult | null,
+		known?: {
+			diskIds: Set<string>
+			meta: ChatMetaFile | null
+		},
 	) {
-		const diskIds = new Set(await this.backend.listSessionIds())
-		const meta = await this.backend.readMetaFile()
+		const diskIds =
+			known?.diskIds ?? new Set(await this.backend.listSessionIds())
+		const meta = known?.meta ?? (await this.backend.readMetaFile())
 		const validItems = new Map<string, ChatSessionIndexItem>()
 		for (const id of diskIds) {
 			try {
@@ -191,7 +237,7 @@ export class SessionStore {
 					}),
 					10000,
 				)
-				throw new Error(i18n.t('chatbox.errors.sessionNotFound'), {
+				throw new SessionUnavailableError(sessionId, {
 					cause: error,
 				})
 			}
@@ -201,7 +247,17 @@ export class SessionStore {
 		let stored: ChatSession | LegacyChatSession | undefined
 		let embeddedTitle: string | undefined
 		if (payload) {
-			stored = decodeChatSessionFromStorage(payload.session)
+			try {
+				stored = decodeChatSessionFromStorage(payload.session)
+			} catch (error) {
+				new Notice(
+					i18n.t('chatbox.errors.corruptSessionFile', {
+						path: getChatSessionPath(sessionId),
+					}),
+					10000,
+				)
+				throw new SessionUnavailableError(sessionId, { cause: error })
+			}
 			embeddedTitle = payload.title
 		} else {
 			try {
@@ -214,7 +270,7 @@ export class SessionStore {
 			}
 		}
 		if (!stored) {
-			throw new Error(i18n.t('chatbox.errors.sessionNotFound'))
+			throw new SessionUnavailableError(sessionId)
 		}
 
 		const { session, changed } = this.rehydrateSession(stored)
@@ -483,4 +539,31 @@ export class SessionStore {
 
 function numberOrZero(value: unknown): number {
 	return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function buildSessionIndexFromMeta(
+	meta: ChatMetaFile | null,
+	diskIds: Set<string>,
+): ChatSessionIndexItem[] | null {
+	if (!meta || meta.orderedSessionIds.length !== diskIds.size) return null
+
+	const indexedIds = new Set<string>()
+	const items: ChatSessionIndexItem[] = []
+	for (const id of meta.orderedSessionIds) {
+		const info = meta.sessions[id]
+		if (
+			!diskIds.has(id) ||
+			indexedIds.has(id) ||
+			!info ||
+			typeof info.title !== 'string' ||
+			!Number.isFinite(info.createdAt) ||
+			!Number.isFinite(info.updatedAt)
+		) {
+			return null
+		}
+		indexedIds.add(id)
+		items.push({ id, ...info })
+	}
+
+	return Object.keys(meta.sessions).length === diskIds.size ? items : null
 }

@@ -12,8 +12,6 @@ import {
 	normalizePath,
 	TFile,
 	TFolder,
-	type App,
-	type DataAdapter,
 	type TAbstractFile,
 	type Vault,
 } from 'obsidian'
@@ -165,32 +163,13 @@ async function copyRecursive(
 	await fs.writeFile(dest, content)
 }
 
-export async function listVaultPaths(app: App) {
-	const paths = new Set<string>(['/'])
-	const queue = [...app.vault.getRoot().children]
-
-	while (queue.length > 0) {
-		const current = queue.shift()
-		if (!current) {
-			continue
-		}
-
-		paths.add(`/${normalizePath(current.path)}`)
-		if (current instanceof TFolder) {
-			queue.push(...current.children)
-		}
-	}
-
-	return [...paths]
-}
-
-export interface VaultPathIndex {
+interface VaultPathIndex {
 	getAllPaths(): string[]
 	recordPath(path: string): void
 	forgetPath(path: string): void
 }
 
-export class MutableVaultPathIndex implements VaultPathIndex {
+class MutableVaultPathIndex implements VaultPathIndex {
 	private readonly paths = new Set<string>(['/'])
 
 	constructor(initialPaths: string[] = []) {
@@ -217,53 +196,8 @@ export class MutableVaultPathIndex implements VaultPathIndex {
 		this.paths.add('/')
 	}
 
-	replacePaths(paths: string[]) {
-		this.paths.clear()
-		this.paths.add('/')
-		for (const path of paths) this.recordPath(path)
-	}
-
 	getAllPaths() {
 		return [...this.paths].sort()
-	}
-}
-
-function toVirtualAdapterPath(adapterPath: string) {
-	const normalized = normalizePath(adapterPath).replace(/^\/+|\/+$/g, '')
-	return normalized ? `/${normalized}` : '/'
-}
-
-export class AdapterVaultPathIndex extends MutableVaultPathIndex {
-	constructor(
-		private readonly adapter: DataAdapter,
-		private readonly fallbackPaths: string[] = [],
-	) {
-		super()
-	}
-
-	async refresh() {
-		if (typeof this.adapter.list !== 'function') {
-			this.replacePaths(this.fallbackPaths)
-			return
-		}
-		const refreshed = new MutableVaultPathIndex()
-		const queue = ['']
-		let cursor = 0
-
-		while (cursor < queue.length) {
-			const current = queue[cursor++]!
-			const listed = await this.adapter.list(current)
-			for (const file of listed.files) {
-				refreshed.recordPath(toVirtualAdapterPath(file))
-			}
-			for (const folder of listed.folders) {
-				const virtualPath = toVirtualAdapterPath(folder)
-				refreshed.recordPath(virtualPath)
-				queue.push(normalizePath(folder))
-			}
-		}
-
-		this.replacePaths(refreshed.getAllPaths())
 	}
 }
 

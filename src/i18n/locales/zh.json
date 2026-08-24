@@ -710,6 +710,7 @@
 				"binary": "二进制文件，无法显示文本差异"
 			},
 			"states": {
+				"loading": "正在恢复聊天…",
 				"empty": "开始发送一条消息",
 				"dragFilePrompt": "松手以添加文件",
 				"thinking": "思考中",

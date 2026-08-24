@@ -66,10 +66,6 @@ export class ToolExecutor {
 		this.fileSystemManager = new VaultFileSystemManager(app)
 	}
 
-	initialize() {
-		return this.fileSystemManager.initialize()
-	}
-
 	getFileSystemManager() {
 		return this.fileSystemManager
 	}

@@ -2,12 +2,7 @@ import { MountableFs, type IFileSystem } from 'just-bash/browser'
 import { normalizePath, type App } from 'obsidian'
 import { createBuiltinSkillsFs } from '~/ai/skills/builtin'
 import type { PermissionGuard } from '~/ai/tools/permission-guard'
-import {
-	AdapterVaultPathIndex,
-	listVaultPaths,
-	ObsidianVaultFs,
-	ReversibleOpRecorder,
-} from './bash/fs'
+import { ObsidianVaultFs, ReversibleOpRecorder } from './bash/fs'
 import {
 	AGENTS_MOUNT_POINT,
 	BUILTIN_SKILLS_MOUNT_POINT,
@@ -28,28 +23,18 @@ export interface CreateVaultFileSystemOptions {
 }
 
 interface SharedVaultFileSystem {
-	pathIndex: AdapterVaultPathIndex
 	builtinSkillsFs: IFileSystem
 }
 
 /**
- * Owns the expensive, adapter-backed filesystem state for one plugin instance.
- * Request-specific permissions, read tracking, settings IO, and reversible
- * operation recording remain scoped to each tool invocation.
+ * Shares immutable built-in Skills for one plugin instance. Vault access,
+ * permissions, read tracking, settings IO, and reversible operation recording
+ * remain scoped to each tool invocation.
  */
 export class VaultFileSystemManager {
 	private sharedPromise?: Promise<SharedVaultFileSystem>
 
 	constructor(private readonly app: App) {}
-
-	async initialize() {
-		await this.getShared()
-	}
-
-	async refreshPaths() {
-		const shared = await this.getShared()
-		await shared.pathIndex.refresh()
-	}
 
 	async create(options: CreateVaultFileSystemOptions = {}) {
 		const shared = await this.getShared()
@@ -58,28 +43,12 @@ export class VaultFileSystemManager {
 
 	private getShared() {
 		if (!this.sharedPromise) {
-			this.sharedPromise = (async () => {
-				const fallbackPaths =
-					typeof this.app.vault.adapter.list === 'function'
-						? []
-						: [
-								...(await listVaultPaths(this.app)),
-								'/.agents',
-								`/${normalizePath(this.app.vault.configDir)}`,
-							]
-				const pathIndex = new AdapterVaultPathIndex(
-					this.app.vault.adapter,
-					fallbackPaths,
-				)
-				await pathIndex.refresh()
-				return {
-					pathIndex,
-					builtinSkillsFs: await createBuiltinSkillsFs(),
-				}
-			})().catch((error) => {
-				this.sharedPromise = undefined
-				throw error
-			})
+			this.sharedPromise = createBuiltinSkillsFs()
+				.then((builtinSkillsFs) => ({ builtinSkillsFs }))
+				.catch((error) => {
+					this.sharedPromise = undefined
+					throw error
+				})
 		}
 		return this.sharedPromise
 	}
@@ -98,7 +67,7 @@ async function createScopedVaultFileSystem(
 	)
 	const vaultFs = new ObsidianVaultFs(
 		app.vault,
-		shared.pathIndex,
+		[],
 		options.permissionGuard,
 		onRead,
 	)

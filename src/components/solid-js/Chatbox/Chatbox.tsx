@@ -897,7 +897,9 @@ function Chatbox(props: ChatboxProps) {
 							}
 							fallback={
 								<div class=":uno: flex h-full items-center justify-center text-sm text-[var(--text-muted)]">
-									{t('chatbox.ui.states.empty')}
+									{props.loading
+										? t('chatbox.ui.states.loading')
+										: t('chatbox.ui.states.empty')}
 								</div>
 							}
 						>

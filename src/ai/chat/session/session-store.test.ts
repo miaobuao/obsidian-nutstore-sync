@@ -115,6 +115,73 @@ function legacyTimelinePersistedRecord(id = 'legacy1'): PersistedChatSession {
 }
 
 describe('SessionStore (vault file persistence)', () => {
+	it('loads a complete valid index from meta without reading session bodies', async () => {
+		const { vault } = createMemoryVault()
+		const backend = new SessionsFileBackend(vault)
+		const sessions = [
+			{ id: 'session-a', title: 'Session A / 会话甲 🙂', updatedAt: 3 },
+			{ id: 'session-b', title: 'Session B / 会话乙 🌿', updatedAt: 2 },
+		]
+		for (const session of sessions) {
+			await backend.writeSessionFile(session.id, {
+				session: legacyV1PersistedRecord(session.id),
+				title: session.title,
+			})
+		}
+		await backend.writeMetaFile({
+			activeSessionId: 'session-b',
+			orderedSessionIds: ['session-b', 'session-a'],
+			sessions: Object.fromEntries(
+				sessions.map((session) => [
+					session.id,
+					{
+						title: session.title,
+						createdAt: 1,
+						updatedAt: session.updatedAt,
+					},
+				]),
+			),
+		})
+		const sessionReads: string[] = []
+		const read = vault.adapter.read.bind(vault.adapter)
+		vault.adapter.read = async (path) => {
+			if (path.startsWith(`${CHAT_SESSIONS_DIR}/`)) sessionReads.push(path)
+			return read(path)
+		}
+		const state = createState()
+		const store = new SessionStore(
+			state,
+			new RuntimeStates(state),
+			createSelection(),
+			backend,
+			{
+				listSessionKeys: async () => [],
+				getSession: async () => undefined,
+				unsetSession: async () => undefined,
+				getMeta: async () => ({ meta: null, index: [] }),
+			},
+		)
+
+		await store.loadSessionIndex()
+
+		expect(state.sessionIndex).toEqual([
+			{
+				id: 'session-b',
+				title: 'Session B / 会话乙 🌿',
+				createdAt: 1,
+				updatedAt: 2,
+			},
+			{
+				id: 'session-a',
+				title: 'Session A / 会话甲 🙂',
+				createdAt: 1,
+				updatedAt: 3,
+			},
+		])
+		expect(state.activeSessionId).toBe('session-b')
+		expect(sessionReads).toEqual([])
+	})
+
 	it('migrates legacy IndexedDB sessions into vault files', async () => {
 		const { vault, files } = createMemoryVault()
 		const backend = new SessionsFileBackend(vault)
@@ -258,11 +325,11 @@ describe('SessionStore (vault file persistence)', () => {
 			legacy,
 		)
 
-		await store.loadSessionIndex()
+		await store.loadInitialSession()
 
 		expect(state.sessionIndex.map((item) => item.id)).toEqual(['valid'])
 		expect(state.activeSessionId).toBe('valid')
-		await expect(store.loadSessionById('valid')).resolves.toMatchObject({
+		expect(state.loadedSessions.get('valid')).toMatchObject({
 			id: 'valid',
 		})
 	})

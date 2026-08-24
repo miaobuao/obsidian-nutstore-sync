@@ -710,6 +710,7 @@
 				"binary": "Binary file; text diff is unavailable"
 			},
 			"states": {
+				"loading": "Restoring chat…",
 				"empty": "Start by sending a message",
 				"dragFilePrompt": "Drop to add file",
 				"thinking": "Thinking",

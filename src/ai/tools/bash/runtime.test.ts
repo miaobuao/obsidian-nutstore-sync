@@ -18,7 +18,7 @@ import {
 	createVaultFileSystem,
 	VaultFileSystemManager,
 } from '../vault-filesystem'
-import { listVaultPaths, ObsidianVaultFs, ReversibleOpRecorder } from './fs'
+import { ObsidianVaultFs, ReversibleOpRecorder } from './fs'
 import { ReversibleFs } from './reversible-fs'
 import { restoreVirtualReversibleOperations } from '~/ai/chat/messages/message-ops'
 import { decodeReversibleFileSnapshot } from '~/ai/chat/messages/reversible-content'
@@ -526,20 +526,6 @@ describe('vault bash runtime', () => {
 		expect(await mounted.readFile(file)).toContain('name: skill-creator')
 	})
 
-	it('builds a vault path snapshot for globbing', async () => {
-		const { vault } = createMockVault(
-			{
-				'notes/today.md': 'hello',
-			},
-			['notes'],
-		)
-		const app = createApp(vault)
-
-		await expect(listVaultPaths(app)).resolves.toEqual(
-			expect.arrayContaining(['/', '/notes', '/notes/today.md']),
-		)
-	})
-
 	it('uses the Obsidian vault as the filesystem root and supports writes', async () => {
 		const { vault, store } = createMockVault(
 			{
@@ -673,7 +659,7 @@ describe('vault bash runtime', () => {
 		expect(await fs.exists('/.obsidian/设置.json')).toBe(false)
 	})
 
-	it('supports shell glob expansion from the initial vault snapshot', async () => {
+	it('supports shell glob expansion from the live directory', async () => {
 		const { vault } = createMockVault(
 			{
 				'notes/a.md': 'A',
@@ -706,12 +692,11 @@ describe('vault bash runtime', () => {
 		])
 	})
 
-	it('reuses the adapter-root index while keeping read hooks scoped per call', async () => {
+	it('keeps read hooks scoped per call', async () => {
 		const { vault } = createMockVault({
 			'笔记/内容🙂.md': '中文内容🙂',
 		})
 		const app = createApp(vault)
-		const list = vi.spyOn(vault.adapter, 'list')
 		const manager = new VaultFileSystemManager(app)
 		const firstReads: string[] = []
 		const secondReads: string[] = []
@@ -719,29 +704,57 @@ describe('vault bash runtime', () => {
 		const first = await manager.create({
 			onRead: (path) => firstReads.push(path),
 		})
-		const listCallsAfterFirstCreate = list.mock.calls.length
 		const second = await manager.create({
 			onRead: (path) => secondReads.push(path),
 		})
 
 		await expect(first.readFile('/笔记/内容🙂.md')).resolves.toBe('中文内容🙂')
 		await expect(second.readFile('/笔记/内容🙂.md')).resolves.toBe('中文内容🙂')
-		expect(list).toHaveBeenCalledTimes(listCallsAfterFirstCreate)
 		expect(firstReads).toEqual(['笔记/内容🙂.md'])
 		expect(secondReads).toEqual(['笔记/内容🙂.md'])
 	})
 
-	it('refreshes the shared path index explicitly after an external adapter change', async () => {
-		const { vault, store } = createMockVault({ '笔记/已有.md': '已有' })
+	it('creates concurrent Bash filesystems without scanning the Vault', async () => {
+		const { vault } = createMockVault({
+			'资料-Notes/内容🙂.md': '中性内容 / Neutral content 🙂',
+		})
+		const list = vi.spyOn(vault.adapter, 'list')
 		const manager = new VaultFileSystemManager(createApp(vault))
-		const fs = await manager.create()
 
-		store.writeBinary('外部/新增🙂.md', new TextEncoder().encode('新增').buffer)
-		expect(fs.getAllPaths()).not.toContain('/外部/新增🙂.md')
+		expect(list).not.toHaveBeenCalled()
+		await Promise.all([manager.create(), manager.create()])
 
-		await manager.refreshPaths()
+		expect(list.mock.calls.map(([path]) => path)).toEqual([])
+	})
 
-		expect(fs.getAllPaths()).toContain('/外部/新增🙂.md')
+	it('reads external Vault changes through direct, directory, and glob paths', async () => {
+		const { vault, store } = createMockVault({
+			'目录-Notes/旧文件-old.md': '旧内容 / Old content',
+		})
+		const bash = await createVaultBash(createApp(vault))
+
+		store.writeBinary(
+			'目录-Notes/新文件-new🙂.md',
+			new TextEncoder().encode('新内容 / New content 🙂').buffer,
+		)
+		store.remove('目录-Notes/旧文件-old.md')
+
+		const direct = await bash.exec('cat /目录-Notes/新文件-new🙂.md')
+		const directory = await bash.exec('ls /目录-Notes')
+		const glob = await bash.exec('ls /目录-Notes/*.md')
+
+		expect(direct).toMatchObject({
+			exitCode: 0,
+			stdout: '新内容 / New content 🙂',
+		})
+		expect(directory).toMatchObject({
+			exitCode: 0,
+			stdout: '新文件-new🙂.md\n',
+		})
+		expect(glob).toMatchObject({
+			exitCode: 0,
+			stdout: '/目录-Notes/新文件-new🙂.md\n',
+		})
 	})
 
 	it('records Vault-root paths without the removed legacy mount prefix', async () => {

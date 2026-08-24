@@ -502,13 +502,15 @@ export default class ChatboxView extends ItemView {
 		})
 		this.captureActiveContextSnapshot(true)
 		this.plugin.chatService.setChatModalHost(this.rootEl)
-		await this.plugin.chatService.ensureSession()
 		this.unsubWindowMigrated?.()
 		this.unsubWindowMigrated = this.rootEl.onWindowMigrated(() => {
 			this.plugin.chatService.setChatModalHost(this.rootEl)
 			this.remountChatbox()
 		})
 		this.remountChatbox()
+		void this.plugin.chatService.ensureSession().catch((error) => {
+			logger.error('Failed to restore ChatBox session', error)
+		})
 	}
 
 	async onClose() {
