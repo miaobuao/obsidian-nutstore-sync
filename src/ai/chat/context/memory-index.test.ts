@@ -182,7 +182,10 @@ describe('memory index repository', () => {
 		await repo.refresh()
 		expect(repo.getDeltas()).toEqual([])
 		// The file still exists on disk; only injection is off.
-		files.get(`${MEMORY_ROOT}/2026/2026-02-10.md`)
+		expect(files.get(`${MEMORY_ROOT}/2026/2026-02-10.md`)).toMatchObject({
+			type: 'file',
+			content: frontmatterFile('2026-02-10', 'Today entry.'),
+		})
 	})
 
 	it('re-emits only the changed window entry through the delta hashing', async () => {
@@ -208,7 +211,7 @@ describe('memory index repository', () => {
 		files.set(`${MEMORY_ROOT}/2026/2026-02-10.md`, {
 			type: 'file',
 			content: frontmatterFile('2026-02-10', 'Updated index with new fact.'),
-			mtime: Date.now(),
+			mtime: 999,
 		})
 
 		await repo.refresh()

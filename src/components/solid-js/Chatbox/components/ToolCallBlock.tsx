@@ -95,8 +95,13 @@ export function ToolCallBlock(props: {
 					renderMarkdown={props.renderMarkdown}
 				/>
 			</Match>
-			<Match when={props.block.toolCall.toolName === 'bash'}>
-				<BashToolCallBlock
+			<Match
+				when={
+					props.block.toolCall.toolName === 'bash' ||
+					props.block.toolCall.toolName === 'apply_patch'
+				}
+			>
+				<PurposeToolCallBlock
 					block={props.block}
 					now={props.now}
 					onOpenFileChange={props.onOpenFileChange}
@@ -297,7 +302,7 @@ function TaskToolCallBlock(props: {
 	)
 }
 
-function BashToolCallBlock(props: {
+function PurposeToolCallBlock(props: {
 	block: ChatDisplayToolCallBlock
 	now: number
 	onOpenFileChange?: (vaultPath: string, line?: number) => Promise<void> | void

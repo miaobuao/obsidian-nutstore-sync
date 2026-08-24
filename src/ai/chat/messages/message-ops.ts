@@ -26,19 +26,22 @@ import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { RecallMessageResult } from '~/ai/chat/ui/types'
 import logger from '~/utils/logger'
 import type { SkillRepository } from '~/ai/skills/repository'
-import { createVaultFileSystem } from '~/ai/tools/vault-filesystem'
+import {
+	createVaultFileSystem,
+	type VaultFileSystemManager,
+} from '~/ai/tools/vault-filesystem'
 import type {
 	SettingsSnapshotFn,
 	SettingsUpdater,
 } from '~/ai/tools/tool-context'
 import { posix as pathPosix } from 'path-browserify'
-import type { IFileSystem } from 'just-bash/browser'
+import { normalizeLegacyVirtualPath } from '~/ai/tools/bash/mount-points'
 
 export async function restoreVirtualReversibleOperations(
 	app: App,
 	operations: ReversibleToolOp[],
 	options: {
-		scratch?: IFileSystem
+		fileSystemManager?: VaultFileSystemManager
 		settingsIo?: {
 			getSettingsSnapshot: SettingsSnapshotFn
 			updateSettings: SettingsUpdater
@@ -46,18 +49,18 @@ export async function restoreVirtualReversibleOperations(
 	} = {},
 ) {
 	const fs = await createVaultFileSystem(app, {
-		scratch: options.scratch,
+		fileSystemManager: options.fileSystemManager,
 		getSettingsSnapshot: options.settingsIo?.getSettingsSnapshot,
 		updateSettings: options.settingsIo?.updateSettings,
 	})
 	const earliest = new Map<string, ReversibleToolOp>()
 	for (const operation of operations) {
-		if (!earliest.has(operation.vaultPath)) {
-			earliest.set(operation.vaultPath, operation)
+		const normalizedPath = normalizeLegacyVirtualPath(operation.vaultPath)
+		if (!earliest.has(normalizedPath)) {
+			earliest.set(normalizedPath, operation)
 		}
 	}
-	for (const operation of [...earliest.values()].reverse()) {
-		const path = operation.vaultPath
+	for (const [path, operation] of [...earliest.entries()].reverse()) {
 		if (operation.operation === 'create') {
 			if (await fs.exists(path)) await fs.rm(path, { recursive: true })
 			continue
@@ -90,6 +93,7 @@ export class MessageOps {
 			getSettingsSnapshot: SettingsSnapshotFn
 			updateSettings: SettingsUpdater
 		},
+		private fileSystemManager?: VaultFileSystemManager,
 	) {}
 
 	deleteMessage(messageId: string) {
@@ -335,12 +339,8 @@ export class MessageOps {
 	}
 
 	private async restoreVirtualFilesForRecall(operations: ReversibleToolOp[]) {
-		const session = this.getLoadedActiveSession()
-		const scratch = session
-			? this.runtimeStates.get(session.id).bashScratch
-			: undefined
 		await restoreVirtualReversibleOperations(this.app, operations, {
-			scratch,
+			fileSystemManager: this.fileSystemManager,
 			settingsIo: this.settingsIo,
 		})
 	}

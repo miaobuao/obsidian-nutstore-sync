@@ -40,9 +40,10 @@ vi.mock('obsidian', async (importOriginal) => {
 
 import { SyncStartMode } from '~/sync'
 import type { SyncPolicy } from '~/settings'
+import type NutstorePlugin from '..'
 import SyncExecutorService from './sync-executor.service'
 
-function createPlugin(): any {
+function createPlugin(): NutstorePlugin {
 	return {
 		isSyncing: false,
 		isAccountConfigured: vi.fn(() => true),
@@ -80,7 +81,7 @@ function createPlugin(): any {
 		settingsService: {
 			scheduleReloadSettingsFromDisk: vi.fn(),
 		},
-	}
+	} as unknown as NutstorePlugin
 }
 
 describe('SyncExecutorService', () => {
@@ -116,7 +117,7 @@ describe('SyncExecutorService', () => {
 		const plugin = {
 			...createPlugin(),
 			isAccountConfigured: vi.fn(() => false),
-		} as never
+		} as unknown as NutstorePlugin
 		const service = new SyncExecutorService(plugin)
 
 		await expect(
@@ -131,7 +132,7 @@ describe('SyncExecutorService', () => {
 		const plugin = {
 			...createPlugin(),
 			isSyncing: true,
-		} as never
+		} as unknown as NutstorePlugin
 		const service = new SyncExecutorService(plugin)
 
 		await expect(
@@ -202,7 +203,6 @@ describe('SyncExecutorService', () => {
 
 		releaseFirst({ ended: true, ranTasks: true, shouldReloadSettings: false })
 		await first
-		await new Promise((resolve) => setTimeout(resolve, 20))
 
 		expect(startMock).toHaveBeenCalledTimes(1)
 		expect(nutstoreSyncCtor).toHaveBeenCalledTimes(1)
@@ -214,14 +214,14 @@ describe('SyncExecutorService', () => {
 			ranTasks: true,
 			shouldReloadSettings: false,
 		})
-		const plugin: any = {
+		const plugin = {
 			...createPlugin(),
 			gcService: {
 				isRunningNow: vi.fn(() => true),
 				waitUntilIdle: vi.fn(async () => undefined),
 				runBlobGc: vi.fn(async () => undefined),
 			},
-		}
+		} as unknown as NutstorePlugin
 		const service = new SyncExecutorService(plugin)
 
 		await expect(

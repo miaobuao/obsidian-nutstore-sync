@@ -2,7 +2,6 @@ import type { ChatSession } from '~/ai/chat/domain'
 
 import type { ChatRunState, ChatSubmission } from '~/ai/chat/types'
 import type { ChatSessionIndexItem } from '~/ai/chat/domain'
-import type { IFileSystem } from 'just-bash/browser'
 import type { ViewImageAttachmentRegistry } from '~/ai/tools/view-image-attachments'
 
 export interface SessionRuntimeState {
@@ -10,7 +9,6 @@ export interface SessionRuntimeState {
 	processing?: Promise<void>
 	stopRequested?: boolean
 	abortController?: AbortController
-	bashScratch?: IFileSystem
 	viewImageAttachments?: ViewImageAttachmentRegistry
 	draft: ChatSubmission
 	pending: ChatSubmission[]

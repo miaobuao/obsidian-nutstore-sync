@@ -1,11 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { TFile, TFolder, type App, type Vault } from 'obsidian'
 import { InMemoryFs, MountableFs, type IFileSystem } from 'just-bash/browser'
 import { createBuiltinSkillsFs } from '~/ai/skills/builtin'
 import type { PermissionRequest } from '~/ai/tools/permission-guard'
-import { createVaultBash, execVaultBash, VAULT_MOUNT_POINT } from './runtime'
+import { createVaultBash, execVaultBash } from './runtime'
 import {
 	AGENTS_MOUNT_POINT,
+	BASH_TMP_MOUNT_POINT,
 	NUTSTORE_SYNC_AGENTS_MOUNT_POINT,
 } from './mount-points'
 import {
@@ -13,12 +14,15 @@ import {
 	type NormalizedSettingsPatch,
 } from '../settings-whitelist'
 import type { NutstoreSettings } from '~/settings'
-import { createVaultFileSystem } from '../vault-filesystem'
+import {
+	createVaultFileSystem,
+	VaultFileSystemManager,
+} from '../vault-filesystem'
 import { listVaultPaths, ObsidianVaultFs, ReversibleOpRecorder } from './fs'
-import { ObsidianAdapterFs } from './adapter-fs'
 import { ReversibleFs } from './reversible-fs'
 import { restoreVirtualReversibleOperations } from '~/ai/chat/messages/message-ops'
 import { decodeReversibleFileSnapshot } from '~/ai/chat/messages/reversible-content'
+import type { ReversibleToolOp } from '~/ai/chat/types'
 
 interface MockEntryFile {
 	type: 'file'
@@ -51,6 +55,8 @@ interface MockFolder extends MockAbstractFile {
 }
 
 class MemoryVaultStore {
+	private nextMtimeValue = 1
+
 	private readonly entries = new Map<string, MockEntry>([
 		['', { type: 'folder', mtime: 0 }],
 	])
@@ -65,6 +71,10 @@ class MemoryVaultStore {
 		for (const [path, content] of Object.entries(initialFiles)) {
 			this.writeBinary(path, new TextEncoder().encode(content).buffer)
 		}
+	}
+
+	private nextMtime() {
+		return this.nextMtimeValue++
 	}
 
 	normalize(path: string) {
@@ -96,7 +106,10 @@ class MemoryVaultStore {
 			this.ensureFolder(parent)
 		}
 		if (!this.entries.has(normalized)) {
-			this.entries.set(normalized, { type: 'folder', mtime: Date.now() })
+			this.entries.set(normalized, {
+				type: 'folder',
+				mtime: this.nextMtime(),
+			})
 		}
 	}
 
@@ -134,7 +147,7 @@ class MemoryVaultStore {
 		this.entries.set(normalized, {
 			type: 'file',
 			content: new Uint8Array(data),
-			mtime: Date.now(),
+			mtime: this.nextMtime(),
 		})
 	}
 
@@ -183,6 +196,7 @@ class MemoryVaultStore {
 function createMockVault(
 	initialFiles: Record<string, string> = {},
 	initialFolders: string[] = [],
+	configDir = '.obsidian',
 ) {
 	const store = new MemoryVaultStore(initialFiles, initialFolders)
 
@@ -356,7 +370,7 @@ function createMockVault(
 				store.writeBinary(toPath, store.readBinary(fromPath))
 			},
 		},
-		configDir: '.obsidian',
+		configDir,
 	} as unknown as Vault
 
 	return {
@@ -377,13 +391,6 @@ const filesystemCases: Array<[string, () => Promise<IFileSystem>]> = [
 		async () => {
 			const { vault } = createMockVault()
 			return new ObsidianVaultFs(vault, ['/'])
-		},
-	],
-	[
-		'DataAdapter',
-		async () => {
-			const { vault } = createMockVault({}, ['.agents'])
-			return ObsidianAdapterFs.create(vault.adapter, '.agents')
 		},
 	],
 ]
@@ -408,9 +415,9 @@ describe('vault bash runtime', () => {
 		const { vault } = createMockVault({}, ['docs'])
 		const bash = await createVaultBash(createApp(vault))
 
-		const stat = await bash.fs.stat('/vault/docs')
+		const stat = await bash.fs.stat('/docs')
 
-		expect(stat.mtime.getTime()).toBeGreaterThan(0)
+		expect(stat.mtime.getTime()).toBe(1)
 	})
 
 	it('reads and writes hidden Vault Skills through the adapter mount', async () => {
@@ -533,7 +540,7 @@ describe('vault bash runtime', () => {
 		)
 	})
 
-	it('mounts the Obsidian vault under /vault and supports writes', async () => {
+	it('uses the Obsidian vault as the filesystem root and supports writes', async () => {
 		const { vault, store } = createMockVault(
 			{
 				'docs/readme.md': 'hello world\n',
@@ -544,7 +551,7 @@ describe('vault bash runtime', () => {
 
 		const result = await execVaultBash(
 			app,
-			'cat /vault/docs/readme.md && printf "done" > /vault/docs/output.txt',
+			'cat /docs/readme.md && printf "done" > /docs/output.txt',
 		)
 
 		expect(result.exitCode).toBe(0)
@@ -554,7 +561,7 @@ describe('vault bash runtime', () => {
 		)
 	})
 
-	it('mounts /tmp to the persistent plugin temporary directory', async () => {
+	it('uses the real agent temporary directory without a separate /tmp mount', async () => {
 		const { vault, store } = createMockVault({
 			'.agents/nutstore-sync/tmp/session/tasks/task.txt': 'result',
 		})
@@ -562,7 +569,7 @@ describe('vault bash runtime', () => {
 
 		const result = await execVaultBash(
 			createApp(vault),
-			'cat /tmp/session/tasks/task.txt && printf "next" > /tmp/session/tasks/next.txt',
+			`cat ${BASH_TMP_MOUNT_POINT}/session/tasks/task.txt && printf "next" > ${BASH_TMP_MOUNT_POINT}/session/tasks/next.txt`,
 			{
 				permissionGuard: async (request) => {
 					requests.push(request)
@@ -582,28 +589,60 @@ describe('vault bash runtime', () => {
 				type: 'fs',
 				fs: {
 					kind: 'write',
-					path: '/tmp/session/tasks/next.txt',
+					path: `${BASH_TMP_MOUNT_POINT}/session/tasks/next.txt`,
 				},
 			},
 		])
 	})
 
-	it('does not expose or reuse the legacy plugin cache as /tmp', async () => {
+	it('restores legacy virtual temp paths into the real agent temp directory', async () => {
+		const legacyFile = '.agents/nutstore-sync/tmp/历史/文件-旧🙂.txt'
+		const { vault, store } = createMockVault({
+			[legacyFile]: '恢复后 / 后🙂',
+		})
+
+		await restoreVirtualReversibleOperations(createApp(vault), [
+			{
+				vaultPath: '/tmp/历史/文件-旧🙂.txt',
+				operation: 'update',
+				before: {
+					kind: 'file',
+					contentBase64: '5oGi5aSN5YmNIC8g5YmN8J+Zgg==',
+				},
+				after: {
+					kind: 'file',
+					contentBase64: '5oGi5aSN5ZCOIC8g5ZCO8J+Zgg==',
+				},
+			},
+		] as ReversibleToolOp[])
+
+		expect(new TextDecoder().decode(store.readBinary(legacyFile))).toBe(
+			'恢复前 / 前🙂',
+		)
+	})
+
+	it('exposes hidden configDir and agent paths at their real virtual paths', async () => {
 		const legacyPath =
 			'.obsidian/plugins/nutstore-sync/cache/fs/tmp/session/tasks/legacy-旧缓存.txt'
 		const { vault, store } = createMockVault({
 			[legacyPath]: 'legacy / 旧缓存',
+			'.obsidian/app.json': '{"theme":"neutral"}',
+			'.agents/nutstore-sync/tmp/session/tasks/task.txt': 'result',
 		})
+
 		const fs = await createVaultFileSystem(createApp(vault))
 
-		expect(await fs.readdir('/')).toEqual([
-			AGENTS_MOUNT_POINT.split('/').filter(Boolean)[0],
-			'tmp',
-			'vault',
-		])
+		expect(await fs.readdir('/')).toEqual(['.agents', '.obsidian'])
+		expect(await fs.readFile('/.obsidian/app.json')).toBe('{"theme":"neutral"}')
+		expect(
+			await fs.readFile(`${BASH_TMP_MOUNT_POINT}/session/tasks/task.txt`),
+		).toBe('result')
 		expect(await fs.exists('/tmp/session/tasks/legacy-旧缓存.txt')).toBe(false)
 
-		await fs.writeFile('/tmp/session/tasks/current-当前.txt', 'current / 当前')
+		await fs.writeFile(
+			`${BASH_TMP_MOUNT_POINT}/session/tasks/current-当前.txt`,
+			'current / 当前',
+		)
 
 		expect(
 			new TextDecoder().decode(
@@ -622,6 +661,18 @@ describe('vault bash runtime', () => {
 		)
 	})
 
+	it('uses a custom Obsidian configDir as the hidden mount point', async () => {
+		const { vault } = createMockVault(
+			{ '.配置/设置.json': '内容' },
+			[],
+			'.配置',
+		)
+		const fs = await createVaultFileSystem(createApp(vault))
+
+		expect(await fs.readFile('/.配置/设置.json')).toBe('内容')
+		expect(await fs.exists('/.obsidian/设置.json')).toBe(false)
+	})
+
 	it('supports shell glob expansion from the initial vault snapshot', async () => {
 		const { vault } = createMockVault(
 			{
@@ -632,32 +683,85 @@ describe('vault bash runtime', () => {
 		)
 		const bash = await createVaultBash(createApp(vault))
 
-		const result = await bash.exec('printf "%s\n" /vault/notes/*.md')
+		const result = await bash.exec('printf "%s\n" /notes/*.md')
 		expect(result.exitCode).toBe(0)
-		expect(result.stdout).toContain('/vault/notes/a.md')
-		expect(result.stdout).toContain('/vault/notes/b.md')
+		expect(result.stdout).toContain('/notes/a.md')
+		expect(result.stdout).toContain('/notes/b.md')
 	})
 
-	it('exposes /vault as a mount while preserving scratch space outside it', async () => {
+	it('uses the vault filesystem as the root while preserving hidden mounts', async () => {
 		const { vault } = createMockVault(
 			{
 				'note.md': 'hello',
 			},
 			[],
 		)
-		const mounted = new MountableFs({
-			mounts: [
-				{
-					mountPoint: '/vault',
-					filesystem: new ObsidianVaultFs(vault, ['/', '/note.md']),
-				},
-			],
+		const mounted = await createVaultFileSystem(createApp(vault))
+
+		expect(await mounted.readFile('/note.md')).toBe('hello')
+		expect(await mounted.readdir('/')).toEqual([
+			'.agents',
+			'.obsidian',
+			'note.md',
+		])
+	})
+
+	it('reuses the adapter-root index while keeping read hooks scoped per call', async () => {
+		const { vault } = createMockVault({
+			'笔记/内容🙂.md': '中文内容🙂',
+		})
+		const app = createApp(vault)
+		const list = vi.spyOn(vault.adapter, 'list')
+		const manager = new VaultFileSystemManager(app)
+		const firstReads: string[] = []
+		const secondReads: string[] = []
+
+		const first = await manager.create({
+			onRead: (path) => firstReads.push(path),
+		})
+		const listCallsAfterFirstCreate = list.mock.calls.length
+		const second = await manager.create({
+			onRead: (path) => secondReads.push(path),
 		})
 
-		await mounted.writeFile('/scratch.txt', 'temp')
-		expect(await mounted.readFile('/scratch.txt')).toBe('temp')
-		expect(await mounted.readFile(`${VAULT_MOUNT_POINT}/note.md`)).toBe('hello')
-		expect(await mounted.readdir('/')).toEqual(['scratch.txt', 'vault'])
+		await expect(first.readFile('/笔记/内容🙂.md')).resolves.toBe('中文内容🙂')
+		await expect(second.readFile('/笔记/内容🙂.md')).resolves.toBe('中文内容🙂')
+		expect(list).toHaveBeenCalledTimes(listCallsAfterFirstCreate)
+		expect(firstReads).toEqual(['笔记/内容🙂.md'])
+		expect(secondReads).toEqual(['笔记/内容🙂.md'])
+	})
+
+	it('refreshes the shared path index explicitly after an external adapter change', async () => {
+		const { vault, store } = createMockVault({ '笔记/已有.md': '已有' })
+		const manager = new VaultFileSystemManager(createApp(vault))
+		const fs = await manager.create()
+
+		store.writeBinary('外部/新增🙂.md', new TextEncoder().encode('新增').buffer)
+		expect(fs.getAllPaths()).not.toContain('/外部/新增🙂.md')
+
+		await manager.refreshPaths()
+
+		expect(fs.getAllPaths()).toContain('/外部/新增🙂.md')
+	})
+
+	it('records Vault-root paths without the removed legacy mount prefix', async () => {
+		const { vault } = createMockVault(
+			{
+				'vault/随笔/记录.md': 'before',
+			},
+			['vault', 'vault/随笔'],
+		)
+		const recorder = new ReversibleOpRecorder()
+		const fs = await createVaultFileSystem(createApp(vault), { recorder })
+
+		await fs.writeFile('/vault/随笔/记录.md', 'after')
+
+		expect(
+			(await recorder.getNetOperations()).map(({ vaultPath, operation }) => [
+				vaultPath,
+				operation,
+			]),
+		).toEqual([['vault/随笔/记录.md', 'update']])
 	})
 
 	it('records reversible ops for writes, deletes, copies, and moves', async () => {
@@ -737,16 +841,16 @@ describe('vault bash runtime', () => {
 				type: 'fs',
 				fs: {
 					kind: 'copy',
-					src: '/vault/docs/source.md',
-					dest: '/vault/docs/copied.md',
+					src: '/docs/source.md',
+					dest: '/docs/copied.md',
 				},
 			},
 			{
 				type: 'fs',
 				fs: {
 					kind: 'move',
-					src: '/vault/docs/copied.md',
-					dest: '/vault/docs/moved.md',
+					src: '/docs/copied.md',
+					dest: '/docs/moved.md',
 				},
 			},
 		])
@@ -968,7 +1072,7 @@ describe('vault bash runtime', () => {
 				reads.push(path),
 			)
 
-			await expect(fs.readFile('/missing.md')).rejects.toThrow()
+			await expect(fs.readFile('/missing.md')).rejects.toThrow(/ENOENT/)
 			expect(reads).toEqual([])
 		})
 
@@ -982,7 +1086,7 @@ describe('vault bash runtime', () => {
 				(path) => reads.push(path),
 			)
 
-			await expect(fs.readFile('/notes')).rejects.toThrow()
+			await expect(fs.readFile('/notes')).rejects.toThrow(/EISDIR/)
 			expect(reads).toEqual([])
 		})
 
@@ -1008,7 +1112,7 @@ describe('vault bash runtime', () => {
 			const app = createApp(vault)
 			const reads: string[] = []
 
-			const result = await execVaultBash(app, 'cat /vault/docs/readme.md', {
+			const result = await execVaultBash(app, 'cat /docs/readme.md', {
 				onRead: (path) => reads.push(path),
 			})
 
@@ -1026,7 +1130,7 @@ describe('vault bash runtime', () => {
 
 			const result = await execVaultBash(
 				app,
-				'cat /vault/docs/source.md > /vault/docs/copy.md',
+				'cat /docs/source.md > /docs/copy.md',
 			)
 
 			expect(result.exitCode).toBe(0)
@@ -1043,7 +1147,7 @@ describe('vault bash runtime', () => {
 			const app = createApp(vault)
 			const reads: string[] = []
 
-			await execVaultBash(app, 'ls /vault/docs', {
+			await execVaultBash(app, 'ls /docs', {
 				onRead: (path) => reads.push(path),
 			})
 
@@ -1088,7 +1192,7 @@ describe('vault bash runtime', () => {
 
 			const result = await execVaultBash(
 				app,
-				`cat > /vault/docs/heredoc.md << 'EOF'
+				`cat > /docs/heredoc.md << 'EOF'
 你好世界
 EOF`,
 			)
@@ -1105,7 +1209,7 @@ EOF`,
 
 			const result = await execVaultBash(
 				app,
-				`cat > /vault/docs/emoji.md << 'EOF'
+				`cat > /docs/emoji.md << 'EOF'
 🚀中文
 EOF`,
 			)
@@ -1122,7 +1226,7 @@ EOF`,
 
 			const result = await execVaultBash(
 				app,
-				`echo '你好世界' | tee /vault/docs/tee.md > /dev/null`,
+				`echo '你好世界' | tee /docs/tee.md > /dev/null`,
 			)
 
 			expect(result.exitCode).toBe(0)
@@ -1135,10 +1239,7 @@ EOF`,
 			const { vault, store } = createMockVault({}, ['docs'])
 			const app = createApp(vault)
 
-			const result = await execVaultBash(
-				app,
-				`echo '你好世界' > /vault/docs/echo.md`,
-			)
+			const result = await execVaultBash(app, `echo '你好世界' > /docs/echo.md`)
 
 			expect(result.exitCode).toBe(0)
 			expect(new TextDecoder().decode(store.readBinary('docs/echo.md'))).toBe(

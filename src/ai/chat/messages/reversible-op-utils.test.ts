@@ -4,6 +4,7 @@ import {
 	normalizeReversibleToolOpRecord,
 	normalizeReversibleVaultPath,
 } from './reversible-op-utils'
+import { BASH_TMP_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 
 type UpdateOperation = Extract<ReversibleToolOp, { operation: 'update' }>
 
@@ -31,11 +32,20 @@ describe('normalizeReversibleVaultPath', () => {
 		)
 	})
 
+	it('keeps a root-mounted vault path absolute for virtual restoration', () => {
+		expect(normalizeReversibleVaultPath('/notes/example.md')).toBe(
+			'/notes/example.md',
+		)
+	})
+
 	it('maps the /vault mount root itself to an empty path', () => {
 		expect(normalizeReversibleVaultPath('/vault/')).toBe('')
 	})
 
-	it('keeps non-vault virtual mounts absolute', () => {
+	it('keeps current and legacy virtual mounts absolute until restoration', () => {
+		expect(
+			normalizeReversibleVaultPath(`${BASH_TMP_MOUNT_POINT}/scratch.txt`),
+		).toBe(`${BASH_TMP_MOUNT_POINT}/scratch.txt`)
 		expect(normalizeReversibleVaultPath('/tmp/scratch.txt')).toBe(
 			'/tmp/scratch.txt',
 		)

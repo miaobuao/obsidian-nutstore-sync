@@ -656,7 +656,8 @@
 			"emptyContent": "（无文本内容）",
 			"toolCalls": "工具调用",
 			"toolName": "工具名称",
-			"toolCallId": "工具调用 ID"
+			"toolCallId": "工具调用 ID",
+			"duration": "运行时间"
 		},
 		"repeatedToolCallsStopped": "Agent 连续 {{count}} 次调用了完全相同的工具与参数，已停止继续调用。",
 		"task": {

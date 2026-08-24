@@ -18,6 +18,7 @@ import {
 	SessionStore,
 	type SessionLegacyStore,
 } from '~/ai/chat/session/session-store'
+import { BASH_TMP_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 
 function createState() {
 	return new ChatState()
@@ -232,7 +233,7 @@ describe('SessionStore (vault file persistence)', () => {
 					},
 				},
 			}),
-			mtime: Date.now(),
+			mtime: 42,
 		})
 		await backend.writeMetaFile({
 			activeSessionId: 'corrupt',
@@ -453,7 +454,7 @@ describe('SessionStore (vault file persistence)', () => {
 		expect(serialized).toContain('notes/example.md')
 	})
 
-	it('keeps mixed mounts: vault becomes relative, tmp stays absolute on disk', async () => {
+	it('normalizes the legacy vault prefix without rewriting the legacy tmp alias', async () => {
 		const { vault } = createMemoryVault()
 		const backend = new SessionsFileBackend(vault)
 		const state = createState()
@@ -489,7 +490,7 @@ describe('SessionStore (vault file persistence)', () => {
 		const serialized = JSON.stringify(payload)
 		expect(serialized).toContain('随笔/日常记录.md')
 		expect(serialized).not.toContain('/vault/随笔/日常记录.md')
-		expect(serialized).toContain('/tmp/scratch.txt')
+		expect(serialized).toContain('"vaultPath":"/tmp/scratch.txt"')
 	})
 
 	it('does not rewrite the file when ops are already normalized', async () => {
@@ -517,7 +518,7 @@ describe('SessionStore (vault file persistence)', () => {
 				before: { kind: 'file', contentBase64: 'YQo=' },
 			},
 			{
-				vaultPath: '/tmp/scratch.txt',
+				vaultPath: `${BASH_TMP_MOUNT_POINT}/scratch.txt`,
 				operation: 'update',
 				before: { kind: 'file', contentBase64: 'YQo=' },
 			},
@@ -535,6 +536,8 @@ describe('SessionStore (vault file persistence)', () => {
 		expect(writes).toBe(0)
 		const payload = await backend.readSessionFile('conv-rel')
 		expect(JSON.stringify(payload)).toContain('notes/example.md')
-		expect(JSON.stringify(payload)).toContain('/tmp/scratch.txt')
+		expect(JSON.stringify(payload)).toContain(
+			`${BASH_TMP_MOUNT_POINT}/scratch.txt`,
+		)
 	})
 })

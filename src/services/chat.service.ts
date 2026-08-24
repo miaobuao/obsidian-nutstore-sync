@@ -205,6 +205,7 @@ export default class ChatService extends BaseService {
 				updateSettings: (patch) =>
 					plugin.settingsService.applySettingsPatch(patch),
 			},
+			this.toolExecutor.getFileSystemManager(),
 		)
 		this.sessionProcessor = new SessionProcessor(
 			ensureProviderReady,
@@ -246,6 +247,7 @@ export default class ChatService extends BaseService {
 
 	private async initializeInternal() {
 		this.syncMemoryGate()
+		await this.toolExecutor.initialize()
 		await this.store.loadSessionIndex()
 
 		if (this.state.sessionIndex.length === 0) {

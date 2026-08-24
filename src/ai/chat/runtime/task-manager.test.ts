@@ -9,6 +9,7 @@ import {
 	MASTER_AGENT_ID,
 } from '~/ai/chat/agents/registry'
 import type { ChatAgentState } from '~/ai/chat/types'
+import { BASH_TMP_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 
 const writeTaskResult = vi.hoisted(() => vi.fn(async () => undefined))
 
@@ -20,6 +21,10 @@ describe('TaskManager parent notifications', () => {
 	beforeEach(() => writeTaskResult.mockClear())
 
 	it('persists the result before notifying the direct parent', async () => {
+		const events: string[] = []
+		writeTaskResult.mockImplementationOnce(async () => {
+			events.push('persist-result')
+		})
 		const master = createEmptyMasterAgent(1)
 		const parent: ChatAgentState = {
 			...createEmptyMasterAgent(1),
@@ -34,6 +39,13 @@ describe('TaskManager parent notifications', () => {
 			status: 'running',
 		}
 		parent.subagents.child = child
+		vi.spyOn(parent.pendingInputs, 'push').mockImplementation((...items) => {
+			events.push('notify-parent')
+			for (const item of items) {
+				Array.prototype.push.call(parent.pendingInputs, item)
+			}
+			return parent.pendingInputs.length
+		})
 		master.subagents.parent = parent
 		const session: ChatSession = {
 			schemaVersion: 2,
@@ -60,10 +72,11 @@ describe('TaskManager parent notifications', () => {
 		)
 
 		await manager.finishAgentAsCompleted(session, child, 'done')
+		expect(events).toEqual(['persist-result', 'notify-parent'])
 
 		expect(writeTaskResult).toHaveBeenCalledWith(
 			{},
-			'/tmp/session/tasks/child.txt',
+			`${BASH_TMP_MOUNT_POINT}/session/tasks/child.txt`,
 			'done',
 		)
 
@@ -74,7 +87,7 @@ describe('TaskManager parent notifications', () => {
 			data: {
 				kind: 'task-result-ready',
 				taskId: 'child',
-				resultPath: '/tmp/session/tasks/child.txt',
+				resultPath: `${BASH_TMP_MOUNT_POINT}/session/tasks/child.txt`,
 			},
 		})
 		expect(parent.pendingInputs[0].parts).toHaveLength(1)

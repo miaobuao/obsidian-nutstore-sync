@@ -1,4 +1,3 @@
-import { InMemoryFs, type IFileSystem } from 'just-bash/browser'
 import type { App } from 'obsidian'
 import type { ChatSession } from '~/ai/chat/domain'
 
@@ -29,6 +28,7 @@ import {
 } from '~/ai/tools/permission-guard'
 import type { DispatchTaskFn } from '~/ai/tools/task'
 import { createAITools } from '~/ai/tools/tools'
+import { VaultFileSystemManager } from '~/ai/tools/vault-filesystem'
 import type {
 	SettingsSnapshotFn,
 	SettingsUpdater,
@@ -38,8 +38,8 @@ import type { NutstoreSettings } from '~/settings'
 
 export interface StableToolsContext {
 	app: App
+	fileSystemManager: VaultFileSystemManager
 	permissionGuard?: PermissionGuard
-	scratch: IFileSystem
 	dispatchTask?: DispatchTaskFn
 	dispatchableDefinitions?: readonly AgentDefinition[]
 	getSettingsSnapshot?: SettingsSnapshotFn
@@ -47,6 +47,7 @@ export interface StableToolsContext {
 }
 
 export class ToolExecutor {
+	private readonly fileSystemManager: VaultFileSystemManager
 	private dispatchTaskHandler: DispatchTaskFn = () => {
 		throw new Error('task handler not set')
 	}
@@ -61,7 +62,17 @@ export class ToolExecutor {
 			getSettingsSnapshot: SettingsSnapshotFn
 			updateSettings: SettingsUpdater
 		},
-	) {}
+	) {
+		this.fileSystemManager = new VaultFileSystemManager(app)
+	}
+
+	initialize() {
+		return this.fileSystemManager.initialize()
+	}
+
+	getFileSystemManager() {
+		return this.fileSystemManager
+	}
 
 	setDispatchTaskHandler(handler: DispatchTaskFn) {
 		this.dispatchTaskHandler = handler
@@ -116,9 +127,6 @@ export class ToolExecutor {
 		session: ChatSession,
 		definition: AgentDefinition,
 	): StableToolsContext {
-		const runtime = this.runtimeStates.get(session.id)
-		const bashScratch = runtime.bashScratch ?? new InMemoryFs()
-		runtime.bashScratch = bashScratch
 		const permissionGuard =
 			definition.permissionMode === 'readonly'
 				? createReadonlyPermissionGuard()
@@ -146,8 +154,8 @@ export class ToolExecutor {
 						)
 		return {
 			app: this.app,
+			fileSystemManager: this.fileSystemManager,
 			permissionGuard,
-			scratch: bashScratch,
 			dispatchTask: (params) => this.dispatchTaskHandler(params),
 			dispatchableDefinitions: listDispatchableDefinitions({
 				fullAccess: Boolean(this.getSettings().yolo),

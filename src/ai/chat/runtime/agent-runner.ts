@@ -129,6 +129,7 @@ export class AgentRunner {
 		}
 		const fileToolsContext = {
 			app: stableContext.app,
+			fileSystemManager: stableContext.fileSystemManager,
 			permissionGuard: stableContext.permissionGuard,
 			readTracker,
 			recordMetadata,
@@ -136,19 +137,17 @@ export class AgentRunner {
 		const toolsContext = {
 			bash: {
 				...fileToolsContext,
-				scratch: stableContext.scratch,
 				getSettingsSnapshot: stableContext.getSettingsSnapshot,
 				updateSettings: stableContext.updateSettings,
 			},
 			apply_patch: {
 				...fileToolsContext,
-				scratch: stableContext.scratch,
 				getSettingsSnapshot: stableContext.getSettingsSnapshot,
 				updateSettings: stableContext.updateSettings,
 			},
 			view_image: {
 				app: stableContext.app,
-				scratch: stableContext.scratch,
+				fileSystemManager: stableContext.fileSystemManager,
 				readTracker,
 				viewImageAttachments,
 			},

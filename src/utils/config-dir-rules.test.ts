@@ -12,6 +12,7 @@ import {
 	isPathIncluded,
 } from './glob-match'
 import { DEFAULT_SETTINGS } from '~/settings'
+import type NutstorePlugin from '~/index'
 
 function createPluginMock(
 	mode: 'none' | 'bookmarks' | 'all',
@@ -28,7 +29,7 @@ function createPluginMock(
 			configDirSyncMode: mode,
 			filterRules,
 		},
-	} as any
+	} as unknown as NutstorePlugin
 }
 
 const include = (expr: string): GlobFilterRule => ({

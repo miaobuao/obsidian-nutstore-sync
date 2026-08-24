@@ -656,7 +656,8 @@
 			"emptyContent": "(no text content)",
 			"toolCalls": "Tool calls",
 			"toolName": "Tool name",
-			"toolCallId": "Tool call ID"
+			"toolCallId": "Tool call ID",
+			"duration": "Duration"
 		},
 		"repeatedToolCallsStopped": "The agent repeated the same tool call with the same arguments {{count}} times in a row and was stopped.",
 		"task": {

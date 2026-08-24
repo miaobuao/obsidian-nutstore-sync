@@ -10,6 +10,7 @@ import {
 import type { NutstoreSettings } from '~/settings'
 import type { NormalizedSettingsPatch } from './settings-whitelist'
 import type { PermissionRequest } from './permission-guard'
+import i18n from '~/i18n'
 
 function makeSettings(): NutstoreSettings {
 	return {
@@ -157,6 +158,43 @@ describe('SettingsFs read surface', () => {
 })
 
 describe('SettingsFs write path', () => {
+	it('summarizes only changed settings on separate lines', async () => {
+		const requests: PermissionRequest[] = []
+		const fs = new SettingsFs({
+			getSettings: makeSettings,
+			updateSettings: async () => {},
+			permissionGuard: async (request) => {
+				requests.push(request)
+			},
+		})
+
+		await fs.writeFile(
+			'/settings.json',
+			JSON.stringify({
+				filterRules: {
+					rules: [{ expr: 'Docs/文档/**/🧪.md', type: 'exclude' }],
+				},
+				conflictStrategy: 'no-conflict-merge',
+			}),
+		)
+
+		const request = requests[0]
+		expect(request?.type).toBe('settings')
+		if (!request || request.type !== 'settings') return
+		expect(request.settings.summary).toBe(
+			`${i18n.t('aiPermission.settings.fields.filterRules.name')}: - Docs/文档/**/🧪.md`,
+		)
+		expect(request.settings.changes).toEqual({
+			filterRules: [
+				{
+					expr: 'Docs/文档/**/🧪.md',
+					options: { caseSensitive: false },
+					type: 'exclude',
+				},
+			],
+		})
+	})
+
 	it('applies a valid full-file write and forwards the normalized patch', async () => {
 		const settings = makeSettings()
 		const updates: NormalizedSettingsPatch[] = []
@@ -184,13 +222,17 @@ describe('SettingsFs write path', () => {
 		})
 		const summary = (requests[0] as { settings: { summary: string } }).settings
 			.summary
-		expect(summary).toContain('Auto sync after startup')
+		expect(summary).toBe(
+			[
+				`${i18n.t('aiPermission.settings.fields.startupSyncDelay.name')}: 12s`,
+				`${i18n.t('aiPermission.settings.fields.syncMode.name')}: strict`,
+			].join('\n'),
+		)
 		expect(updates).toHaveLength(1)
-		expect(updates[0]).toMatchObject({
+		expect(updates[0]).toEqual({
 			startupSyncDelaySeconds: 12,
 			syncMode: 'strict',
 		})
-		expect(updates[0].filterRules?.[0]?.expr).toBe('**/.DS_Store')
 	})
 
 	it('rejects invalid JSON', async () => {

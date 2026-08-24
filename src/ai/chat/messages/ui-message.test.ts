@@ -3,6 +3,7 @@ import {
 	modelMessageToUIMessage,
 	uiMessagesToModelMessages,
 } from '~/ai/chat/messages/ui-message'
+import { BASH_TMP_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 
 describe('UIMessage model round-trip', () => {
 	it('preserves provider metadata required by later model calls', async () => {
@@ -61,7 +62,7 @@ describe('UIMessage model round-trip', () => {
 							data: {
 								kind: 'task-result-ready',
 								taskId: 'explorer-one',
-								resultPath: '/tmp/session/tasks/explorer-one.txt',
+								resultPath: `${BASH_TMP_MOUNT_POINT}/session/tasks/explorer-one.txt`,
 							},
 						},
 					],
@@ -73,7 +74,7 @@ describe('UIMessage model round-trip', () => {
 				content: [
 					{
 						type: 'text',
-						text: '<SystemNotification>{"kind":"task-result-ready","taskId":"explorer-one","resultPath":"/tmp/session/tasks/explorer-one.txt"}</SystemNotification>',
+						text: `<SystemNotification>{"kind":"task-result-ready","taskId":"explorer-one","resultPath":"${BASH_TMP_MOUNT_POINT}/session/tasks/explorer-one.txt"}</SystemNotification>`,
 					},
 				],
 			},

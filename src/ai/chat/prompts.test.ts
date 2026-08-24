@@ -50,16 +50,21 @@ describe('user-facing path convention', () => {
 		const prompt = createSystemPromptForAgent(definition)
 
 		expect(prompt).toContain('vault-relative path')
-		expect(prompt).toMatch(/never the \/vault absolute path/)
+		expect(prompt).toContain('notes/idea.md')
+		expect(prompt).not.toContain('/vault')
+		expect(prompt).toContain('Hidden dot-folders')
+		expect(prompt).toContain('do not expose their paths or contents')
 	})
 
-	it('instructs the explorer agent to cite vault files without the /vault prefix', () => {
+	it('instructs the explorer agent to cite real vault-relative paths', () => {
 		const definition = getAgentDefinition('explorer')
 		if (!definition) throw new Error('Expected explorer agent definition')
 		const prompt = createSystemPromptForAgent(definition)
 
 		expect(prompt).toContain('vault-relative path')
-		expect(prompt).toMatch(/never the internal \/vault\/\.\.\. virtual path/)
+		expect(prompt).toContain('matching the path the user sees inside the vault')
+		expect(prompt).not.toContain('/vault')
+		expect(prompt).toContain('Hidden dot-folders')
 	})
 })
 
@@ -107,7 +112,11 @@ describe('compression checkpoint', () => {
 		expect(COMPRESSION_PROMPT).toContain('## Current Work')
 		expect(COMPRESSION_PROMPT).toContain('## Next Step')
 		expect(COMPRESSION_PROMPT).toContain('## Critical Context')
-		expect(COMPRESSION_PROMPT).toContain('never the internal /vault/... prefix')
+		expect(COMPRESSION_PROMPT).toContain(
+			'Use vault-relative paths for vault files',
+		)
+		expect(COMPRESSION_PROMPT).not.toContain('/vault')
+		expect(COMPRESSION_PROMPT).toContain('hidden dot-folders')
 		expect(COMPRESSION_PROMPT).toContain(
 			'in the same language as the conversation',
 		)

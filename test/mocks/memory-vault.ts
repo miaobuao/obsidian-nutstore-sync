@@ -34,7 +34,8 @@ export function createMemoryVault(
 	initialFolders: string[] = [],
 ): MemoryVaultHandle {
 	const files = new Map<string, MemoryEntry>()
-	const now = () => Date.now()
+	let nextMtime = 1
+	const now = () => nextMtime++
 	for (const [path, content] of Object.entries(initialFiles)) {
 		files.set(normalize(path), { type: 'file', content, mtime: now() })
 	}
@@ -56,7 +57,10 @@ export function createMemoryVault(
 		const normalized = normalize(path)
 		const prefix = normalized ? `${normalized}/` : ''
 		const children = [...files.keys()].filter(
-			(key) => key.startsWith(prefix) && key !== normalized,
+			(key) =>
+				key.startsWith(prefix) &&
+				key !== normalized &&
+				!key.slice(prefix.length).includes('/'),
 		)
 		return {
 			files: children.filter((key) => files.get(key)?.type === 'file'),

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
 import { formatMcpToolResult } from './result-artifact'
+import { BASH_TMP_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 
 const writes = vi.hoisted(() => ({
 	binary: vi.fn(),
@@ -68,11 +69,11 @@ describe('formatMcpToolResult', () => {
 		})
 
 		expect(output).toContain(
-			'/tmp/session-neutral/mcp/mcp-neutral-result/result.md',
+			`${BASH_TMP_MOUNT_POINT}/session-neutral/mcp/mcp-neutral-result/result.md`,
 		)
 		expect(writes.exists).toHaveBeenCalledWith(
 			expect.anything(),
-			'/tmp/session-neutral/mcp/mcp-neutral-result',
+			`${BASH_TMP_MOUNT_POINT}/session-neutral/mcp/mcp-neutral-result`,
 		)
 		expect(writes.text).toHaveBeenCalledOnce()
 		expect(writes.binary).not.toHaveBeenCalled()
@@ -108,18 +109,18 @@ describe('formatMcpToolResult', () => {
 		})
 
 		expect(output).toContain(
-			'/tmp/session-neutral/mcp/mcp-neutral-result/result.md',
+			`${BASH_TMP_MOUNT_POINT}/session-neutral/mcp/mcp-neutral-result/result.md`,
 		)
 		expect(writes.binary).toHaveBeenNthCalledWith(
 			1,
 			expect.anything(),
-			'/tmp/session-neutral/mcp/mcp-neutral-result/image-2.png',
+			`${BASH_TMP_MOUNT_POINT}/session-neutral/mcp/mcp-neutral-result/image-2.png`,
 			new Uint8Array([105, 109, 97, 103, 101]),
 		)
 		expect(writes.binary).toHaveBeenNthCalledWith(
 			2,
 			expect.anything(),
-			'/tmp/session-neutral/mcp/mcp-neutral-result/audio-3.wav',
+			`${BASH_TMP_MOUNT_POINT}/session-neutral/mcp/mcp-neutral-result/audio-3.wav`,
 			new Uint8Array([97, 117, 100, 105, 111]),
 		)
 		expect(writes.text).toHaveBeenCalledOnce()
@@ -127,10 +128,10 @@ describe('formatMcpToolResult', () => {
 		expect(markdown).toContain('Example result / 示例结果')
 		expect(markdown).toContain('Resource example / 资源示例')
 		expect(markdown).toContain(
-			'/tmp/session-neutral/mcp/mcp-neutral-result/image-2.png',
+			`${BASH_TMP_MOUNT_POINT}/session-neutral/mcp/mcp-neutral-result/image-2.png`,
 		)
 		expect(markdown).toContain(
-			'/tmp/session-neutral/mcp/mcp-neutral-result/audio-3.wav',
+			`${BASH_TMP_MOUNT_POINT}/session-neutral/mcp/mcp-neutral-result/audio-3.wav`,
 		)
 		expect(markdown).toContain('https://example.com/example.pdf')
 	})

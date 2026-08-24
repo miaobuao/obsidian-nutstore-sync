@@ -1,5 +1,6 @@
 import type { App } from 'obsidian'
 import { describe, expect, it, vi } from 'vitest'
+import { BASH_TMP_MOUNT_POINT } from './bash/mount-points'
 
 import { resolveResourceDataUrl } from './resource-data-url'
 
@@ -25,7 +26,7 @@ describe('resolveResourceDataUrl', () => {
 		const { app, readBinary } = createApp({ 'images/example.png': 'abc' })
 
 		await expect(
-			resolveResourceDataUrl(app, '/vault/images/example.png', 'image/png'),
+			resolveResourceDataUrl(app, '/images/example.png', 'image/png'),
 		).resolves.toBe('data:image/png;base64,YWJj')
 		expect(readBinary).toHaveBeenCalledWith('images/example.png')
 	})
@@ -36,7 +37,7 @@ describe('resolveResourceDataUrl', () => {
 
 		const result = await resolveResourceDataUrl(
 			app,
-			'/tmp/session/mcp/示例.png',
+			`${BASH_TMP_MOUNT_POINT}/session/mcp/示例.png`,
 			'image/png',
 		)
 
@@ -44,11 +45,15 @@ describe('resolveResourceDataUrl', () => {
 		expect(readBinary).toHaveBeenCalledWith(adapterPath)
 	})
 
-	it('does not resolve paths outside supported mounts', async () => {
+	it('does not resolve virtual-only paths as adapter files', async () => {
 		const { app, readBinary } = createApp({})
 
 		await expect(
-			resolveResourceDataUrl(app, '/other/example.png', 'image/png'),
+			resolveResourceDataUrl(
+				app,
+				'/.config/nutstore-sync/settings.json',
+				'image/png',
+			),
 		).resolves.toBeUndefined()
 		expect(readBinary).not.toHaveBeenCalled()
 	})

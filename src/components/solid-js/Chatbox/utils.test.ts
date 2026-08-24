@@ -103,8 +103,8 @@ describe('toolCallPurpose', () => {
 })
 
 describe('toolCallDisplayTitle', () => {
-	function makeToolCall(input: unknown) {
-		return { toolName: 'bash', input } as unknown as Parameters<
+	function makeToolCall(input: unknown, toolName = 'bash') {
+		return { toolName, input } as unknown as Parameters<
 			typeof toolCallDisplayTitle
 		>[0]
 	}
@@ -114,6 +114,17 @@ describe('toolCallDisplayTitle', () => {
 			makeToolCall({ purpose: '读取备注内容 / Read the note content' }),
 		)
 		expect(title).toBe('读取备注内容 / Read the note content')
+	})
+
+	it('uses purpose as the title for apply_patch calls', () => {
+		expect(
+			toolCallDisplayTitle(
+				makeToolCall(
+					{ purpose: '  修复同步冲突 🚀 / Repair sync conflict  ' },
+					'apply_patch',
+				),
+			),
+		).toBe('修复同步冲突 🚀 / Repair sync conflict')
 	})
 
 	it('falls back to the tool name when purpose is blank or whitespace', () => {

@@ -4,9 +4,8 @@ import {
 	type ToolCallPart,
 	type ToolSet,
 } from 'ai'
-import { InMemoryFs, type IFileSystem } from 'just-bash/browser'
 import { TFile, TFolder, type App, type Vault } from 'obsidian'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import {
 	EXPLORER_AGENT_ID,
 	filterToolsForAgent,
@@ -29,7 +28,10 @@ import {
 } from '~/ai/chat/session/session-store'
 import { createFragmentReadTracker } from '~/ai/tools/file-operation'
 import { createAITools } from '~/ai/tools/tools'
-import { SETTINGS_FILE_PATH } from '~/ai/tools/bash/mount-points'
+import {
+	BASH_TMP_MOUNT_POINT,
+	SETTINGS_FILE_PATH,
+} from '~/ai/tools/bash/mount-points'
 import {
 	applyNormalizedSettingsPatch,
 	serializeSettingsWhitelist,
@@ -240,6 +242,19 @@ describe('tool registration', () => {
 		expect(jsonSchema.properties?.purpose).toBeDefined()
 	})
 
+	it('requires a short plain-language purpose for the apply_patch tool', async () => {
+		const tool = findTool(createAITools(), 'apply_patch')
+		const jsonSchema = (await asSchema(
+			tool.inputSchema as FlexibleSchema<unknown>,
+		).jsonSchema) as {
+			required?: string[]
+			properties?: Record<string, unknown>
+		}
+
+		expect(jsonSchema.required).toContain('purpose')
+		expect(jsonSchema.properties?.purpose).toBeDefined()
+	})
+
 	it('does not register view_image when image input is unavailable', () => {
 		expect('view_image' in createAITools()).toBe(false)
 	})
@@ -262,25 +277,24 @@ describe('tool registration', () => {
 			tool,
 			{ path: '媒体/示例.png' },
 			makeContext(app, makeSession(), {
-				scratch: new InMemoryFs(),
 				viewImageAttachments: attachments,
 			}),
 		)
 
 		expect(output).toEqual({
-			path: '/vault/媒体/示例.png',
+			path: '/媒体/示例.png',
 			filename: '示例.png',
 			mediaType: 'image/png',
 		})
 		expect(
 			await tool.toModelOutput?.({
 				toolCallId: 'view-image-call',
-				input: { path: '/vault/媒体/示例.png' },
+				input: { path: '/媒体/示例.png' },
 				output,
 			}),
 		).toEqual({
 			type: 'text',
-			value: 'Loaded image 示例.png from /vault/媒体/示例.png.',
+			value: 'Loaded image 示例.png from /媒体/示例.png.',
 		})
 		expect(
 			attachments.takeUninjected([
@@ -302,27 +316,25 @@ describe('tool registration', () => {
 		expect(
 			await executeToolForTest(
 				tool,
-				{ path: '/vault/images/example.png' },
+				{ path: '/images/example.png' },
 				makeContext(app, makeSession(), {
-					scratch: new InMemoryFs(),
 					viewImageAttachments: attachments,
 				}),
 			),
 		).toMatchObject({
-			path: '/vault/images/example.png',
+			path: '/images/example.png',
 			filename: 'example.png',
 		})
 		expect(
 			await executeToolForTest(
 				tool,
-				{ path: '/tmp/mcp/example/image.png' },
+				{ path: `${BASH_TMP_MOUNT_POINT}/mcp/example/image.png` },
 				makeContext(app, makeSession(), {
-					scratch: new InMemoryFs(),
 					viewImageAttachments: attachments,
 				}),
 			),
 		).toMatchObject({
-			path: '/tmp/mcp/example/image.png',
+			path: `${BASH_TMP_MOUNT_POINT}/mcp/example/image.png`,
 			filename: 'image.png',
 		})
 	})
@@ -532,7 +544,7 @@ describe('apply_patch read-gate', () => {
 		expect(store.get('notes/x.md')).toBe('hi world')
 	})
 
-	it('allows edit with VAULT_MOUNT_POINT prefix after read in previous batch', async () => {
+	it('allows edit with the root virtual path after read in previous batch', async () => {
 		const { app, store } = createMockApp([
 			{ path: 'notes/x.md', content: 'hello world' },
 		])
@@ -553,7 +565,7 @@ describe('apply_patch read-gate', () => {
 		const result = await callApplyPatch(
 			[
 				'*** Begin Patch',
-				'*** Update File: /vault/notes/x.md',
+				'*** Update File: /notes/x.md',
 				'@@',
 				'-hello world',
 				'+hi world',
@@ -700,7 +712,7 @@ describe('apply_patch file operations', () => {
 			callApplyPatch(
 				[
 					'*** Begin Patch',
-					'*** Update File /vault/示例/协作记录.md',
+					'*** Update File /示例/协作记录.md',
 					'@@',
 					'-本地内容',
 					'+合并内容',
@@ -711,7 +723,7 @@ describe('apply_patch file operations', () => {
 				}),
 			),
 		).rejects.toThrow(
-			'Invalid patch: unexpected line "*** Update File /vault/示例/协作记录.md"',
+			'Invalid patch: unexpected line "*** Update File /示例/协作记录.md"',
 		)
 	})
 
@@ -1110,10 +1122,9 @@ describe('bash tool UTF-8 handling', () => {
 		const result = await executeToolForTest(
 			tool,
 			{
-				script:
-					'cat /vault/notes/source.md > /vault/notes/copy.md && cat /vault/notes/copy.md',
+				script: 'cat /notes/source.md > /notes/copy.md && cat /notes/copy.md',
 			},
-			makeContext(app, session, { scratch: new InMemoryFs() }),
+			makeContext(app, session),
 		)
 
 		expect(result).toBe('中文测试\n\n\n')
@@ -1129,21 +1140,22 @@ describe('bash tool UTF-8 handling', () => {
 		const tool = findTool(createAITools(), 'bash')
 		const session = makeSession()
 
-		const scratch = new InMemoryFs()
 		const result = await executeToolForTest(
 			tool,
-			{ script: 'cat /vault/notes/large.md' },
-			makeContext(app, session, { scratch }),
+			{ script: 'cat /notes/large.md' },
+			makeContext(app, session),
 		)
 
 		expect(result).toEqual(expect.stringContaining('too long'))
-		const outputPath = String(result).match(/\/tmp\/bash_[^\s]+\.txt/)?.[0]
+		const outputPath = String(result).match(
+			new RegExp(`${BASH_TMP_MOUNT_POINT}/bash_[^\\s]+\\.txt`),
+		)?.[0]
 		expect(outputPath).toBeDefined()
 
 		const readBack = await executeToolForTest(
 			tool,
 			{ script: `wc -c ${outputPath}` },
-			makeContext(app, session, { scratch }),
+			makeContext(app, session),
 		)
 		expect(readBack).toEqual(
 			expect.stringContaining(String(content.length + 2)),
@@ -1152,6 +1164,11 @@ describe('bash tool UTF-8 handling', () => {
 })
 
 describe('ToolExecutor SDK tool-round read-gate wiring', () => {
+	let toolCallSequence = 0
+	beforeEach(() => {
+		toolCallSequence = 0
+	})
+
 	function makeToolExecutor(app = {} as App) {
 		const state = {
 			loadedSessions: new Map(),
@@ -1196,7 +1213,7 @@ describe('ToolExecutor SDK tool-round read-gate wiring', () => {
 	): ToolCallPart {
 		return {
 			type: 'tool-call',
-			toolCallId: `call_${toolName}_${Math.random()}`,
+			toolCallId: `call_${toolName}_${toolCallSequence++}`,
 			toolName,
 			input,
 		}
@@ -1205,13 +1222,12 @@ describe('ToolExecutor SDK tool-round read-gate wiring', () => {
 	async function executeRound(
 		executor: ToolExecutor,
 		app: App,
-		scratch: IFileSystem,
 		toolCalls: ToolCallPart[],
 		tools: ToolSet,
 		session: ChatSession,
 	) {
 		const readTracker = executor.prepareReadTracker(session, 'master')
-		const context = makeContext(app, session, { readTracker, scratch })
+		const context = makeContext(app, session, { readTracker })
 		return Promise.allSettled(
 			toolCalls.map((call) => {
 				const tool = tools[call.toolName]
@@ -1236,10 +1252,8 @@ describe('ToolExecutor SDK tool-round read-gate wiring', () => {
 		const { executor } = makeToolExecutor(app)
 
 		const tools = createAITools()
-		const scratch = new InMemoryFs()
-
 		const toolCalls: ToolCallPart[] = [
-			toolCall('bash', { script: 'cat /vault/notes/x.md' }),
+			toolCall('bash', { script: 'cat /notes/x.md' }),
 			toolCall('apply_patch', {
 				patch: [
 					'*** Begin Patch',
@@ -1252,14 +1266,7 @@ describe('ToolExecutor SDK tool-round read-gate wiring', () => {
 			}),
 		]
 
-		const results = await executeRound(
-			executor,
-			app,
-			scratch,
-			toolCalls,
-			tools,
-			session,
-		)
+		const results = await executeRound(executor, app, toolCalls, tools, session)
 
 		expect(session.subagents.master.readVaultPaths).toEqual(['notes/x.md'])
 		const editResult = results[1]
@@ -1282,13 +1289,10 @@ describe('ToolExecutor SDK tool-round read-gate wiring', () => {
 		const { executor } = makeToolExecutor(app)
 
 		const tools = createAITools()
-		const scratch = new InMemoryFs()
-
 		const batch1Results = await executeRound(
 			executor,
 			app,
-			scratch,
-			[toolCall('bash', { script: 'cat /vault/notes/x.md' })],
+			[toolCall('bash', { script: 'cat /notes/x.md' })],
 			tools,
 			session,
 		)
@@ -1298,7 +1302,6 @@ describe('ToolExecutor SDK tool-round read-gate wiring', () => {
 		const batch2Results = await executeRound(
 			executor,
 			app,
-			scratch,
 			[
 				toolCall('apply_patch', {
 					patch: [
@@ -1386,12 +1389,11 @@ describe('ToolExecutor SDK tool-round read-gate wiring', () => {
 			executeToolForTest(
 				bash,
 				{
-					script: "printf 'after' > /vault/notes/x.md",
+					script: "printf 'after' > /notes/x.md",
 				},
 				{
 					app: stable.app,
 					permissionGuard: stable.permissionGuard,
-					scratch: stable.scratch,
 					session,
 					agentId: explorer.id,
 				},
@@ -1624,7 +1626,7 @@ describe('apply_patch across the mountable filesystem', () => {
 		return createFragmentReadTracker(fragment)
 	}
 
-	it('edits scratch files under /tmp through the adapter mount', async () => {
+	it('edits agent temporary files at their real virtual path', async () => {
 		const tmpPath = '.agents/nutstore-sync/tmp/test-apply-patch.txt'
 		const { app, store } = createMockApp([
 			{ path: tmpPath, content: 'hello world' },
@@ -1646,7 +1648,7 @@ describe('apply_patch across the mountable filesystem', () => {
 		const result = await callApplyPatch(
 			[
 				'*** Begin Patch',
-				'*** Update File: /tmp/test-apply-patch.txt',
+				`*** Update File: ${BASH_TMP_MOUNT_POINT}/test-apply-patch.txt`,
 				'@@',
 				'-hello world',
 				'+hello from apply_patch',
@@ -1657,7 +1659,7 @@ describe('apply_patch across the mountable filesystem', () => {
 
 		expect(result).toEqual({
 			applied: true,
-			files: ['/tmp/test-apply-patch.txt'],
+			files: [`${BASH_TMP_MOUNT_POINT}/test-apply-patch.txt`],
 		})
 		expect(store.get(tmpPath)).toBe('hello from apply_patch')
 	})
