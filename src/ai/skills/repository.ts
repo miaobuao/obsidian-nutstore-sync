@@ -1,5 +1,6 @@
-import { App, normalizePath, parseYaml } from 'obsidian'
+import { App, normalizePath } from 'obsidian'
 import { BUILTIN_SKILLS } from '~/ai/skills/builtin'
+import { parseYamlFrontmatter } from '~/ai/skills/frontmatter'
 import { AGENTS_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 import type {
 	BuiltinSkill,
@@ -12,7 +13,6 @@ export const VAULT_SKILLS_ROOT = `${AGENTS_MOUNT_POINT}/skills`
 export const MAX_SKILL_MARKDOWN_BYTES = 64 * 1024
 
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/
 
 interface SkillFrontmatter {
 	name?: unknown
@@ -79,29 +79,50 @@ function validateMetadata(
 	}
 }
 
-function parseFrontmatter(content: string) {
-	const match = FRONTMATTER_PATTERN.exec(content)
-	if (!match) return undefined
-	return parseYaml(match[1]) as SkillFrontmatter
+function parseFrontmatter(content: string): SkillFrontmatter | undefined {
+	return parseYamlFrontmatter(content) as SkillFrontmatter | undefined
 }
 
 export class SkillRepository {
 	private skills: SkillMetadata[]
 	private diagnostics: SkillDiagnostic[] = []
+	/** Built-in skill gated by the long-term memory setting. */
+	private readonly memorySkillNames: ReadonlySet<string>
+	private longTermMemoryEnabled: boolean
 
 	constructor(
 		private app: App,
 		private builtinSkills: readonly BuiltinSkill[] = BUILTIN_SKILLS,
+		options: { longTermMemoryEnabled?: boolean } = {},
 	) {
+		this.memorySkillNames = new Set(
+			this.builtinSkills
+				.filter((skill) => skill.name === 'long-term-memory')
+				.map((skill) => skill.name),
+		)
+		this.longTermMemoryEnabled = options.longTermMemoryEnabled ?? true
 		this.skills = this.getBuiltinMetadata()
 	}
 
+	/** Gate updated live from settings; a disabled store hides the memory skill from the catalog. */
+	setLongTermMemoryEnabled(enabled: boolean) {
+		if (this.longTermMemoryEnabled === enabled) return
+		this.longTermMemoryEnabled = enabled
+		void this.refresh()
+	}
+
+	private isMemorySkillHidden(name: string) {
+		return this.memorySkillNames.has(name) && !this.longTermMemoryEnabled
+	}
+
 	private getBuiltinMetadata() {
-		return this.builtinSkills.map(({ name, description, path }) => ({
-			name,
-			description,
-			path,
-		}))
+		return this.builtinSkills
+			.filter((skill) => !this.isMemorySkillHidden(skill.name))
+			.map(({ name, description, path }) => ({
+				name,
+				description,
+				path,
+			}))
 	}
 
 	async refresh(): Promise<void> {

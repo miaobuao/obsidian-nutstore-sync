@@ -299,6 +299,10 @@
 				"name": "Full access",
 				"desc": "⚠️ When on, the AI can edit files and change plugin settings without asking for confirmation each time."
 			},
+			"longTermMemory": {
+				"name": "Long-term memory",
+				"desc": "When on, the AI can remember stable preferences, conventions and decisions across sessions."
+			},
 			"errors": {
 				"saveFailed": "Failed to save AI settings",
 				"saveFailedWithReason": "Failed to save AI settings: {{reason}}",

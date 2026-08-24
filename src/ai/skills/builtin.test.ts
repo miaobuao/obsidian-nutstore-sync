@@ -55,4 +55,32 @@ describe('built-in Skills', () => {
 			'Do not unnecessarily restrict which tools the agent may use.',
 		)
 	})
+
+	it('ships a self-consistent long-term-memory definition', () => {
+		const skill = BUILTIN_SKILLS.find(
+			(item) => item.name === 'long-term-memory',
+		)
+
+		expect(skill).toBeDefined()
+		expect(skill!.path).toBe(`${BUILTIN_SKILLS_ROOT}/long-term-memory/SKILL.md`)
+		expect(skill!.content).toContain('\nname: long-term-memory\n')
+		expect(skill!.content).toContain(`description: ${skill!.description}\n`)
+		expect(skill!.content).toContain('memory/archive/<YYYY>/<YYYY-MM-DD>.md')
+		expect(skill!.content).toContain('memory/catalog/<YYYY>.tsv')
+		expect(skill!.content).toContain('## 文件格式')
+		expect(skill!.content).toMatch(/^index: /m)
+		// No per-entry cue cards or active/archive split — both were removed from the design.
+		expect(skill!.content).not.toContain('memory/active/')
+		expect(skill!.content).not.toContain('@cue')
+	})
+
+	it('mounts every built-in Skill under the read-only skills filesystem', async () => {
+		const fs = await createBuiltinSkillsFs()
+		const names = BUILTIN_SKILLS.map((skill) => skill.name)
+		const mounted = await Promise.all(
+			names.map(async (name) => fs.readFile(`/${name}/SKILL.md`)),
+		)
+		expect(mounted.length).toBe(names.length)
+		expect(mounted.every((content) => content.length > 0)).toBe(true)
+	})
 })

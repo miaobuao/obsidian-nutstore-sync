@@ -19,6 +19,7 @@ import {
 	captureWorkspaceContexts,
 	computeChangedContexts,
 } from '~/ai/chat/context/workspace-context'
+import type { MemoryIndexRepository } from '~/ai/chat/context/memory-index'
 import type { MessageFactory } from '~/ai/chat/messages/message-factory'
 import type { RuntimeStates } from '~/ai/chat/runtime/runtime-state'
 import type { SessionStore } from '~/ai/chat/session/session-store'
@@ -84,6 +85,7 @@ export class MessageOps {
 		private validateSelection: (session: ChatSession) => boolean,
 		private requestRun: (sessionId: string) => Promise<void> | void,
 		private skillRepository?: SkillRepository,
+		private memoryIndexRepository?: MemoryIndexRepository,
 		private settingsIo?: {
 			getSettingsSnapshot: SettingsSnapshotFn
 			updateSettings: SettingsUpdater
@@ -213,8 +215,13 @@ export class MessageOps {
 		}
 		if (lastUserIdx !== -1) {
 			await this.skillRepository?.refresh()
+			await this.memoryIndexRepository?.refresh()
 			const prevMessages = agent.timeline.slice(0, lastUserIdx)
-			const current = captureWorkspaceContexts(this.app, this.skillRepository)
+			const current = captureWorkspaceContexts(
+				this.app,
+				this.skillRepository,
+				this.memoryIndexRepository,
+			)
 			const changed = computeChangedContexts(prevMessages, current)
 			const message = agent.timeline[lastUserIdx]
 			message.parts = message.parts.filter(

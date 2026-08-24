@@ -20,6 +20,7 @@ interface SkillEntry {
 function createRepository(
 	entries: SkillEntry[],
 	builtinSkills: BuiltinSkill[] = [],
+	options?: { longTermMemoryEnabled?: boolean },
 ) {
 	const files = new Map(
 		entries.map((entry) => {
@@ -53,7 +54,7 @@ function createRepository(
 		read: async (path: string) => files.get(path)?.content ?? '',
 	}
 	const app = { vault: { adapter } }
-	return new SkillRepository(app as never, builtinSkills)
+	return new SkillRepository(app as never, builtinSkills, options)
 }
 
 describe('SkillRepository', () => {
@@ -146,5 +147,37 @@ describe('SkillRepository', () => {
 
 		expect(repository.getCatalog()).toEqual([])
 		expect(repository.discover().diagnostics).toHaveLength(3)
+	})
+
+	it('hides the long-term-memory built-in when the memory setting is off', async () => {
+		const builtins: BuiltinSkill[] = [
+			{
+				name: 'long-term-memory',
+				description: 'Long-term memory',
+				path: `${NUTSTORE_SYNC_AGENTS_MOUNT_POINT}/builtin-skills/long-term-memory/SKILL.md`,
+				content: '# Long',
+			},
+			{
+				name: 'skill-creator',
+				description: 'Create Skills',
+				path: `${NUTSTORE_SYNC_AGENTS_MOUNT_POINT}/builtin-skills/skill-creator/SKILL.md`,
+				content: '# Creator',
+			},
+		]
+
+		const off = createRepository([], builtins, {
+			longTermMemoryEnabled: false,
+		})
+		const on = createRepository([], builtins, {
+			longTermMemoryEnabled: true,
+		})
+
+		expect(off.getCatalog().map((skill) => skill.name)).toEqual([
+			'skill-creator',
+		])
+		expect(on.getCatalog().map((skill) => skill.name)).toEqual([
+			'long-term-memory',
+			'skill-creator',
+		])
 	})
 })

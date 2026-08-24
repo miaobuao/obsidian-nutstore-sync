@@ -151,6 +151,8 @@ export interface NutstoreSettings {
 		providers: AIProviderConfigs
 		defaultModel?: { providerId: string; modelId: string }
 		yolo?: boolean
+		/** When enabled, the long-term memory built-in Skill and its memory: deltas are injected. Defaults off. */
+		longTermMemory?: boolean
 		nutstoreLlmGateway?: NutstoreLlmGatewayAuthSettings
 	}
 	configDirSyncMode?: 'none' | 'bookmarks' | 'all'

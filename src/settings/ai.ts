@@ -139,6 +139,18 @@ export default class AISettings extends BaseSettings {
 						await this.persist(false)
 					}),
 			)
+
+		new Setting(this.containerEl)
+			.setName(i18n.t('settings.ai.longTermMemory.name'))
+			.setDesc(i18n.t('settings.ai.longTermMemory.desc'))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.ai.longTermMemory ?? false)
+					.onChange(async (value) => {
+						this.plugin.settings.ai.longTermMemory = value
+						await this.persist(false)
+					}),
+			)
 	}
 
 	private listUserManagedProviders() {
