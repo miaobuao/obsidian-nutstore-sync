@@ -79,4 +79,43 @@ describe('UIMessage model round-trip', () => {
 			},
 		])
 	})
+
+	it('serializes current date context for model messages', async () => {
+		expect(
+			await uiMessagesToModelMessages([
+				{
+					id: 'date-context',
+					role: 'user',
+					parts: [
+						{
+							type: 'data-workspace-context',
+							data: {
+								deltas: [
+									{
+										key: 'currentDate',
+										content: {
+											date: '2024-02-29',
+											weekday: 'Thursday',
+											timezone: 'Asia/Shanghai',
+										},
+										hash: 'date-context-hash',
+									},
+								],
+							},
+						},
+					],
+				},
+			]),
+		).toEqual([
+			{
+				role: 'user',
+				content: [
+					{
+						type: 'text',
+						text: '<AdditionalContext>{"currentDate":{"date":"2024-02-29","weekday":"Thursday","timezone":"Asia/Shanghai"}}</AdditionalContext>',
+					},
+				],
+			},
+		])
+	})
 })

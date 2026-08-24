@@ -1,12 +1,25 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
 	fencedCode,
 	formatDuration,
 	formatSystemNotificationMarkdown,
+	formatTime,
 	formatToolDetailsMarkdown,
 	toolCallDisplayTitle,
 	toolCallPurpose,
 } from './utils'
+
+describe('formatTime', () => {
+	it('falls back without Intl', () => {
+		vi.stubGlobal('Intl', undefined)
+		try {
+			const timestamp = new Date(2024, 1, 29, 9, 7).getTime()
+			expect(formatTime(timestamp)).toBe('02/29 09:07')
+		} finally {
+			vi.unstubAllGlobals()
+		}
+	})
+})
 
 describe('formatDuration', () => {
 	it('uses compact stable units', () => {

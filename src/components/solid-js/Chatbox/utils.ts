@@ -1,13 +1,29 @@
 import type { ChatDisplayToolCallBlock, ChatRunState } from '~/ai/chat/types'
 import { t } from '../i18n'
 
+function formatTimeFallback(timestamp: number) {
+	const date = new Date(timestamp)
+	const pad = (value: number) => String(value).padStart(2, '0')
+	return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 export function formatTime(timestamp: number) {
-	return new Intl.DateTimeFormat(undefined, {
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-	}).format(timestamp)
+	try {
+		if (
+			typeof Intl !== 'undefined' &&
+			typeof Intl.DateTimeFormat === 'function'
+		) {
+			return new Intl.DateTimeFormat(undefined, {
+				month: '2-digit',
+				day: '2-digit',
+				hour: '2-digit',
+				minute: '2-digit',
+			}).format(timestamp)
+		}
+	} catch {
+		// Fall back for old or partial WebView Intl implementations.
+	}
+	return formatTimeFallback(timestamp)
 }
 
 export function formatDuration(durationMs: number) {

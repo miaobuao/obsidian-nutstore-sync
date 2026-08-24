@@ -13,6 +13,75 @@ type View = WorkspaceLeaf['view'] & {
 	containerEl?: HTMLElement
 }
 
+interface CurrentDateContext {
+	date: string
+	weekday: string
+	timezone?: string
+}
+
+const ENGLISH_WEEKDAYS = [
+	'Sunday',
+	'Monday',
+	'Tuesday',
+	'Wednesday',
+	'Thursday',
+	'Friday',
+	'Saturday',
+] as const
+
+export interface WorkspaceContextOptions {
+	/** Clock override for deterministic date-context tests. */
+	now?: () => Date
+}
+
+function formatLocalDate(date: Date) {
+	return [
+		String(date.getFullYear()).padStart(4, '0'),
+		String(date.getMonth() + 1).padStart(2, '0'),
+		String(date.getDate()).padStart(2, '0'),
+	].join('-')
+}
+
+function getEnglishWeekday(date: Date) {
+	try {
+		if (
+			typeof Intl !== 'undefined' &&
+			typeof Intl.DateTimeFormat === 'function'
+		) {
+			return new Intl.DateTimeFormat('en-US', {
+				weekday: 'long',
+			}).format(date)
+		}
+	} catch {
+		// Fall back for old or partial WebView Intl implementations.
+	}
+	return ENGLISH_WEEKDAYS[date.getDay()] ?? 'Sunday'
+}
+
+function getLocalTimezone() {
+	try {
+		if (
+			typeof Intl !== 'undefined' &&
+			typeof Intl.DateTimeFormat === 'function'
+		) {
+			const timezone = Intl.DateTimeFormat().resolvedOptions?.().timeZone
+			return typeof timezone === 'string' && timezone ? timezone : undefined
+		}
+	} catch {
+		// Timezone metadata is optional and must not block context injection.
+	}
+	return undefined
+}
+
+function captureCurrentDateContext(date: Date): CurrentDateContext {
+	const timezone = getLocalTimezone()
+	return {
+		date: formatLocalDate(date),
+		weekday: getEnglishWeekday(date),
+		...(timezone ? { timezone } : {}),
+	}
+}
+
 function getConnectedFilePath(leaf: WorkspaceLeaf): string | null {
 	const view = leaf.view as unknown as View
 	if (
@@ -32,8 +101,10 @@ export function captureWorkspaceContexts(
 	app: App,
 	skillRepository?: SkillRepository,
 	memoryIndexRepository?: MemoryIndexRepository,
+	options: WorkspaceContextOptions = {},
 ): WorkspaceContextDelta[] {
 	const activeFile = app.workspace.getActiveFile()?.path ?? null
+	const currentDate = captureCurrentDateContext(options.now?.() ?? new Date())
 
 	const openFilePaths = new Set<string>()
 	app.workspace.iterateAllLeaves((leaf) => {
@@ -44,6 +115,11 @@ export function captureWorkspaceContexts(
 	})
 	const openFiles = Array.from(openFilePaths).sort()
 	const contexts: WorkspaceContextDelta[] = [
+		{
+			key: 'currentDate',
+			content: currentDate,
+			hash: hashObject(currentDate),
+		},
 		{ key: 'activeFile', content: activeFile, hash: hashObject(activeFile) },
 		{ key: 'openFiles', content: openFiles, hash: hashObject(openFiles) },
 	]
