@@ -345,6 +345,8 @@ export const applyPatchTool = tool({
 		'The required "purpose" field is a very short (up to 120 characters) plain-language summary of what this patch changes and why it is being applied, safe for users who cannot read diffs — no code, no markdown, no newlines, no patch syntax.',
 		`Use a vault-relative path for files in the vault (relative paths resolve from ${VAULT_MOUNT_POINT}), or an absolute virtual path for any writable mounted filesystem. For example, scratch files live under ${BASH_TMP_MOUNT_POINT}, agent data under ${AGENTS_MOUNT_POINT}, and live plugin settings at ${SETTINGS_FILE_PATH}.`,
 		'Every patch, including one that only adds, deletes, updates, or moves a single file, MUST start with "*** Begin Patch" and end with "*** End Patch".',
+		'An Add patch has this complete form: "*** Begin Patch\\n*** Add File: notes/example.md\\n+Example line\\n+\\n+示例行 🌱\\n*** End Patch".',
+		'Every line in an Add File section, including blank lines, must start with +.',
 		'A Delete patch has this complete form: "*** Begin Patch\\n*** Delete File: notes/example.md\\n*** End Patch".',
 		'An Update patch has this complete form: "*** Begin Patch\\n*** Update File: notes/example.md\\n@@\\n-old text\\n+new text\\n*** End Patch".',
 		'File operation headers always use the colon syntax: "*** Add File: path", "*** Delete File: path", "*** Update File: path", and "*** Move to: path".',
