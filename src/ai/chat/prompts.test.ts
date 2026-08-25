@@ -43,6 +43,39 @@ describe('main system prompt Skills guidance', () => {
 	})
 })
 
+describe('virtual filesystem guidance', () => {
+	it('describes stable mounts without turning them into an exploration request', () => {
+		const definition = getAgentDefinition('master')
+		if (!definition) throw new Error('Expected master agent definition')
+		const prompt = createSystemPromptForAgent(definition)
+
+		expect(prompt).toContain('<virtual-filesystem>')
+		expect(prompt).toContain('/ is the Obsidian vault base filesystem')
+		expect(prompt).toContain('/.agents/nutstore-sync/builtin-skills')
+		expect(prompt).toContain('/.config/nutstore-sync/settings.json')
+		expect(prompt).toContain(
+			'This is a routing map, not an instruction to enumerate or scan every mount',
+		)
+		expect(prompt).toContain(
+			'Start with the smallest relevant scope and broaden only when evidence is insufficient',
+		)
+		expect(prompt).not.toContain('/.agents/nutstore-sync/memory')
+		expect(prompt).not.toContain(
+			'For ambiguous user requests, you may broaden exploration',
+		)
+	})
+
+	it('gives the read-only explorer the same filesystem routing map', () => {
+		const definition = getAgentDefinition('explorer')
+		if (!definition) throw new Error('Expected explorer agent definition')
+		const prompt = createSystemPromptForAgent(definition)
+
+		expect(prompt).toContain('<virtual-filesystem>')
+		expect(prompt).toContain('/.agents/nutstore-sync/tmp')
+		expect(prompt).toContain('read-only explorer subagent')
+	})
+})
+
 describe('user-facing path convention', () => {
 	it('instructs the master agent to use vault-relative paths when replying to the user', () => {
 		const definition = getAgentDefinition('master')
