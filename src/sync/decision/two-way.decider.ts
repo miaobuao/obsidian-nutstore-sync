@@ -726,6 +726,7 @@ export async function twoWayDecider(
 						localPath: local.path,
 						remotePath: local.path,
 						remoteBaseDir,
+						recursive: true,
 					}),
 				)
 			} else {
