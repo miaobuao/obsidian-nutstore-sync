@@ -221,6 +221,23 @@ export class SessionStore {
 	}
 
 	async loadSessionById(sessionId: string) {
+		try {
+			return await this.loadSessionByIdUnchecked(sessionId)
+		} catch (error) {
+			if (!(error instanceof SessionUnavailableError)) throw error
+			try {
+				await this.reconcileSessionIndex(null)
+			} catch (reconcileError) {
+				logger.warn(
+					`Failed to reconcile unavailable chat session ${sessionId}`,
+					reconcileError,
+				)
+			}
+			throw error
+		}
+	}
+
+	private async loadSessionByIdUnchecked(sessionId: string) {
 		const cached = this.state.loadedSessions.get(sessionId)
 		if (cached) {
 			return cached

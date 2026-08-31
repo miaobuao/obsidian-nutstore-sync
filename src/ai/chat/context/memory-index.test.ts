@@ -78,6 +78,33 @@ describe('memory index repository', () => {
 		})
 	})
 
+	it('uses the local calendar day near midnight', async () => {
+		class LocalMidnightDate extends Date {
+			override toISOString() {
+				return '2026-02-09T16:30:00.000Z'
+			}
+		}
+		const localNow = new LocalMidnightDate(2026, 1, 10, 0, 30)
+		const { vault } = createMemoryVault(
+			{
+				[`${MEMORY_ROOT}/2026/2026-02-10.md`]: frontmatterFile(
+					'2026-02-10',
+					'Local-day entry / 本地日期条目 🌙',
+				),
+			},
+			[`${MEMORY_ROOT}/2026`],
+		)
+		const repo = new MemoryIndexRepository(createApp(vault), {
+			now: () => localNow,
+		})
+
+		await repo.refresh()
+
+		expect(repo.getDeltas().map((delta) => delta.key)).toEqual([
+			'memory:2026-02-10',
+		])
+	})
+
 	it('keeps files without an index in the index with a bare path', async () => {
 		const { vault } = createMemoryVault(
 			{

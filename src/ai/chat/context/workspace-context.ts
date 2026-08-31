@@ -5,6 +5,7 @@ import type { AppUIMessage, WorkspaceContextDelta } from '~/ai/chat/types'
 import { getWorkspaceContextDeltas } from '~/ai/chat/messages/ui-message'
 import type { SkillRepository } from '~/ai/skills/repository'
 import type { MemoryIndexRepository } from '~/ai/chat/context/memory-index'
+import { formatLocalDate } from '~/utils/local-date'
 
 type View = WorkspaceLeaf['view'] & {
 	file?: {
@@ -32,14 +33,6 @@ const ENGLISH_WEEKDAYS = [
 export interface WorkspaceContextOptions {
 	/** Clock override for deterministic date-context tests. */
 	now?: () => Date
-}
-
-function formatLocalDate(date: Date) {
-	return [
-		String(date.getFullYear()).padStart(4, '0'),
-		String(date.getMonth() + 1).padStart(2, '0'),
-		String(date.getDate()).padStart(2, '0'),
-	].join('-')
 }
 
 function getEnglishWeekday(date: Date) {

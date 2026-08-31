@@ -30,6 +30,7 @@ import { RunStateCard } from './components/RunStateCard'
 import { SessionHistorySheet } from './components/SessionHistorySheet'
 import { SubagentTimelineDialog } from './components/SubagentTimelineDialog'
 import { decideDropRoute, hasDragItems } from './drop-utils'
+import { shouldSubmitChatInput } from './utils'
 
 const INPUT_HEIGHT_STORAGE_KEY = 'nutstore-sync.chatbox.input-height'
 const LEGACY_INPUT_HEIGHT_STORAGE_KEY =
@@ -982,12 +983,7 @@ function Chatbox(props: ChatboxProps) {
 							onCompositionStart={() => setIsComposing(true)}
 							onCompositionEnd={() => setIsComposing(false)}
 							onKeyDown={(event) => {
-								if (
-									event.key === 'Enter' &&
-									!event.shiftKey &&
-									!isComposing() &&
-									!event.isComposing
-								) {
+								if (shouldSubmitChatInput(event, isComposing())) {
 									event.preventDefault()
 									void submit()
 								}

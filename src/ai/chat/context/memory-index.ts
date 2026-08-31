@@ -2,6 +2,7 @@ import { hash as hashObject } from 'ohash'
 import { normalizePath, type App } from 'obsidian'
 import { parseYamlFrontmatter } from '~/ai/skills/frontmatter'
 import type { WorkspaceContextDelta } from '~/ai/chat/types'
+import { formatLocalDate } from '~/utils/local-date'
 
 /**
  * Vault-relative root of the long-term memory documents, sibling to the chat
@@ -36,10 +37,6 @@ export interface MemoryIndexEntryContent {
 }
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-
-function dayKey(date: Date) {
-	return date.toISOString().slice(0, 10)
-}
 
 function isDateWithinWindow(date: string, cutoffDay: string, todayDay: string) {
 	return date >= cutoffDay && date <= todayDay
@@ -90,9 +87,13 @@ export class MemoryIndexRepository {
 		}
 		const adapter = this.app.vault.adapter
 		const today = this.now()
-		const todayDay = dayKey(today)
-		const cutoff = new Date(today.getTime() - this.windowDays * 86_400_000)
-		const cutoffDay = dayKey(cutoff)
+		const todayDay = formatLocalDate(today)
+		const cutoff = new Date(
+			today.getFullYear(),
+			today.getMonth(),
+			today.getDate() - this.windowDays,
+		)
+		const cutoffDay = formatLocalDate(cutoff)
 		const cutoffYear = cutoffDay.slice(0, 4)
 		const todayYear = todayDay.slice(0, 4)
 		try {

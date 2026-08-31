@@ -15,6 +15,7 @@ import {
 } from '~/ai/chat/session/session-persistence'
 import type { ReversibleToolOp } from '~/ai/chat/types'
 import {
+	SessionUnavailableError,
 	SessionStore,
 	type SessionLegacyStore,
 } from '~/ai/chat/session/session-store'
@@ -180,6 +181,83 @@ describe('SessionStore (vault file persistence)', () => {
 		])
 		expect(state.activeSessionId).toBe('session-b')
 		expect(sessionReads).toEqual([])
+	})
+
+	it('removes a corrupt non-active session after lazy loading fails', async () => {
+		const { vault, files } = createMemoryVault()
+		const backend = new SessionsFileBackend(vault)
+		await backend.writeSessionFile('valid', {
+			session: legacyV1PersistedRecord('valid'),
+			title: 'Valid / 有效会话 🌿',
+		})
+		files.set(`${CHAT_SESSIONS_DIR}/corrupt.json`, {
+			type: 'file',
+			content: JSON.stringify({
+				session: {
+					schemaVersion: 2,
+					id: 'corrupt',
+					createdAt: 1,
+					updatedAt: 1,
+					binary: {
+						__nutstore_chat_binary_v2: true,
+						kind: 'Uint8Array',
+						data: 'invalid!',
+					},
+				},
+			}),
+			mtime: 2,
+		})
+		await backend.writeMetaFile({
+			activeSessionId: 'valid',
+			orderedSessionIds: ['valid', 'corrupt'],
+			sessions: {
+				valid: {
+					title: 'Valid / 有效会话 🌿',
+					createdAt: 1,
+					updatedAt: 1,
+				},
+				corrupt: {
+					title: 'Unavailable / 不可用会话',
+					createdAt: 1,
+					updatedAt: 1,
+				},
+			},
+		})
+		const emptyLegacy = {
+			listSessionKeys: async () => [],
+			getSession: async () => undefined,
+			unsetSession: async () => undefined,
+			getMeta: async () => ({ meta: null, index: [] }),
+		} as SessionLegacyStore
+		const state = createState()
+		const store = new SessionStore(
+			state,
+			new RuntimeStates(state),
+			createSelection(),
+			backend,
+			emptyLegacy,
+		)
+
+		await store.loadSessionIndex()
+		expect(state.sessionIndex.map((item) => item.id)).toEqual([
+			'valid',
+			'corrupt',
+		])
+		await expect(store.loadSessionById('corrupt')).rejects.toBeInstanceOf(
+			SessionUnavailableError,
+		)
+		expect(state.sessionIndex.map((item) => item.id)).toEqual(['valid'])
+
+		const reloadedState = createState()
+		const reloadedStore = new SessionStore(
+			reloadedState,
+			new RuntimeStates(reloadedState),
+			createSelection(),
+			backend,
+			emptyLegacy,
+		)
+		await reloadedStore.loadSessionIndex()
+		expect(reloadedState.sessionIndex.map((item) => item.id)).toEqual(['valid'])
 	})
 
 	it('migrates legacy IndexedDB sessions into vault files', async () => {

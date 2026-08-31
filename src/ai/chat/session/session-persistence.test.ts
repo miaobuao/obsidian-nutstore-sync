@@ -167,6 +167,55 @@ describe('chat session persistence', () => {
 		)
 	})
 
+	it('decodes typed-array kinds written by older V2 sessions', () => {
+		const bareUint16Array = new Uint16Array([0x41, 0x7dfe])
+		const stored = {
+			schemaVersion: 2,
+			id: 'legacy-binary-session',
+			createdAt: 1,
+			updatedAt: 1,
+			binary: {
+				bareUint16Array,
+				dataView: {
+					__nutstore_chat_binary_v2: true,
+					kind: 'dataview',
+					data: 'QQD-fQ',
+				},
+				uint16Array: {
+					__nutstore_chat_binary_v2: true,
+					kind: 'Uint16Array',
+					data: 'QQD-fQ',
+				},
+				buffer: {
+					__nutstore_chat_binary_v2: true,
+					kind: 'Buffer',
+					data: 'QQD-fQ',
+				},
+			},
+		} as unknown as PersistedChatSession
+
+		const decoded = decodeChatSessionFromStorage(stored) as unknown as {
+			binary: {
+				bareUint16Array: Uint16Array
+				dataView: DataView
+				uint16Array: Uint16Array
+				buffer: Uint8Array
+			}
+		}
+
+		expect(decoded.binary.dataView).toBeInstanceOf(DataView)
+		expect(decoded.binary.bareUint16Array).toBe(bareUint16Array)
+		expect(Array.from(new Uint8Array(decoded.binary.dataView.buffer))).toEqual([
+			65, 0, 254, 125,
+		])
+		expect(decoded.binary.uint16Array).toBeInstanceOf(Uint16Array)
+		expect(
+			Array.from(new Uint8Array(decoded.binary.uint16Array.buffer)),
+		).toEqual([65, 0, 254, 125])
+		expect(decoded.binary.buffer.constructor.name).toBe('Buffer')
+		expect(Array.from(decoded.binary.buffer)).toEqual([65, 0, 254, 125])
+	})
+
 	it('restores a legacy V1 ArrayBuffer-backed blob record on decode', async () => {
 		const artifact = {
 			schemaVersion: 2,

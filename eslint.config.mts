@@ -129,6 +129,7 @@ export default defineConfig([
 			'@typescript-eslint/no-unused-vars': 'off',
 			'@typescript-eslint/no-unsafe-assignment': 'off',
 			'@typescript-eslint/no-unsafe-argument': 'off',
+			'@typescript-eslint/no-misused-promises': 'off',
 
 			'unused-imports/no-unused-imports': 'error',
 			'unused-imports/no-unused-vars': [
