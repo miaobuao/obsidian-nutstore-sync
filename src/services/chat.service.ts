@@ -26,6 +26,7 @@ import {
 	type SessionRuntimeState,
 } from '~/ai/chat/runtime/chat-state'
 import {
+	ContextCompressionFailedError,
 	resolveContextWindow,
 	resolveSummaryContext,
 	runContextCompression,
@@ -36,6 +37,7 @@ import {
 } from '~/ai/chat/runtime/pending-submission'
 import { RuntimeStates } from '~/ai/chat/runtime/runtime-state'
 import { AgentRunner } from '~/ai/chat/runtime/agent-runner'
+import { ContextCompactionCoordinator } from '~/ai/chat/runtime/context-compaction-coordinator'
 import { Selection } from '~/ai/chat/runtime/selection'
 import { SessionProcessor } from '~/ai/chat/runtime/session-processor'
 import { TaskManager } from '~/ai/chat/runtime/task-manager'
@@ -114,6 +116,7 @@ export default class ChatService extends BaseService {
 	private readonly messageFactory: MessageFactory
 	private readonly messageOps: MessageOps
 	private readonly sessionProcessor: SessionProcessor
+	private readonly compactionCoordinator: ContextCompactionCoordinator
 	private readonly skillRepository: SkillRepository
 	private readonly memoryIndexRepository: MemoryIndexRepository
 
@@ -175,6 +178,10 @@ export default class ChatService extends BaseService {
 			() => this.notify(),
 			plugin.app,
 		)
+		this.compactionCoordinator = new ContextCompactionCoordinator(
+			this.store,
+			this.messageFactory,
+		)
 		this.taskManager = new TaskManager(
 			plugin.app,
 			ensureProviderReady,
@@ -185,6 +192,7 @@ export default class ChatService extends BaseService {
 			this.toolExecutor,
 			this.messageFactory,
 			agentRunner,
+			this.compactionCoordinator,
 		)
 		this.toolExecutor.setDispatchTaskHandler((params) =>
 			this.taskManager.dispatchTask(params),
@@ -217,6 +225,7 @@ export default class ChatService extends BaseService {
 			this.messageFactory,
 			this.userContextManager,
 			agentRunner,
+			this.compactionCoordinator,
 		)
 		this.taskManager.setWakeAgentHandler((sessionId, agentId) => {
 			if (agentId === MASTER_AGENT_ID) {
@@ -479,8 +488,9 @@ export default class ChatService extends BaseService {
 			},
 			onStopActiveRun: () => this.stopActiveSessionRun(),
 			onDeleteMessage: (messageId: string) => this.deleteMessage(messageId),
-			onRegenerateMessage: (messageId: string) =>
-				this.regenerateMessage(messageId),
+			onRegenerateMessage: (messageId: string) => {
+				void this.regenerateMessage(messageId)
+			},
 			onRecallMessage: (
 				messageId: string,
 				options?: { restoreFiles?: boolean },
@@ -561,6 +571,7 @@ export default class ChatService extends BaseService {
 		}
 
 		this.state.deletedSessionIds.add(sessionId)
+		this.compactionCoordinator.cancel(sessionId)
 		const session = this.state.loadedSessions.get(sessionId)
 		if (session) {
 			await this.stopSessionRun(session)
@@ -789,6 +800,7 @@ export default class ChatService extends BaseService {
 		}
 
 		const agent = this.messageFactory.getActiveAgent(session)
+		this.compactionCoordinator.cancel(session.id, agent.id)
 		runtime.runState = 'compressing'
 		this.notify()
 
@@ -808,7 +820,7 @@ export default class ChatService extends BaseService {
 						session.id,
 					)
 					try {
-						await runContextCompression({
+						const result = await runContextCompression({
 							provider,
 							model,
 							session,
@@ -822,13 +834,23 @@ export default class ChatService extends BaseService {
 								this.toolExecutor,
 								this.plugin.app,
 							)),
-							buildMessages: (a, tools) =>
-								buildAgentMessages(a, tools, this.userContextManager),
+							buildMessages: (messages, tools) =>
+								buildAgentMessages(
+									agent,
+									tools,
+									this.userContextManager,
+									messages,
+								),
 							isCancelled: () =>
 								runtime.stopRequested ||
 								this.state.deletedSessionIds.has(session.id),
 							abortSignal: abortController.signal,
 						})
+						if (result !== 'committed' && result !== 'cancelled') {
+							throw new ContextCompressionFailedError(
+								i18n.t('chatbox.errors.contextCompressionFailed'),
+							)
+						}
 					} finally {
 						this.runtimeStates.clearAbortController(session.id, abortController)
 					}
@@ -907,6 +929,7 @@ export default class ChatService extends BaseService {
 		}
 
 		runtime.stopRequested = true
+		this.compactionCoordinator.cancel(session.id)
 		this.runtimeStates.abortActiveRequest(session.id, 'Stopped by user')
 
 		const changed = this.taskManager.cancelAllNonTerminalAgents(session)

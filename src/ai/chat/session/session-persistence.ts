@@ -4,7 +4,7 @@ import type { ChatSession, LegacyChatSession } from '~/ai/chat/domain'
 // stores natively but which cannot survive JSON.stringify (they degenerate into
 // numeric-indexed objects). V2 encodes every binary payload as a base64url
 // string so whole sessions can be persisted as plain JSON files. V1 marker
-// records AND bare ArrayBuffer/ArrayBufferView values are still accepted on
+// records AND bare ArrayBuffer/Uint8Array values are still accepted on
 // decode so legacy IndexedDB records can be decoded, migrated to the current
 // session schema, and encoded directly as final JSON snapshots.
 const BLOB_RECORD_MARKER_V1 = '__nutstore_chat_blob_v1'
@@ -29,10 +29,12 @@ interface PersistedUrlRecord {
 	href: string
 }
 
-/** base64url-wrapped raw binary: ArrayBuffer or any ArrayBufferView. */
+/** base64url-wrapped raw binary: ArrayBuffer or Uint8Array. */
+type PersistedBinaryKind = 'arraybuffer' | 'Uint8Array'
+
 interface PersistedBinaryRecord {
 	[BINARY_RECORD_MARKER_V2]: true
-	kind: 'arraybuffer' | 'dataview' | string
+	kind: PersistedBinaryKind
 	data: string
 }
 
@@ -40,7 +42,7 @@ type PersistedValue<T> = T extends Blob
 	? PersistedBlobRecord
 	: T extends URL
 		? PersistedUrlRecord
-		: T extends ArrayBuffer | ArrayBufferView
+		: T extends ArrayBuffer | Uint8Array
 			? PersistedBinaryRecord
 			: T extends readonly (infer Item)[]
 				? PersistedValue<Item>[]
@@ -77,7 +79,7 @@ function base64UrlToArrayBuffer(value: string): ArrayBuffer {
 	return buffer
 }
 
-function viewBytes(view: ArrayBufferView): ArrayBuffer {
+function viewBytes(view: Uint8Array): ArrayBuffer {
 	return view.buffer.slice(
 		view.byteOffset,
 		view.byteOffset + view.byteLength,
@@ -85,7 +87,7 @@ function viewBytes(view: ArrayBufferView): ArrayBuffer {
 }
 
 function createBinaryRecord(
-	value: ArrayBuffer | ArrayBufferView,
+	value: ArrayBuffer | Uint8Array,
 ): PersistedBinaryRecord {
 	if (value instanceof ArrayBuffer) {
 		return {
@@ -96,9 +98,13 @@ function createBinaryRecord(
 	}
 	return {
 		[BINARY_RECORD_MARKER_V2]: true,
-		kind: value instanceof DataView ? 'dataview' : value.constructor.name,
+		kind: 'Uint8Array',
 		data: arrayBufferToBase64Url(viewBytes(value)),
 	}
+}
+
+function isPersistedBinaryKind(value: unknown): value is PersistedBinaryKind {
+	return value === 'arraybuffer' || value === 'Uint8Array'
 }
 
 function isPersistedBlobRecord(value: unknown): value is PersistedBlobRecord {
@@ -132,7 +138,7 @@ function isPersistedBinaryRecord(
 		typeof value === 'object' &&
 		(value as Partial<PersistedBinaryRecord>)[BINARY_RECORD_MARKER_V2] ===
 			true &&
-		typeof (value as Partial<PersistedBinaryRecord>).kind === 'string' &&
+		isPersistedBinaryKind((value as Partial<PersistedBinaryRecord>).kind) &&
 		typeof (value as Partial<PersistedBinaryRecord>).data === 'string'
 	)
 }
@@ -160,8 +166,13 @@ async function encodeBlobs(value: unknown): Promise<unknown> {
 			href: value.href,
 		} satisfies PersistedUrlRecord
 	}
-	if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+	if (value instanceof ArrayBuffer || value instanceof Uint8Array) {
 		return createBinaryRecord(value)
+	}
+	if (ArrayBuffer.isView(value)) {
+		throw new TypeError(
+			'Only ArrayBuffer and Uint8Array are supported in chat session persistence',
+		)
 	}
 	if (Array.isArray(value)) {
 		return Promise.all(value.map(encodeBlobs))
@@ -181,25 +192,15 @@ async function encodeBlobs(value: unknown): Promise<unknown> {
 
 function decodeBinaryRecord(
 	value: PersistedBinaryRecord,
-): ArrayBuffer | ArrayBufferView {
+): ArrayBuffer | Uint8Array {
 	const buffer = base64UrlToArrayBuffer(value.data)
-	if (value.kind === 'arraybuffer') {
-		return buffer
+	switch (value.kind) {
+		case 'arraybuffer':
+			return buffer
+		case 'Uint8Array':
+			return new Uint8Array(buffer)
 	}
-	if (value.kind === 'dataview') {
-		return new DataView(buffer)
-	}
-	const viewCtor = (globalThis as Record<string, unknown>)[value.kind]
-	if (typeof viewCtor === 'function') {
-		try {
-			return new (viewCtor as new (buffer: ArrayBuffer) => ArrayBufferView)(
-				buffer,
-			)
-		} catch {
-			/* fall through to a plain ArrayBuffer */
-		}
-	}
-	return buffer
+	throw new TypeError('Unsupported persisted binary kind')
 }
 
 function decodeBlobs(value: unknown): unknown {
@@ -225,9 +226,14 @@ function decodeBlobs(value: unknown): unknown {
 		typeof value !== 'object' ||
 		value instanceof Blob ||
 		value instanceof ArrayBuffer ||
-		ArrayBuffer.isView(value)
+		value instanceof Uint8Array
 	) {
 		return value
+	}
+	if (ArrayBuffer.isView(value)) {
+		throw new TypeError(
+			'Only ArrayBuffer and Uint8Array are supported in chat session persistence',
+		)
 	}
 	return Object.fromEntries(
 		Object.entries(value).map(([key, entry]) => [key, decodeBlobs(entry)]),
@@ -236,7 +242,7 @@ function decodeBlobs(value: unknown): unknown {
 
 /**
  * A whole ChatSession is persisted as a plain JSON file. Nested Blob/File
- * values, ArrayBuffers and ArrayBufferViews cannot survive JSON.stringify, so
+ * values, ArrayBuffers and Uint8Arrays cannot survive JSON.stringify, so
  * every binary payload is base64url-encoded and restored at the session
  * boundary instead. V1 records are still accepted on decode for lossless
  * migration from IndexedDB storage.

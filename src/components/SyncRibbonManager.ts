@@ -54,10 +54,12 @@ export class SyncRibbonManager extends BaseService {
 						this.plugin.app,
 						this.plugin.settings,
 						this.plugin.localSettings,
-						startSync,
+						(syncPolicy) => {
+							void startSync(syncPolicy)
+						},
 					).open()
 				} else {
-					startSync()
+					void startSync()
 				}
 			},
 		)
@@ -69,21 +71,20 @@ export class SyncRibbonManager extends BaseService {
 		)
 		addClassTokens(this.stopRibbonEl, ':uno: hidden')
 
-		this.plugin.addRibbonIcon(
-			'bot',
-			i18n.t('chatbox.openCommand'),
-			async () => {
-				const existingLeaf =
-					this.plugin.app.workspace.getLeavesOfType(CHATBOX_VIEW_TYPE)[0]
-				const leaf =
-					existingLeaf || this.plugin.app.workspace.getRightLeaf(false)
-				if (!leaf) {
-					return
-				}
-				await leaf.setViewState({ type: CHATBOX_VIEW_TYPE, active: true })
-				this.plugin.app.workspace.revealLeaf(leaf)
-			},
-		)
+		this.plugin.addRibbonIcon('bot', i18n.t('chatbox.openCommand'), () => {
+			void this.openChatbox()
+		})
+	}
+
+	private async openChatbox() {
+		const existingLeaf =
+			this.plugin.app.workspace.getLeavesOfType(CHATBOX_VIEW_TYPE)[0]
+		const leaf = existingLeaf || this.plugin.app.workspace.getRightLeaf(false)
+		if (!leaf) {
+			return
+		}
+		await leaf.setViewState({ type: CHATBOX_VIEW_TYPE, active: true })
+		void this.plugin.app.workspace.revealLeaf(leaf)
 	}
 
 	public update() {

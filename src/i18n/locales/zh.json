@@ -797,7 +797,8 @@
 			"sessionNotFound": "目标会话已不存在",
 			"corruptSessionFile": "会话文件已损坏，已跳过加载：{{path}}",
 			"agentNotDispatchable": "该 Agent 类型不可派发：{{agentType}}",
-			"taskSessionUnavailable": "任务对应的会话或模型配置已不可用"
+			"taskSessionUnavailable": "任务对应的会话或模型配置已不可用",
+			"contextCompressionFailed": "上下文压缩未返回摘要"
 		}
 	},
 	"taskSelectionVirtualList": {

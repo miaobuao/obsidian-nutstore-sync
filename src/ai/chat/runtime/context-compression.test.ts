@@ -7,13 +7,16 @@ import {
 } from '~/ai/chat/messages/ui-message'
 import {
 	findRecentTurnStartIndex,
+	resolveContextPressure,
 	runContextCompression,
 	shouldAutoCompressAgent,
+	shouldStartContextCompaction,
 } from '~/ai/chat/runtime/context-compression'
 import { COMPRESSION_PROMPT } from '~/ai/chat/prompts'
 import type { AppUIMessage } from '~/ai/chat/types'
 
 const generateText = vi.hoisted(() => vi.fn())
+const NEUTRAL_TEXT = 'Hello 你好 🌿'
 
 vi.mock('ai', async (importOriginal) => ({
 	...(await importOriginal<typeof import('ai')>()),
@@ -45,6 +48,38 @@ describe('context compression', () => {
 	beforeEach(() => {
 		generateText.mockReset()
 		generateText.mockResolvedValue({ text: 'compressed context' })
+	})
+
+	it('does not commit a checkpoint when the summarizer returns no text', async () => {
+		generateText.mockResolvedValueOnce({ text: ' \n\t ' })
+		const master = createEmptyMasterAgent(1)
+		master.timeline = [message('neutral-user', 'user', 1)]
+		master.timeline[0].parts = [{ type: 'text', text: NEUTRAL_TEXT }]
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'neutral-session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const store = {
+			upsertSessionIndexItem: vi.fn(),
+			persistSession: vi.fn(async () => undefined),
+			persistMetaAndIndex: vi.fn(async () => undefined),
+		}
+
+		const committed = await runContextCompression({
+			provider: {} as never,
+			model: { id: 'neutral-model' } as never,
+			session,
+			agent: master,
+			store: store as never,
+			messageFactory: new MessageFactory({} as never, {} as never, vi.fn()),
+		})
+
+		expect(committed).toBe('failed')
+		expect(master.timeline.map((item) => item.id)).toEqual(['neutral-user'])
+		expect(store.persistSession).not.toHaveBeenCalled()
 	})
 
 	it('inserts the summary before the recent turns that fit the token budget', async () => {
@@ -111,7 +146,8 @@ describe('context compression', () => {
 			data: {
 				mode: 'summary',
 				summary: 'compressed context',
-				preservedTurnCount: 3,
+				summarizedThroughMessageId: 'a1',
+				retainedMessageIds: ['u2', 'a2', 'u3', 'a3', 'u4'],
 			},
 		})
 	})
@@ -193,9 +229,9 @@ describe('context compression', () => {
 		const oldAssistant = message('old-assistant', 'assistant', 50)
 		oldAssistant.metadata!.llm = {
 			usage: {
-				inputTokens: 95_000,
+				inputTokens: 220_000,
 				outputTokens: 0,
-				totalTokens: 95_000,
+				totalTokens: 220_000,
 			} as never,
 		}
 		agent.timeline = [checkpoint, oldAssistant]
@@ -207,14 +243,83 @@ describe('context compression', () => {
 		const newAssistant = message('new-assistant', 'assistant', 101)
 		newAssistant.metadata!.llm = {
 			usage: {
-				inputTokens: 95_000,
+				inputTokens: 220_000,
 				outputTokens: 0,
-				totalTokens: 95_000,
+				totalTokens: 220_000,
 			} as never,
 		}
 		agent.timeline.push(newAssistant)
 		expect(
 			shouldAutoCompressAgent(agent, { limit: { context: 100_000 } } as never),
+		).toBe(true)
+	})
+
+	it('starts background compaction before the hard input limit', () => {
+		const agent = createEmptyMasterAgent(1)
+		const assistant = message('assistant', 'assistant', 1)
+		assistant.metadata!.llm = {
+			usage: {
+				inputTokens: 810_000,
+				outputTokens: 70_000,
+				totalTokens: 880_000,
+			} as never,
+		}
+		agent.timeline = [assistant]
+
+		expect(
+			resolveContextPressure(agent, {
+				limit: { context: 1_000_000, output: 384_000 },
+			} as never),
+		).toBe('soft')
+		expect(
+			shouldStartContextCompaction(agent, {
+				limit: { context: 1_000_000, output: 384_000 },
+			} as never),
+		).toBe(true)
+		expect(
+			shouldAutoCompressAgent(agent, {
+				limit: { context: 1_000_000, output: 384_000 },
+			} as never),
+		).toBe(false)
+	})
+
+	it('reserves the session output override in addition to the safety margin', () => {
+		const agent = createEmptyMasterAgent(1)
+		const assistant = message('assistant', 'assistant', 1)
+		assistant.metadata!.llm = {
+			usage: {
+				inputTokens: 60_000,
+				outputTokens: 14_000,
+				totalTokens: 74_000,
+			} as never,
+		}
+		agent.timeline = [assistant]
+
+		expect(
+			shouldAutoCompressAgent(
+				agent,
+				{ limit: { context: 100_000, output: 32_000 } } as never,
+				8_000,
+			),
+		).toBe(false)
+	})
+
+	it('reaches the hard limit only after reserving the bounded output budget', () => {
+		const agent = createEmptyMasterAgent(1)
+		const assistant = message('assistant', 'assistant', 1)
+		assistant.metadata!.llm = {
+			usage: {
+				inputTokens: 870_000,
+				outputTokens: 47_232,
+				totalTokens: 917_232,
+			} as never,
+		}
+		agent.timeline = [assistant]
+
+		expect(
+			shouldAutoCompressAgent(agent, {
+				limit: { context: 1_000_000, output: 384_000 },
+			} as never),
 		).toBe(true)
 	})
 
@@ -249,6 +354,40 @@ describe('context compression', () => {
 
 		expect(generateText).toHaveBeenCalledWith(
 			expect.objectContaining({ system: 'SYSTEM', tools }),
+		)
+	})
+
+	it('uses the independent summary output budget', async () => {
+		const master = createEmptyMasterAgent(1)
+		master.timeline = [message('u1', 'user', 1)]
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const store = {
+			upsertSessionIndexItem: vi.fn(),
+			persistSession: vi.fn(async () => undefined),
+			persistMetaAndIndex: vi.fn(async () => undefined),
+		}
+		const factory = new MessageFactory({} as never, {} as never, vi.fn())
+
+		await runContextCompression({
+			provider: {} as never,
+			model: {
+				id: 'model',
+				limit: { context: 1_000_000, output: 384_000 },
+			} as never,
+			session,
+			agent: master,
+			store: store as never,
+			messageFactory: factory,
+		})
+
+		expect(generateText).toHaveBeenCalledWith(
+			expect.objectContaining({ maxOutputTokens: 16_384 }),
 		)
 	})
 

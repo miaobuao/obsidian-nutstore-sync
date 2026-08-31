@@ -47,6 +47,8 @@ export class MessageFactory {
 		checkpoint: {
 			mode: 'summary' | 'reset'
 			summary?: string
+			summarizedThroughMessageId?: string
+			retainedMessageIds?: string[]
 			preservedTurnCount?: number
 		},
 	) {

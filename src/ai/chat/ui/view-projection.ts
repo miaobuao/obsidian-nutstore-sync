@@ -1,8 +1,8 @@
 import type { ChatSession } from '~/ai/chat/domain'
 import { getMasterAgent, getSessionSubagents } from '~/ai/chat/domain'
+import type { SessionRuntimeState } from '~/ai/chat/runtime/chat-state'
 import { hasQueuedSubmission } from '~/ai/chat/runtime/pending-submission'
 import { projectTimelineMessageGroups } from '~/ai/chat/ui/display-blocks'
-import type { SessionRuntimeState } from '~/ai/chat/runtime/chat-state'
 import type { ChatboxProps } from '~/ai/chat/ui/types'
 
 // Solid stores attach reactive Symbol metadata to wrapped plain objects. Keep

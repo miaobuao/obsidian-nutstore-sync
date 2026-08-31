@@ -1,10 +1,8 @@
 import 'blob-polyfill'
-import 'core-js/stable'
 
 import './polyfill'
 import './webdav-patch'
 
-// @ts-ignore
 import './assets/styles/global.css'
 
 import { toBase64 } from 'js-base64'
@@ -151,12 +149,12 @@ export default class NutstorePlugin extends Plugin {
 		await this.chatService.handleSettingsChanged()
 	}
 
-	async onunload() {
+	onunload() {
 		this.settingTab?.unload()
-		this.app.workspace.detachLeavesOfType(CHATBOX_VIEW_TYPE)
+
 		emitCancelSync()
 		for (const service of [...this.services].reverse()) {
-			service.onunload()
+			void service.onunload()
 		}
 	}
 

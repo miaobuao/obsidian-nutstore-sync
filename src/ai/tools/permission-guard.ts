@@ -87,14 +87,21 @@ export function createPermissionGuard(
 			return
 		}
 
-		const result = await new AIPermissionModal(
+		const modal = new AIPermissionModal(
 			app,
 			{
 				...request,
 				sessionTitle: context?.sessionTitle,
 			},
 			context?.modalMountTarget,
-		).open()
+		)
+		// `openAndWait` is the plugin modal's result-aware API. Keep a small
+		// compatibility path for test doubles and older integrations that expose
+		// the original Promise-returning `open` method only.
+		const result =
+			typeof modal.openAndWait === 'function'
+				? await modal.openAndWait()
+				: await (modal.open() as unknown as Promise<string>)
 
 		if (result === 'deny') {
 			throw new Error(

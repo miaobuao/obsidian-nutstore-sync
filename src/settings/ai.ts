@@ -35,17 +35,16 @@ export default class AISettings extends BaseSettings {
 					.onClick(() => {
 						new ProvidersManagerModal(this.plugin, async () => {
 							await this.persist(false)
-							this.display()
+							void this.display()
 						}).open()
 					}),
 			)
 
 		if (this.listUserManagedProviders().length === 0) {
-			const hintEl = this.containerEl.createEl('p', {
+			this.containerEl.createEl('p', {
+				cls: ':uno: -mt-1 mb-5 opacity-75',
 				text: i18n.t('settings.ai.providers.emptyHint'),
 			})
-			hintEl.style.margin = '-0.25rem 0 1.25rem'
-			hintEl.style.opacity = '0.75'
 		}
 
 		new Setting(this.containerEl)
@@ -81,7 +80,7 @@ export default class AISettings extends BaseSettings {
 								: undefined
 						}
 						await this.persist()
-						this.display()
+						void this.display()
 					})
 			})
 			.addDropdown((dropdown) => {
@@ -123,7 +122,7 @@ export default class AISettings extends BaseSettings {
 			.addButton((button) =>
 				button.setButtonText(i18n.t('settings.ai.mcp.manage')).onClick(() => {
 					new McpServersManagerModal(this.plugin, async () => {
-						this.display()
+						void this.display()
 					}).open()
 				}),
 			)

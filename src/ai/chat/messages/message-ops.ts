@@ -355,15 +355,7 @@ export class MessageOps {
 			return
 		}
 		logger.info(`Recall restore delete: ${path}`)
-		if (typeof this.app.vault.delete === 'function') {
-			await this.app.vault.delete(target, true)
-			return
-		}
-		if (typeof this.app.vault.trash === 'function') {
-			await this.app.vault.trash(target, false)
-			return
-		}
-		throw new Error(`Unable to delete ${path}: vault delete is unavailable.`)
+		await this.app.fileManager.trashFile(target)
 	}
 
 	private async ensureVaultDirectory(path: string) {

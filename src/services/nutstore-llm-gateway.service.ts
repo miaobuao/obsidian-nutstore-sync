@@ -214,7 +214,7 @@ export default class NutstoreLlmGatewayService extends BaseService {
 			)
 		}
 
-		const anchor = document.createElement('a')
+		const anchor = createEl('a')
 		anchor.href = pending.verificationUrl
 		anchor.target = '_blank'
 		document.body.appendChild(anchor)

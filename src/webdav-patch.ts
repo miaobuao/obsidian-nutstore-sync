@@ -26,7 +26,7 @@ function objKeyToLower(obj: Record<string, string>) {
  * @returns true if all are iso 8859 1 chars
  */
 function onlyAscii(str: string) {
-	// eslint-disable-next-line no-control-regex
+	// eslint-disable-next-line no-control-regex -- ISO-8859-1 validation intentionally includes control bytes.
 	return !/[^\u0000-\u00ff]/g.test(str)
 }
 

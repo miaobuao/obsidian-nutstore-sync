@@ -38,7 +38,7 @@ import logger from '~/utils/logger'
  */
 export interface SessionLegacyStore {
 	listSessionKeys(): Promise<string[]>
-	getSession(id: string): Promise<unknown | undefined>
+	getSession(id: string): Promise<unknown>
 	unsetSession(id: string): Promise<void>
 	getMeta(): Promise<{
 		meta: ChatMetaRecord | null

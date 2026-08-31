@@ -287,7 +287,7 @@ export class AgentEventProjector {
 	private ensureAssistantMessage() {
 		if (this.assistantMessage) return this.assistantMessage
 		this.assistantMessage = this.options.messageFactory.createMessage(
-			{ role: 'assistant', content: [] } as AssistantModelMessage,
+			{ role: 'assistant', content: [] },
 			{ meta: this.options.assistantMeta },
 		)
 		this.options.agent.timeline.push(this.assistantMessage)

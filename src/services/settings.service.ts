@@ -44,12 +44,12 @@ export default class SettingsService extends BaseService {
 	}
 
 	async loadSettings() {
-		const storedSettings = await this.plugin.loadData()
-		this.plugin.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			storedSettings,
-		) as NutstoreSettings
+		const loadedSettings = (await this.plugin.loadData()) as unknown
+		const storedSettings =
+			loadedSettings && typeof loadedSettings === 'object'
+				? (loadedSettings as Partial<NutstoreSettings>)
+				: {}
+		this.plugin.settings = Object.assign({}, DEFAULT_SETTINGS, storedSettings)
 		if (
 			storedSettings?.conflictStrategy !== undefined &&
 			!Object.values(ConflictStrategy).includes(storedSettings.conflictStrategy)

@@ -90,7 +90,7 @@ export function stringifyJsonValue(value: unknown) {
 	try {
 		return JSON.stringify(value ?? {}, null, 2)
 	} catch {
-		return String(value ?? {})
+		return value instanceof Error ? value.message : '[Unserializable value]'
 	}
 }
 

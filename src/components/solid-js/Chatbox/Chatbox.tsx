@@ -260,7 +260,7 @@ function Chatbox(props: ChatboxProps) {
 			!!chatboxRootEl
 		return {
 			mountEl: contained
-				? chatboxRootEl!
+				? chatboxRootEl
 				: (chatboxRootEl?.ownerDocument?.body ?? getViewDocument().body),
 			contained,
 			hostEl: chatboxRootEl,
@@ -986,8 +986,7 @@ function Chatbox(props: ChatboxProps) {
 									event.key === 'Enter' &&
 									!event.shiftKey &&
 									!isComposing() &&
-									!event.isComposing &&
-									event.keyCode !== 229
+									!event.isComposing
 								) {
 									event.preventDefault()
 									void submit()

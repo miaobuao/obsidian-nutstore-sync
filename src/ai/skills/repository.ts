@@ -80,7 +80,7 @@ function validateMetadata(
 }
 
 function parseFrontmatter(content: string): SkillFrontmatter | undefined {
-	return parseYamlFrontmatter(content) as SkillFrontmatter | undefined
+	return parseYamlFrontmatter(content)
 }
 
 export class SkillRepository {

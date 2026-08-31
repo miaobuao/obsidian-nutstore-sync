@@ -58,9 +58,8 @@ export default class SyncConfirmModal extends Modal {
 			cls: ':uno: grid gap-1.5 my-3',
 		})
 		const policyDescription = policySection.createEl('pre', {
-			cls: ':uno: mt-0',
+			cls: ':uno: mt-0 whitespace-pre-wrap',
 		})
-		policyDescription.style.whiteSpace = 'pre-wrap'
 		const updatePolicyDescription = () => {
 			policyDescription.setText(
 				i18n.t(getSyncPolicyDescI18nKey(this.selectedPolicy)),
@@ -90,8 +89,9 @@ export default class SyncConfirmModal extends Modal {
 		}
 		updatePolicyDescription()
 		bodyEl.createEl('pre', {
+			cls: ':uno: whitespace-pre-wrap',
 			text: i18n.t('sync.confirmModal.message'),
-		}).style.whiteSpace = 'pre-wrap'
+		})
 
 		new Setting(footerEl)
 			.addButton((button) =>

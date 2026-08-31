@@ -131,7 +131,7 @@ function FileChangeSummary(props: {
 				class=":uno: min-w-0 flex-1 cursor-pointer truncate text-left text-[var(--link-color)] hover:underline !border-none !bg-transparent !p-0 !shadow-none"
 				onClick={(event) => {
 					event.stopPropagation()
-					props.onOpenFile?.(props.diff.vaultPath, openLine())
+					void props.onOpenFile?.(props.diff.vaultPath, openLine())
 				}}
 			>
 				{props.diff.vaultPath}

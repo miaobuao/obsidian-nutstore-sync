@@ -797,7 +797,8 @@
 			"sessionNotFound": "The target session no longer exists",
 			"corruptSessionFile": "A session file is corrupted and was skipped: {{path}}",
 			"agentNotDispatchable": "Agent type cannot be dispatched: {{agentType}}",
-			"taskSessionUnavailable": "The task session or model configuration is no longer available"
+			"taskSessionUnavailable": "The task session or model configuration is no longer available",
+			"contextCompressionFailed": "Context compression returned no summary"
 		}
 	},
 	"taskSelectionVirtualList": {

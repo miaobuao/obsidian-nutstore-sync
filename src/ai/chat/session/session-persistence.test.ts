@@ -94,6 +94,79 @@ describe('chat session persistence', () => {
 		expect(await restored.text()).toBe('image')
 	})
 
+	it('round-trips ArrayBuffer and Uint8Array binary values', async () => {
+		const bytes = new TextEncoder().encode('中性 text 🙂')
+		const arrayBuffer = bytes.slice().buffer
+		const master = createEmptyMasterAgent(1)
+		master.timeline.push({
+			id: 'binary',
+			role: 'assistant',
+			parts: [
+				{
+					type: 'dynamic-tool',
+					toolName: 'binary-test',
+					toolCallId: 'binary-call',
+					state: 'input-available',
+					input: { arrayBuffer, uint8Array: bytes },
+				},
+			],
+		})
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'binary-session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+
+		const decoded = decodeChatSessionFromStorage(
+			await encodeChatSessionForStorage(session),
+		) as ChatSession
+		const part = decoded.subagents.master.timeline[0]?.parts[0]
+		if (part?.type !== 'dynamic-tool') {
+			throw new Error('Expected a dynamic tool part')
+		}
+		const input = part.input as {
+			arrayBuffer: ArrayBuffer
+			uint8Array: Uint8Array
+		}
+		expect(input.arrayBuffer).toBeInstanceOf(ArrayBuffer)
+		expect(input.uint8Array).toBeInstanceOf(Uint8Array)
+		expect(Array.from(new Uint8Array(input.arrayBuffer))).toEqual(
+			Array.from(bytes),
+		)
+		expect(Array.from(input.uint8Array)).toEqual(Array.from(bytes))
+	})
+
+	it('rejects unsupported binary views', async () => {
+		const bytes = new TextEncoder().encode('中性 text 🙂')
+		const master = createEmptyMasterAgent(1)
+		master.timeline.push({
+			id: 'unsupported-binary',
+			role: 'assistant',
+			parts: [
+				{
+					type: 'dynamic-tool',
+					toolName: 'binary-test',
+					toolCallId: 'unsupported-binary-call',
+					state: 'input-available',
+					input: { dataView: new DataView(bytes.buffer) },
+				},
+			],
+		})
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'unsupported-binary-session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+
+		await expect(encodeChatSessionForStorage(session)).rejects.toThrow(
+			'Only ArrayBuffer and Uint8Array are supported',
+		)
+	})
+
 	it('restores a legacy V1 ArrayBuffer-backed blob record on decode', async () => {
 		const artifact = {
 			schemaVersion: 2,

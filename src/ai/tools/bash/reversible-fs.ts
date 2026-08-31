@@ -68,7 +68,7 @@ export class ReversibleFs implements IFileSystem {
 		} else {
 			result.set(normalized, {
 				kind: 'file',
-				contentCompressed: await createCompressedFileContent(
+				contentCompressed: createCompressedFileContent(
 					await this.inner.readFileBuffer(normalized),
 				),
 			})

@@ -244,11 +244,11 @@ function TaskToolCallBlock(props: {
 		toolCall().state === 'output-available'
 			? taskIdFromOutput(toolCall().output)
 			: undefined
-	const subagentType = () =>
-		String(
-			(toolCall().input as { subagent_type?: unknown })?.subagent_type ??
-				'unknown',
-		)
+	const subagentType = () => {
+		const value = (toolCall().input as { subagent_type?: unknown })
+			?.subagent_type
+		return typeof value === 'string' ? value : 'unknown'
+	}
 	const subagent = () => {
 		const id = taskId()
 		return id ? props.getSubagent?.(id) : undefined

@@ -316,14 +316,15 @@ export class NutstoreSettingTab extends PluginSettingTab {
 		}
 	}
 
-	async display() {
+	display() {
 		this.renderTabBar()
-		await this.renderActiveTabContent()
+		void this.renderActiveTabContent()
 	}
 
 	private async renderActiveTabContent() {
 		const isSyncTab = this.activeTab === 'sync'
-		this.warningContainerEl.style.display = isSyncTab ? '' : 'none'
+		if (isSyncTab) this.warningContainerEl.show()
+		else this.warningContainerEl.hide()
 		if (isSyncTab) {
 			this.warningContainerEl.empty()
 			new Setting(this.warningContainerEl)
@@ -333,7 +334,8 @@ export class NutstoreSettingTab extends PluginSettingTab {
 		for (const tab of SETTINGS_TABS) {
 			const isActive = tab.key === this.activeTab
 			for (const { containerEl } of this.tabSections[tab.key]) {
-				containerEl.style.display = isActive ? '' : 'none'
+				if (isActive) containerEl.show()
+				else containerEl.hide()
 			}
 			if (isActive) {
 				for (const { section } of this.tabSections[tab.key]) {
@@ -382,7 +384,8 @@ export class NutstoreSettingTab extends PluginSettingTab {
 		if (!this.isVisible()) {
 			return
 		}
-		await this.display()
+		this.renderTabBar()
+		await this.renderActiveTabContent()
 	}
 
 	async onClose() {

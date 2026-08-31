@@ -12,7 +12,7 @@ export default class SyncPolicyModal extends Modal {
 		this.policy = policy
 	}
 
-	open(): Promise<boolean> {
+	openAndWait(): Promise<boolean> {
 		return new Promise((resolve) => {
 			this.resolve = resolve
 			super.open()
@@ -33,8 +33,7 @@ export default class SyncPolicyModal extends Modal {
 
 		const desc = i18n.t(getSyncPolicyDescI18nKey(this.policy))
 
-		const preEl = contentEl.createEl('pre', { text: desc })
-		preEl.style.whiteSpace = 'pre-wrap'
+		contentEl.createEl('pre', { cls: ':uno: whitespace-pre-wrap', text: desc })
 
 		new Setting(contentEl)
 			.addButton((btn) =>

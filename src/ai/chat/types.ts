@@ -34,6 +34,14 @@ export type ChatMessageContentPart =
 interface ContextCheckpointData {
 	mode: 'summary' | 'reset'
 	summary?: string
+	/**
+	 * Last message represented by this summary. Newer messages remain in the
+	 * model context even when the summary was generated in the background.
+	 */
+	summarizedThroughMessageId?: string
+	/** Message ids retained outside the summary when the checkpoint was made. */
+	retainedMessageIds?: string[]
+	/** @deprecated Checkpoints created before snapshot compaction use this. */
 	preservedTurnCount?: number
 }
 

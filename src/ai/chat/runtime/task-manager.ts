@@ -14,9 +14,15 @@ import {
 } from '~/ai/chat/domain'
 import { extractErrorMessage } from '~/ai/chat/error-utils'
 import {
+	ContextCompressionFailedError,
 	runContextCompression,
 	shouldAutoCompressAgent,
 } from '~/ai/chat/runtime/context-compression'
+import {
+	ContextCompactionCoordinator,
+	createContextCompactionRevision,
+	type ContextCompactionRequest,
+} from '~/ai/chat/runtime/context-compaction-coordinator'
 import {
 	type AgentRunResult,
 	AgentRunner,
@@ -28,6 +34,7 @@ import type { ToolExecutor } from '~/ai/chat/runtime/tool-executor'
 import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { ChatAgentState } from '~/ai/chat/types'
 import type { AIModelConfig, AIProviderConfig } from '~/ai/core/types'
+import type { ToolCallRepeatState } from '~/ai/core/tool-call-repeat'
 import { BASH_TMP_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 import { writeBashTmpText } from '~/ai/tools/bash/tmp-fs'
 import { consumePendingInputs } from '~/ai/chat/messages/ui-message'
@@ -48,7 +55,14 @@ export class TaskManager {
 		private toolExecutor: ToolExecutor,
 		private messageFactory: import('~/ai/chat/messages/message-factory').MessageFactory,
 		private agentRunner: AgentRunner,
-	) {}
+		compactionCoordinator?: ContextCompactionCoordinator,
+	) {
+		this.compactionCoordinator =
+			compactionCoordinator ??
+			new ContextCompactionCoordinator(this.store, this.messageFactory)
+	}
+
+	private readonly compactionCoordinator: ContextCompactionCoordinator
 
 	setWakeAgentHandler(handler: (sessionId: string, agentId: string) => void) {
 		this.wakeAgent = handler
@@ -76,12 +90,19 @@ export class TaskManager {
 				provider,
 				selectedModel.modelId,
 			)
-			const result = await this.runBackgroundTaskLoop(
-				agent,
-				session,
-				provider,
-				model,
-			)
+			let result: AgentRunResult
+			let continuation: ToolCallRepeatState | undefined
+			do {
+				result = await this.runBackgroundTaskLoop(
+					agent,
+					session,
+					provider,
+					model,
+					continuation,
+				)
+				continuation =
+					result.status === 'suspended' ? result.continuation : undefined
+			} while (result.status === 'suspended')
 
 			if (result.status === 'cancelled') {
 				await this.finishAgentAsCancelled(session, agent)
@@ -91,10 +112,6 @@ export class TaskManager {
 				await this.finishAgentAsFailed(session, agent, result.error)
 				return
 			}
-			if (result.status === 'suspended') {
-				throw new Error('Background agent suspended without a resume condition')
-			}
-
 			if (agent.pendingInputs.length > 0) {
 				void this.store.persistSession(session)
 				void this.runAgent(session, agent)
@@ -122,6 +139,7 @@ export class TaskManager {
 		session: ChatSession,
 		provider: AIProviderConfig,
 		model: AIModelConfig,
+		continuation?: ToolCallRepeatState,
 	): Promise<AgentRunResult> {
 		consumePendingInputs(agent)
 
@@ -129,23 +147,64 @@ export class TaskManager {
 			agent.status === 'cancelled' ||
 			this.state.deletedSessionIds.has(session.id)
 		if (isCancelled()) return { status: 'cancelled' }
-
-		if (shouldAutoCompressAgent(agent, model)) {
-			await runContextCompression({
-				provider,
-				model,
-				session,
-				agent,
-				store: this.store,
-				messageFactory: this.messageFactory,
-				...(await this.agentRunner.resolveSummaryContext(
+		const compactionRequest = this.createCompactionRequest(
+			session,
+			agent,
+			provider,
+			model,
+			isCancelled,
+		)
+		this.compactionCoordinator.startIfNeeded(compactionRequest)
+		if (this.compactionCoordinator.hasJob(compactionRequest)) {
+			const compactionResult =
+				await this.compactionCoordinator.commitReady(compactionRequest)
+			if (compactionResult === 'committed') {
+				return this.runBackgroundTaskLoop(
 					agent,
 					session,
+					provider,
 					model,
-				)),
-				isCancelled: () =>
-					isCancelled() || this.state.deletedSessionIds.has(session.id),
-			})
+					continuation,
+				)
+			}
+			if (compactionResult === 'failed') {
+				throw new ContextCompressionFailedError(
+					i18n.t('chatbox.errors.contextCompressionFailed'),
+				)
+			}
+		}
+
+		if (
+			shouldAutoCompressAgent(agent, model, session.inferenceParams?.maxTokens)
+		) {
+			const compactionResult =
+				await this.compactionCoordinator.waitAndCommit(compactionRequest)
+			if (compactionResult === 'failed' || compactionResult === 'stale') {
+				throw new ContextCompressionFailedError(
+					i18n.t('chatbox.errors.contextCompressionFailed'),
+				)
+			}
+			if (compactionResult !== 'committed') {
+				const fallbackResult = await runContextCompression({
+					provider,
+					model,
+					session,
+					agent,
+					store: this.store,
+					messageFactory: this.messageFactory,
+					...(await this.agentRunner.resolveSummaryContext(
+						agent,
+						session,
+						model,
+					)),
+					isCancelled,
+				})
+				if (fallbackResult !== 'committed' && fallbackResult !== 'cancelled') {
+					throw new ContextCompressionFailedError(
+						i18n.t('chatbox.errors.contextCompressionFailed'),
+					)
+				}
+			}
 		}
 
 		return this.agentRunner.runTurn({
@@ -162,8 +221,47 @@ export class TaskManager {
 			},
 			isCancelled,
 			isDeleted: () => this.state.deletedSessionIds.has(session.id),
-			shouldSuspendAfterToolStep: isCancelled,
+			continuation,
+			shouldSuspendAfterToolStep: () =>
+				isCancelled() ||
+				this.compactionCoordinator.shouldSuspendAtSafePoint(compactionRequest),
 		})
+	}
+
+	private createCompactionRequest(
+		session: ChatSession,
+		agent: ChatAgentState,
+		provider: AIProviderConfig,
+		model: AIModelConfig,
+		isCancelled: () => boolean,
+	): ContextCompactionRequest {
+		const selectedModel = this.state.taskModelSelection.get(agent.id)
+		// Capture primitive ids at request creation. The selection object can be
+		// mutated in place when settings change; retaining the object reference
+		// would make the stale-job check observe the new values as if they were
+		// the original configuration.
+		const selectedProviderId = selectedModel?.providerId
+		const selectedModelId = selectedModel?.modelId
+		const revision = createContextCompactionRevision(session, provider, model)
+		return {
+			session,
+			agent,
+			provider,
+			model,
+			revision,
+			ensureProviderReady: () => this.ensureProviderReady(provider),
+			resolveSummaryContext: () =>
+				this.agentRunner.resolveSummaryContext(agent, session, model),
+			isCancelled,
+			isCurrent: () => {
+				const currentSelection = this.state.taskModelSelection.get(agent.id)
+				return (
+					currentSelection?.providerId === selectedProviderId &&
+					currentSelection?.modelId === selectedModelId &&
+					createContextCompactionRevision(session, provider, model) === revision
+				)
+			},
+		}
 	}
 
 	async dispatchTask(params: DispatchTaskParams): Promise<DispatchTaskResult> {
@@ -233,6 +331,7 @@ export class TaskManager {
 		agent: ChatAgentState,
 		resultPath: string,
 	) {
+		this.compactionCoordinator.cancel(session.id, agent.id)
 		const master = getMasterAgent(session)
 		const parent = findParentAgent(master, agent.id) ?? master
 		parent.pendingInputs.push({

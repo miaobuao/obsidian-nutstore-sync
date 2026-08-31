@@ -110,12 +110,12 @@ function adaptMessagesByInputModalities(
 			? {
 					...message,
 					content: adaptUserContentByModalities(
-						message.content as UserModelMessage['content'],
+						message.content,
 						inputModalities,
 					),
 				}
 			: message,
-	) as ModelMessage[]
+	)
 }
 
 function mergeAdjacentUserMessages(messages: ModelMessage[]): ModelMessage[] {

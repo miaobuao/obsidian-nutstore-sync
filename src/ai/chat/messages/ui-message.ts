@@ -300,6 +300,33 @@ export function selectContextTimeline(
 	if (checkpoint.data.mode === 'reset') {
 		return messages.slice(checkpointIndex + 1)
 	}
+	if (checkpoint.data.summarizedThroughMessageId) {
+		const priorContext = selectContextTimeline(
+			messages.slice(0, checkpointIndex),
+		)
+		const summarizedThroughIndex = priorContext.findIndex(
+			(message) => message.id === checkpoint.data.summarizedThroughMessageId,
+		)
+		if (summarizedThroughIndex < 0) {
+			const retainedIds = checkpoint.data.retainedMessageIds
+			const retainedMessages = retainedIds
+				? retainedIds.flatMap((id) => {
+						const retained = priorContext.find((message) => message.id === id)
+						return retained ? [retained] : []
+					})
+				: priorContext
+			return [
+				checkpointMessage,
+				...retainedMessages,
+				...messages.slice(checkpointIndex + 1),
+			]
+		}
+		return [
+			checkpointMessage,
+			...priorContext.slice(summarizedThroughIndex + 1),
+			...messages.slice(checkpointIndex + 1),
+		]
+	}
 	if (checkpoint.data.preservedTurnCount === undefined) {
 		return messages.slice(checkpointIndex)
 	}
@@ -381,8 +408,8 @@ export async function buildAgentMessages(
 	agent: ChatAgentState,
 	tools: ToolSet,
 	userContextManager: UserContextManager,
+	timeline = selectContextTimeline(agent.timeline),
 ): Promise<ModelMessage[]> {
-	const timeline = selectContextTimeline(agent.timeline)
 	const messages = await Promise.all(
 		timeline.map(async (item) => {
 			const converted = await uiMessagesToModelMessages([item], tools)

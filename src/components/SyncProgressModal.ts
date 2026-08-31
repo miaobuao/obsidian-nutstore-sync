@@ -6,7 +6,7 @@ import MkdirsRemoteTask from '~/sync/tasks/mkdirs-remote.task'
 import RemoveRemoteRecursivelyTask from '~/sync/tasks/remove-remote-recursively.task'
 import SkippedTask from '~/sync/tasks/skipped.task'
 import { BaseTask } from '~/sync/tasks/task.interface'
-import { addClassTokens } from '~/utils/class-tokens'
+import { addClassTokens, removeClassTokens } from '~/utils/class-tokens'
 import getTaskName from '~/utils/get-task-name'
 import { getSyncPreparationText } from '~/utils/sync-preparation-text'
 import NutstorePlugin from '..'
@@ -83,7 +83,7 @@ export default class SyncProgressModal extends Modal {
 			this.currentOperation.setText(text.operation)
 			this.currentFile.setText(preparation.traversal?.currentPath ?? '')
 			this.progressBar.addClass('nutstore-sync-progress-indeterminate')
-			this.progressBar.style.width = '40%'
+			addClassTokens(this.progressBar, ':uno: w-[40%]')
 			this.progressText.setText('')
 			this.progressStats.setText(text.detail)
 			this.filesSection.hide()
@@ -92,6 +92,7 @@ export default class SyncProgressModal extends Modal {
 
 		this.currentOperation.setText(i18n.t('sync.syncingFiles'))
 		this.progressBar.removeClass('nutstore-sync-progress-indeterminate')
+		removeClassTokens(this.progressBar, ':uno: w-[40%]')
 		this.filesSection.show()
 
 		const percent =
@@ -324,12 +325,10 @@ export default class SyncProgressModal extends Modal {
 				this.hideButtonComponent = button
 			})
 			.addButton((button) => {
-				button
-					.setButtonText(i18n.t('sync.stopButton'))
-					.setWarning()
-					.onClick(() => {
-						emitCancelSync()
-					})
+				button.buttonEl.addClass('mod-warning')
+				button.setButtonText(i18n.t('sync.stopButton')).onClick(() => {
+					emitCancelSync()
+				})
 				this.stopButtonComponent = button
 			})
 

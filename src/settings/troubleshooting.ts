@@ -134,8 +134,8 @@ export default class TroubleshootingSettings extends BaseSettings {
 	private async generateBlobGarbage() {
 		function createRandomBytes(size: number) {
 			const bytes = new Uint8Array(size)
-			if (globalThis.crypto?.getRandomValues) {
-				globalThis.crypto.getRandomValues(bytes)
+			if (window.crypto?.getRandomValues) {
+				window.crypto.getRandomValues(bytes)
 				return bytes
 			}
 			for (let i = 0; i < bytes.length; i++) {

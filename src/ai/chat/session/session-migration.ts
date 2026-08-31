@@ -17,7 +17,6 @@ import {
 	needsV0Migration,
 } from '~/ai/chat/messages/message-utils'
 import { normalizeReversibleToolOpRecord } from '~/ai/chat/messages/reversible-op-utils'
-import { copyModelMessage } from '~/ai/chat/messages/message-copy'
 import createId from '~/utils/create-id'
 
 export function normalizeLegacySession(
@@ -72,13 +71,11 @@ export function normalizeLegacySession(
 													>[number] => !!op,
 												)
 										: undefined,
-									message: copyModelMessage(
-										needsV0Migration(message.message)
-											? migrateMessageFromV0(message.message)
-											: needsDeprecatedImagePartMigration(message.message)
-												? migrateDeprecatedImageParts(message.message)
-												: message.message,
-									),
+									message: needsV0Migration(message.message)
+										? migrateMessageFromV0(message.message)
+										: needsDeprecatedImagePartMigration(message.message)
+											? migrateDeprecatedImageParts(message.message)
+											: message.message,
 									meta: message.meta
 										? {
 												...message.meta,

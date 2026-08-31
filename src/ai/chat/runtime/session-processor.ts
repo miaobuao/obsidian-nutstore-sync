@@ -14,9 +14,15 @@ import type { Selection } from '~/ai/chat/runtime/selection'
 import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { UserContextManager } from '~/ai/chat/context/user-context-manager'
 import {
+	ContextCompressionFailedError,
 	runContextCompression,
 	shouldAutoCompressAgent,
 } from '~/ai/chat/runtime/context-compression'
+import {
+	ContextCompactionCoordinator,
+	createContextCompactionRevision,
+	type ContextCompactionRequest,
+} from '~/ai/chat/runtime/context-compaction-coordinator'
 import { hasQueuedSubmission } from '~/ai/chat/runtime/pending-submission'
 import { isAbortError } from '~/ai/transport/abort'
 import i18n from '~/i18n'
@@ -39,7 +45,14 @@ export class SessionProcessor {
 		private messageFactory: MessageFactory,
 		private userContextManager: UserContextManager,
 		private agentRunner: AgentRunner,
-	) {}
+		compactionCoordinator?: ContextCompactionCoordinator,
+	) {
+		this.compactionCoordinator =
+			compactionCoordinator ??
+			new ContextCompactionCoordinator(this.store, this.messageFactory)
+	}
+
+	private readonly compactionCoordinator: ContextCompactionCoordinator
 
 	async start(sessionId: string) {
 		const runtime = this.runtimeStates.get(sessionId)
@@ -95,6 +108,23 @@ export class SessionProcessor {
 					session.updatedAt = Date.now()
 					await this.store.persistSession(session)
 				}
+				const compactionRequest = this.createCompactionRequest(
+					session,
+					agent,
+					provider,
+					model,
+				)
+				this.compactionCoordinator.startIfNeeded(compactionRequest)
+				if (this.compactionCoordinator.hasJob(compactionRequest)) {
+					const compactionResult =
+						await this.compactionCoordinator.commitReady(compactionRequest)
+					if (compactionResult === 'committed') continue
+					if (compactionResult === 'failed') {
+						throw new ContextCompressionFailedError(
+							i18n.t('chatbox.errors.contextCompressionFailed'),
+						)
+					}
+				}
 				const lastMessage = agent.timeline[agent.timeline.length - 1]
 
 				if (
@@ -109,8 +139,22 @@ export class SessionProcessor {
 					}
 				}
 
-				if (shouldAutoCompressAgent(agent, model)) {
-					if (!(await this.compressContext(session, agent, provider, model)))
+				if (
+					shouldAutoCompressAgent(
+						agent,
+						model,
+						session.inferenceParams?.maxTokens,
+					)
+				) {
+					if (
+						!(await this.completeRequiredCompaction(
+							compactionRequest,
+							session,
+							agent,
+							provider,
+							model,
+						))
+					)
 						return
 					continue
 				}
@@ -150,7 +194,9 @@ export class SessionProcessor {
 							shouldSuspendAfterToolStep: () =>
 								runtime.stopRequested ||
 								this.state.deletedSessionIds.has(session.id) ||
-								shouldAutoCompressAgent(agent, model),
+								this.compactionCoordinator.shouldSuspendAtSafePoint(
+									compactionRequest,
+								),
 						})
 					} finally {
 						this.runtimeStates.clearAbortController(session.id, abortController)
@@ -247,7 +293,7 @@ export class SessionProcessor {
 				session.id,
 			)
 			try {
-				await runContextCompression({
+				const result = await runContextCompression({
 					provider,
 					model,
 					session,
@@ -259,12 +305,18 @@ export class SessionProcessor {
 						session,
 						model,
 					)),
-					buildMessages: (a, tools) => this.buildMessagesForAgent(a, tools),
+					buildMessages: (messages, tools) =>
+						this.buildMessagesForAgent(agent, tools, messages),
 					isCancelled: () =>
 						this.runtimeStates.get(session.id).stopRequested ||
 						this.state.deletedSessionIds.has(session.id),
 					abortSignal: abortController.signal,
 				})
+				if (result !== 'committed' && result !== 'cancelled') {
+					throw new ContextCompressionFailedError(
+						i18n.t('chatbox.errors.contextCompressionFailed'),
+					)
+				}
 			} finally {
 				this.runtimeStates.clearAbortController(session.id, abortController)
 			}
@@ -282,6 +334,29 @@ export class SessionProcessor {
 		}
 		this.notify()
 		return true
+	}
+
+	private async completeRequiredCompaction(
+		request: ContextCompactionRequest,
+		session: ChatSession,
+		agent: ChatAgentState,
+		provider: AIProviderConfig,
+		model: AIModelConfig,
+	) {
+		const runtime = this.runtimeStates.get(session.id)
+		runtime.runState = 'compressing'
+		this.notify()
+		const result = await this.compactionCoordinator.waitAndCommit(request)
+		if (result === 'committed') {
+			this.notify()
+			return true
+		}
+		if (result === 'failed' || result === 'stale') {
+			throw new ContextCompressionFailedError(
+				i18n.t('chatbox.errors.contextCompressionFailed'),
+			)
+		}
+		return this.compressContext(session, agent, provider, model)
 	}
 
 	private async flushPendingMessages(session: ChatSession) {
@@ -326,7 +401,37 @@ export class SessionProcessor {
 	private async buildMessagesForAgent(
 		agent: ChatAgentState,
 		tools: ToolSet,
+		timeline?: ChatAgentState['timeline'],
 	): Promise<ModelMessage[]> {
-		return buildAgentMessages(agent, tools, this.userContextManager)
+		return buildAgentMessages(agent, tools, this.userContextManager, timeline)
+	}
+
+	private createCompactionRequest(
+		session: ChatSession,
+		agent: ChatAgentState,
+		provider: AIProviderConfig,
+		model: AIModelConfig,
+	): ContextCompactionRequest {
+		const revision = createContextCompactionRevision(session, provider, model)
+		return {
+			session,
+			agent,
+			provider,
+			model,
+			revision,
+			ensureProviderReady: () => this.ensureProviderReady(provider),
+			resolveSummaryContext: () =>
+				this.agentRunner.resolveSummaryContext(agent, session, model),
+			buildMessages: (messages, tools) =>
+				this.buildMessagesForAgent(agent, tools, messages),
+			isCancelled: () =>
+				this.runtimeStates.get(session.id).stopRequested === true ||
+				this.state.deletedSessionIds.has(session.id),
+			isCurrent: () =>
+				this.state.loadedSessions.get(session.id) === session &&
+				session.model?.providerId === provider.id &&
+				session.model?.modelId === model.id &&
+				createContextCompactionRevision(session, provider, model) === revision,
+		}
 	}
 }

@@ -6,7 +6,7 @@ type ComponentMessages = typeof en
 
 const messagesByLocale: Record<Locale, ComponentMessages> = {
 	en,
-	zh: zh as ComponentMessages,
+	zh: zh,
 }
 
 type ComponentDict = i18n.Flatten<ComponentMessages>
