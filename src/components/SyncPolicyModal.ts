@@ -26,10 +26,9 @@ export default class SyncPolicyModal extends Modal {
 	}
 
 	onOpen() {
+		this.setTitle(i18n.t('settings.syncPolicy.modal.title'))
+
 		const { contentEl } = this
-		contentEl.createEl('h2', {
-			text: i18n.t('settings.syncPolicy.modal.title'),
-		})
 
 		const desc = i18n.t(getSyncPolicyDescI18nKey(this.policy))
 

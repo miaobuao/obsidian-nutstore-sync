@@ -24,17 +24,18 @@ export default class SyncConfirmModal extends Modal {
 	}
 
 	async onOpen() {
+		this.setTitle(i18n.t('sync.confirmModal.title'))
+
 		const { contentEl } = this
 		addClassTokens(this.modalEl, ':uno: sync-confirm-modal')
 		addClassTokens(contentEl, ':uno: sync-confirm-modal__content')
 		const bodyEl = contentEl.createDiv({
-			cls: ':uno: min-h-0 flex-1 overflow-y-auto pr-1',
+			cls: ':uno: min-h-0 flex-1 overflow-y-auto',
 		})
 		const footerEl = contentEl.createDiv({
 			cls: ':uno: sync-confirm-modal__footer',
 		})
 
-		bodyEl.createEl('h2', { text: i18n.t('sync.confirmModal.title') })
 		const infoDiv = bodyEl.createDiv({ cls: ':uno: sync-info' })
 		infoDiv.createEl('p', {
 			text: i18n.t('sync.confirmModal.remoteDir', {
