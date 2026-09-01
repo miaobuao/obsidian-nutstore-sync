@@ -42,13 +42,7 @@ export default class SyncConfirmModal extends Modal {
 				dir: this.settings.remoteDir,
 			}),
 		})
-		infoDiv.createEl('p', {
-			text: i18n.t('sync.confirmModal.strategy', {
-				strategy: i18n.t(
-					`settings.conflictStrategy.${getConflictStrategyI18nKey(this.settings.conflictStrategy)}`,
-				),
-			}),
-		})
+		const conflictStrategyInfo = infoDiv.createEl('p')
 
 		bodyEl.createEl('h3', {
 			text: i18n.t('sync.confirmModal.policyTitle'),
@@ -63,8 +57,24 @@ export default class SyncConfirmModal extends Modal {
 		})
 		const updatePolicyDescription = () => {
 			policyDescription.setText(
-				i18n.t(getSyncPolicyDescI18nKey(this.selectedPolicy)),
+				[
+					i18n.t('sync.confirmModal.policyBasis'),
+					i18n.t(getSyncPolicyDescI18nKey(this.selectedPolicy)),
+					i18n.t('sync.confirmModal.policyRecordNote'),
+				].join('\n\n'),
 			)
+			if (this.selectedPolicy === SyncPolicy.TwoWay) {
+				conflictStrategyInfo.setText(
+					i18n.t('sync.confirmModal.strategy', {
+						strategy: i18n.t(
+							`settings.conflictStrategy.${getConflictStrategyI18nKey(this.settings.conflictStrategy)}`,
+						),
+					}),
+				)
+				conflictStrategyInfo.hidden = false
+			} else {
+				conflictStrategyInfo.hidden = true
+			}
 		}
 
 		for (const policy of Object.values(SyncPolicy)) {

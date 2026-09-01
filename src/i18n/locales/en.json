@@ -100,11 +100,11 @@
 			"receiveOnlyRevertLocalChanges": "Receive Only: Revert Local Changes",
 			"modal": {
 				"title": "Confirm sync policy",
-				"twoWayDesc": "Local and cloud sync in both directions — additions and deletions on either side are applied to the other.\nIf the same file is edited on both sides, conflicts are resolved by your configured strategy.",
-				"sendOnlyDesc": "Send all local changes (additions, modifications, deletions) to the cloud.\n\n• Local new/modified files → uploaded to the cloud\n• Files deleted locally with no cloud changes → removed from the cloud\n• Cloud-only new or modified files → preserved\n• Deleted locally while the cloud also has changes → skipped (to protect cloud edits)\n\nBest for: local as source of truth, cloud as secondary.",
-				"sendOnlyOverrideChangesDesc": "Overwrite the cloud with the full current state of your local vault.\nFiles on the cloud that do not exist locally will be deleted.\nUse when you want the cloud to match this device exactly.",
-				"receiveOnlyDesc": "Receive all cloud changes (additions, modifications, deletions) into your local vault.\n\n• Cloud new/modified files → downloaded to local\n• Files deleted on the cloud with no local changes → removed from local\n• Local-only new or modified files → preserved\n• Deleted on the cloud while local also has changes → skipped (to protect local edits)\n\nBest for: read-only devices, or cloud as source of truth.",
-				"receiveOnlyRevertLocalChangesDesc": "Revert your local vault to the full current state of the cloud.\nFiles that exist locally but not on the cloud will be deleted.\nBest for read-only devices or when the cloud must be the source of truth.",
+				"twoWayDesc": "Sync rules: two-way sync\n\n• Local-only change → update the cloud\n• Cloud-only change → update the local vault\n• Both local and cloud changed → use the configured conflict strategy\n• One side deleted, the other unchanged → propagate the deletion\n• One side deleted, the other changed → keep the changed copy and restore the deleted side",
+				"sendOnlyDesc": "Sync rules: local → cloud (protect cloud-side changes)\n\n• Local new or modified file, unless the cloud copy was independently deleted → upload to the cloud\n• Cloud-only new or modified file → preserve it; do not download it\n• Both local and cloud changed → skip and preserve the cloud copy\n• Local deleted, cloud unchanged → delete the cloud copy\n• Local deleted, cloud also changed → skip and preserve the cloud copy\n• A file with sync history that was deleted in the cloud → preserve the cloud deletion; it is not restored unless you choose “Send Only: Override Changes”\n\nBest for: local as source of truth while protecting independent cloud changes.",
+				"sendOnlyOverrideChangesDesc": "Sync rules: cloud ← current local state\n\n• Local files → create or overwrite the cloud copy\n• Cloud exists, local does not → delete the cloud copy\n• Same path differs on both sides → use the local copy\n\n⚠️ May delete cloud-only content.\nUse when you need the cloud to match this device exactly.",
+				"receiveOnlyDesc": "Sync rules: cloud → local (protect local-side changes)\n\n• Cloud new or modified file, unless the local copy has a deletion to protect → download to the local vault\n• Local-only new or modified file → preserve it; do not upload it\n• Both local and cloud changed → skip and preserve the local copy\n• Cloud deleted, local unchanged → delete the local copy\n• Cloud deleted, local also changed → skip and preserve the local copy\n• A file with sync history that was deleted locally → preserve the local deletion; it is not restored unless you choose “Receive Only: Revert Local Changes”\n\nBest for: cloud as source of truth while protecting independent local changes.",
+				"receiveOnlyRevertLocalChangesDesc": "Sync rules: local ← current cloud state\n\n• Cloud files → create or overwrite the local copy\n• Local exists, cloud does not → delete the local copy\n• Same path differs on both sides → use the cloud copy\n\n⚠️ May delete local-only content.\nUse when you need the local vault to match the cloud exactly.",
 				"confirm": "Confirm",
 				"cancel": "Cancel"
 			}
@@ -567,6 +567,8 @@
 		"confirmModal": {
 			"title": "Sync confirmation",
 			"policyTitle": "Sync policy for this sync",
+			"policyBasis": "Basis for the decision: current local and cloud states are compared with the last sync record.\nWithout a sync record, Loose mode treats same-path, same-type files with the same size as equal; Strict mode follows the selected policy.",
+			"policyRecordNote": "Preserved or skipped items are not marked as synchronized; the next sync will evaluate them again against the sync record.",
 			"message": "⚠️ Please note:\n\n1. Sync operation may modify or delete local files\n2. We recommend backing up important files before syncing\n3. In case of file conflicts, manual resolution may be required\n4. Initial sync will process all files and may take longer, please be patient\n\nAre you sure you want to start syncing?",
 			"confirm": "Confirm sync",
 			"cancel": "Cancel",
