@@ -246,11 +246,7 @@ export default class SyncProgressModal extends Modal {
 			state === 'error' ||
 			state === 'cancelled'
 
-		if (isTerminal) {
-			addClassTokens(this.stopButtonComponent.buttonEl, ':uno: hidden')
-		} else {
-			removeClassTokens(this.stopButtonComponent.buttonEl, ':uno: hidden')
-		}
+		this.stopButtonComponent.buttonEl.toggleClass('hidden', isTerminal)
 		this.hideButtonComponent.setButtonText(
 			i18n.t(isTerminal ? 'sync.closeButton' : 'sync.hideButton'),
 		)

@@ -321,6 +321,7 @@ export default defineConfig([
 		},
 		extends: ['markdown/recommended'],
 		rules: {
+			'markdown/fenced-code-language': 'off',
 			'markdown/no-missing-label-refs': 'off',
 		},
 	},

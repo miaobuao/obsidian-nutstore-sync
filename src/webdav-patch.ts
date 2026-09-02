@@ -6,7 +6,7 @@
 import { getReasonPhrase } from 'http-status-codes/build/cjs/utils-functions'
 import { Platform, RequestUrlParam } from 'obsidian'
 import { getPatcher, RequestOptionsWithState } from 'webdav'
-import { VALID_REQURL } from '~/consts'
+import { VALID_REQURL } from '~/obsidian-capabilities'
 import requestUrl from './utils/request-url'
 
 /**

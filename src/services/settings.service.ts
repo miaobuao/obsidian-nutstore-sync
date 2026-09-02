@@ -19,8 +19,8 @@ import { ConflictStrategy } from '~/sync/tasks/conflict-resolve.task'
 import { DEFAULT_MOBILE_APP_DOWNLOAD_FILE_CHUNK_SIZE } from '~/utils/download-chunk-size'
 import { migrateLegacyFilterRules } from '~/utils/glob-match'
 import logger from '~/utils/logger'
-import { BaseService } from './service.interface'
 import type NutstorePlugin from '..'
+import { BaseService } from './service.interface'
 
 export default class SettingsService extends BaseService {
 	private reloadSettingsPromise: Promise<void> | null = null
@@ -143,7 +143,7 @@ export default class SettingsService extends BaseService {
 				JSON.parse(raw),
 			) as NutstoreLocalSettings
 			this.plugin.localSettings.ai ??= {}
-		} catch (_e) {
+		} catch {
 			this.plugin.localSettings = { ...DEFAULT_LOCAL_SETTINGS }
 		}
 	}

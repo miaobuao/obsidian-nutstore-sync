@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { App } from 'obsidian'
 import { formatMcpToolResult } from './result-artifact'
 import { BASH_TMP_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 
@@ -26,15 +25,18 @@ describe('formatMcpToolResult', () => {
 	})
 
 	it('returns errors inline without writing temporary files', async () => {
-		const output = await formatMcpToolResult({} as App, {
-			sessionId: 'session-neutral',
-			serverName: 'neutral-server',
-			toolName: 'example-tool',
-			result: {
-				isError: true,
-				content: [{ type: 'text', text: 'Example error / 示例错误' }],
+		const output = await formatMcpToolResult(
+			{} as Parameters<typeof formatMcpToolResult>[0],
+			{
+				sessionId: 'session-neutral',
+				serverName: 'neutral-server',
+				toolName: 'example-tool',
+				result: {
+					isError: true,
+					content: [{ type: 'text', text: 'Example error / 示例错误' }],
+				},
 			},
-		})
+		)
 
 		expect(output).toContain('MCP tool returned an error')
 		expect(output).toContain('Example error / 示例错误')
@@ -43,30 +45,36 @@ describe('formatMcpToolResult', () => {
 	})
 
 	it('returns short bilingual text inline', async () => {
-		const output = await formatMcpToolResult({} as App, {
-			sessionId: 'session-neutral',
-			serverName: 'neutral-server',
-			toolName: 'example-tool',
-			result: {
-				content: [{ type: 'text', text: 'Example result / 示例结果' }],
+		const output = await formatMcpToolResult(
+			{} as Parameters<typeof formatMcpToolResult>[0],
+			{
+				sessionId: 'session-neutral',
+				serverName: 'neutral-server',
+				toolName: 'example-tool',
+				result: {
+					content: [{ type: 'text', text: 'Example result / 示例结果' }],
+				},
 			},
-		})
+		)
 
 		expect(output).toBe('Example result / 示例结果')
 		expect(writes.text).not.toHaveBeenCalled()
 	})
 
 	it('writes long text to a Markdown manifest', async () => {
-		const output = await formatMcpToolResult({} as App, {
-			sessionId: 'session-neutral',
-			serverName: 'neutral-server',
-			toolName: 'example-tool',
-			result: {
-				content: [
-					{ type: 'text', text: `Example / 示例 ${'x'.repeat(21 * 1024)}` },
-				],
+		const output = await formatMcpToolResult(
+			{} as Parameters<typeof formatMcpToolResult>[0],
+			{
+				sessionId: 'session-neutral',
+				serverName: 'neutral-server',
+				toolName: 'example-tool',
+				result: {
+					content: [
+						{ type: 'text', text: `Example / 示例 ${'x'.repeat(21 * 1024)}` },
+					],
+				},
 			},
-		})
+		)
 
 		expect(output).toContain(
 			`${BASH_TMP_MOUNT_POINT}/session-neutral/mcp/mcp-neutral-result/result.md`,
@@ -80,33 +88,36 @@ describe('formatMcpToolResult', () => {
 	})
 
 	it('writes media and resources to a Markdown manifest', async () => {
-		const output = await formatMcpToolResult({} as App, {
-			sessionId: 'session-neutral',
-			serverName: 'neutral-server',
-			toolName: 'example-tool',
-			result: {
-				structuredContent: { status: '示例 / example' },
-				content: [
-					{ type: 'text', text: 'Example result / 示例结果' },
-					{ type: 'image', data: 'aW1hZ2U=', mimeType: 'image/png' },
-					{ type: 'audio', data: 'YXVkaW8=', mimeType: 'audio/wav' },
-					{
-						type: 'resource',
-						resource: {
-							uri: 'file:///example.txt',
-							mimeType: 'text/plain',
-							text: 'Resource example / 资源示例',
+		const output = await formatMcpToolResult(
+			{} as Parameters<typeof formatMcpToolResult>[0],
+			{
+				sessionId: 'session-neutral',
+				serverName: 'neutral-server',
+				toolName: 'example-tool',
+				result: {
+					structuredContent: { status: '示例 / example' },
+					content: [
+						{ type: 'text', text: 'Example result / 示例结果' },
+						{ type: 'image', data: 'aW1hZ2U=', mimeType: 'image/png' },
+						{ type: 'audio', data: 'YXVkaW8=', mimeType: 'audio/wav' },
+						{
+							type: 'resource',
+							resource: {
+								uri: 'file:///example.txt',
+								mimeType: 'text/plain',
+								text: 'Resource example / 资源示例',
+							},
 						},
-					},
-					{
-						type: 'resource_link',
-						uri: 'https://example.com/example.pdf',
-						name: 'example.pdf',
-						mimeType: 'application/pdf',
-					},
-				],
+						{
+							type: 'resource_link',
+							uri: 'https://example.com/example.pdf',
+							name: 'example.pdf',
+							mimeType: 'application/pdf',
+						},
+					],
+				},
 			},
-		})
+		)
 
 		expect(output).toContain(
 			`${BASH_TMP_MOUNT_POINT}/session-neutral/mcp/mcp-neutral-result/result.md`,

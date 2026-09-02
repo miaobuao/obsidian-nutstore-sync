@@ -23,7 +23,9 @@ function toLocale(language: string): Locale {
 }
 
 const dict: ComponentDict = i18n.flatten(
-	messagesByLocale[toLocale(navigator.language)],
+	messagesByLocale[
+		toLocale(typeof navigator === 'undefined' ? 'en' : navigator.language)
+	],
 )
 
 export const t = i18n.translator(() => dict, i18n.resolveTemplate)

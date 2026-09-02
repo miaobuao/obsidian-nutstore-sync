@@ -1,7 +1,7 @@
 import type { ReversibleToolOp } from '~/ai/chat/types'
-import { normalizePath } from 'obsidian'
 import { LEGACY_VAULT_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 import { hasCompressedFileContent } from '~/ai/chat/messages/reversible-content'
+import { normalizeVaultPath } from '~/utils/normalize-vault-path'
 
 function copyFileSnapshot(
 	snapshot: Extract<ReversibleToolOp, { operation: 'update' }>['before'],
@@ -81,15 +81,15 @@ export function normalizeReversibleVaultPath(path: string) {
 		trimmed === LEGACY_VAULT_MOUNT_POINT ||
 		trimmed.startsWith(`${LEGACY_VAULT_MOUNT_POINT}/`)
 	) {
-		const normalized = normalizePath(
+		const normalized = normalizeVaultPath(
 			trimmed.slice(LEGACY_VAULT_MOUNT_POINT.length + 1),
 		)
 		return normalized === '.' ? '' : normalized
 	}
 	if (trimmed.startsWith('/')) {
-		return `/${normalizePath(trimmed).replace(/^\/+/, '')}`
+		return `/${normalizeVaultPath(trimmed).replace(/^\/+/, '')}`
 	}
-	const normalized = normalizePath(trimmed.replace(/^\/+/, ''))
+	const normalized = normalizeVaultPath(trimmed.replace(/^\/+/, ''))
 	return normalized === '.' ? '' : normalized
 }
 

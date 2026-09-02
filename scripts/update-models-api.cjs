@@ -8,30 +8,22 @@ const SOURCE_URL = 'https://models.dev/api.json'
 const TARGET_PATH = path.resolve(__dirname, '..', 'src/ai/models-api.json')
 
 const INCLUDED_PROVIDER_IDS = new Set([
-	'302ai',
 	'alibaba-cn',
 	'alibaba',
-	'amazon-bedrock',
 	'anthropic',
 	'azure',
-	'cerebras',
 	'cloudflare-workers-ai',
 	'deepseek',
-	'fireworks-ai',
-	'github-models',
 	'google',
 	'groq',
 	'huggingface',
-	'lmstudio',
 	'minimax-cn',
 	'minimax',
 	'moonshotai-cn',
 	'moonshotai',
 	'nvidia',
-	'ollama-cloud',
 	'openai',
 	'openrouter',
-	'scaleway',
 	'siliconflow-cn',
 	'siliconflow',
 	'togetherai',
@@ -158,7 +150,7 @@ function filterCatalog(catalog) {
 	)
 }
 
-async function main() {
+async function main({ checkOnly = false } = {}) {
 	const remoteCatalog = await fetchCatalog()
 	const parsed = aiProviderDefinitionsSchema.safeParse(remoteCatalog)
 
@@ -167,6 +159,11 @@ async function main() {
 			.map((issue) => `${formatIssuePath(issue.path)}: ${issue.message}`)
 			.join('; ')
 		throw new Error(`Zod validation failed: ${details}`)
+	}
+
+	if (checkOnly) {
+		console.log('Validated models.dev catalog schema')
+		return
 	}
 
 	const filteredCatalog = filterCatalog(parsed.data)
@@ -178,10 +175,13 @@ async function main() {
 }
 
 if (require.main === module) {
-	main().catch((error) => {
+	main({ checkOnly: process.argv.includes('--check') }).catch((error) => {
 		console.error(error instanceof Error ? error.message : String(error))
 		process.exitCode = 1
 	})
 }
 
-module.exports = { filterCatalog, INCLUDED_PROVIDER_IDS }
+module.exports = {
+	filterCatalog,
+	INCLUDED_PROVIDER_IDS,
+}
