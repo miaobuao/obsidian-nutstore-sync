@@ -1,4 +1,5 @@
 import { Notice } from 'obsidian'
+import { CHATBOX_AI_ICON_ID } from '~/assets/icons/obsidian-nutstore-ai-icon'
 import { addClassTokens, removeClassTokens } from '~/utils/class-tokens'
 import logger from '~/utils/logger'
 import { emitCancelSync } from '../events'
@@ -71,9 +72,13 @@ export class SyncRibbonManager extends BaseService {
 		)
 		addClassTokens(this.stopRibbonEl, ':uno: hidden')
 
-		this.plugin.addRibbonIcon('bot', i18n.t('chatbox.openCommand'), () => {
-			void this.openChatbox()
-		})
+		this.plugin.addRibbonIcon(
+			CHATBOX_AI_ICON_ID,
+			i18n.t('chatbox.openCommand'),
+			() => {
+				void this.openChatbox()
+			},
+		)
 	}
 
 	private async openChatbox() {

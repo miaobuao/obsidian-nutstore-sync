@@ -10,6 +10,7 @@ import {
 	WorkspaceLeaf,
 } from 'obsidian'
 import type { EditorView } from '@codemirror/view'
+import { CHATBOX_AI_ICON_ID } from '~/assets/icons/obsidian-nutstore-ai-icon'
 import { resolveResourceDataUrl } from '~/ai/tools/resource-data-url'
 import {
 	createImageContextItem,
@@ -195,7 +196,7 @@ export default class ChatboxView extends ItemView {
 	}
 
 	getIcon() {
-		return 'bot'
+		return CHATBOX_AI_ICON_ID
 	}
 
 	private resolveDroppedAbstractFile(path: string): TAbstractFile | null {

@@ -1,4 +1,5 @@
 import { Notice } from 'obsidian'
+import { CHATBOX_AI_ICON_ID } from '~/assets/icons/obsidian-nutstore-ai-icon'
 import SyncConfirmModal from '~/components/SyncConfirmModal'
 import { emitCancelSync } from '~/events'
 import i18n from '~/i18n'
@@ -67,7 +68,7 @@ export default class CommandService extends BaseService {
 		this.plugin.addCommand({
 			id: 'open-chatbox',
 			name: i18n.t('chatbox.openCommand'),
-			icon: 'bot',
+			icon: CHATBOX_AI_ICON_ID,
 			callback: () => {
 				void this.openChatbox()
 			},
