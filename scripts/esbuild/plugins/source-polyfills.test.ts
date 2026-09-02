@@ -7,6 +7,7 @@ describe('source polyfill detection', () => {
 			`const neutral = 'Hello 你好 🌿';
 			Promise.resolve(neutral);
 			Promise.withResolvers();
+			queueMicrotask(() => neutral);
 			[neutral].toSorted();`,
 		)
 

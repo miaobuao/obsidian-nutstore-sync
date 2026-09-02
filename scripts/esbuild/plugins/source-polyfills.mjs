@@ -34,6 +34,9 @@ export async function detectCoreJsPolyfills(source) {
 			mode: 'usage',
 			coreJs: coreJsCompatVersion,
 			targets: OBSIDIAN_RUNTIME_TARGETS,
+			// src/polyfill.ts owns this compatibility boundary so core-js does not
+			// bundle its legacy dynamic-script scheduler fallback.
+			exclude: ['web.queue-microtask'],
 		},
 		module: { type: 'es6' },
 	})

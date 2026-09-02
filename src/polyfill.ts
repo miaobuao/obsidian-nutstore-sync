@@ -4,6 +4,7 @@ type ProcessLike = typeof globalThis.process & {
 
 type RuntimeGlobal = typeof globalThis & {
 	process?: ProcessLike
+	queueMicrotask?: (callback: VoidFunction) => void
 }
 
 // Obsidian runs in a browser window, while unit tests run in a plain Node
@@ -28,5 +29,22 @@ if (!processLike.env || typeof processLike.env !== 'object') {
 }
 
 runtimeGlobal.process = processLike
+
+if (typeof runtimeGlobal.queueMicrotask !== 'function') {
+	const resolvedPromise = Promise.resolve()
+	runtimeGlobal.queueMicrotask = (callback: VoidFunction): void => {
+		if (typeof callback !== 'function') {
+			throw new TypeError('queueMicrotask callback must be a function')
+		}
+
+		void resolvedPromise.then(callback).catch((error: unknown) => {
+			const reportedError =
+				error instanceof Error ? error : new Error(String(error))
+			runtimeGlobal.setTimeout(() => {
+				throw reportedError
+			}, 0)
+		})
+	}
+}
 
 export {}
