@@ -8,6 +8,7 @@ import {
 	generateContextCompression,
 	shouldAutoCompressAgent,
 	shouldStartContextCompaction,
+	type SummaryToolsContext,
 	type ContextCompressionPlan,
 } from '~/ai/chat/runtime/context-compression'
 import type { SessionStore } from '~/ai/chat/session/session-store'
@@ -21,7 +22,11 @@ export interface ContextCompactionRequest {
 	provider: AIProviderConfig
 	model: AIModelConfig
 	ensureProviderReady?: () => Promise<void>
-	resolveSummaryContext: () => Promise<{ system?: string; tools?: ToolSet }>
+	resolveSummaryContext: () => Promise<{
+		system?: string
+		tools?: ToolSet
+		toolsContext?: SummaryToolsContext
+	}>
 	buildMessages?: (
 		messages: AppUIMessage[],
 		tools: ToolSet,

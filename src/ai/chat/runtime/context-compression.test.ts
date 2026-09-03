@@ -7,6 +7,7 @@ import {
 } from '~/ai/chat/messages/ui-message'
 import {
 	findRecentTurnStartIndex,
+	resolveSummaryContext,
 	resolveContextPressure,
 	runContextCompression,
 	shouldAutoCompressAgent,
@@ -16,6 +17,7 @@ import { COMPRESSION_PROMPT } from '~/ai/chat/prompts'
 import type { AppUIMessage } from '~/ai/chat/types'
 
 const generateText = vi.hoisted(() => vi.fn())
+const buildAgentSystemPrompt = vi.hoisted(() => vi.fn())
 const NEUTRAL_TEXT = 'Hello 你好 🌿'
 
 vi.mock('ai', async (importOriginal) => ({
@@ -29,6 +31,10 @@ vi.mock('~/ai/core/runtime', () => ({
 		messages: unknown,
 	) => messages,
 	resolveLanguageModel: () => ({ model: {} }),
+}))
+vi.mock('~/ai/chat/prompts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('~/ai/chat/prompts')>()),
+	buildAgentSystemPrompt,
 }))
 
 function message(
@@ -48,6 +54,8 @@ describe('context compression', () => {
 	beforeEach(() => {
 		generateText.mockReset()
 		generateText.mockResolvedValue({ text: 'compressed context' })
+		buildAgentSystemPrompt.mockReset()
+		buildAgentSystemPrompt.mockResolvedValue('SYSTEM')
 	})
 
 	it('does not commit a checkpoint when the summarizer returns no text', async () => {
@@ -334,6 +342,87 @@ describe('context compression', () => {
 		expect(generateText).toHaveBeenCalledWith(
 			expect.objectContaining({ system: 'SYSTEM', tools }),
 		)
+	})
+
+	it('forwards tool context while materializing dynamic tool definitions', async () => {
+		const master = createEmptyMasterAgent(1)
+		master.timeline = [message('u1', 'user', 1)]
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const store = {
+			upsertSessionIndexItem: vi.fn(),
+			persistSession: vi.fn(async () => undefined),
+			persistMetaAndIndex: vi.fn(async () => undefined),
+		}
+		const factory = new MessageFactory({} as never, {} as never, vi.fn())
+		const toolsContext = {
+			task: {
+				session,
+				agentId: master.id,
+				dispatchTask: vi.fn(),
+				dispatchableDefinitions: [],
+			},
+		}
+
+		await runContextCompression({
+			provider: {} as never,
+			model: { id: 'model' } as never,
+			session,
+			agent: master,
+			store: store as never,
+			messageFactory: factory,
+			tools: { task: {} } as never,
+			toolsContext,
+		})
+
+		expect(generateText).toHaveBeenCalledWith(
+			expect.objectContaining({ toolsContext }),
+		)
+	})
+
+	it('builds task tool context for the summary request', async () => {
+		const master = createEmptyMasterAgent(1)
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const definition = { id: 'master' } as never
+		const dispatchTask = vi.fn()
+		const dispatchableDefinitions: [] = []
+		const result = await resolveSummaryContext(
+			master,
+			session,
+			{ id: 'model' } as never,
+			{
+				getAgentDefinition: vi.fn(() => definition),
+				createTools: vi.fn(async () => ({ task: {} })),
+				createStableToolsContext: vi.fn(() => ({
+					dispatchTask,
+					dispatchableDefinitions,
+				})),
+			} as never,
+			{} as never,
+		)
+
+		expect(result).toMatchObject({
+			system: 'SYSTEM',
+			toolsContext: {
+				task: {
+					session,
+					agentId: master.id,
+					dispatchTask,
+					dispatchableDefinitions,
+				},
+			},
+		})
 	})
 
 	it('uses the independent summary output budget', async () => {

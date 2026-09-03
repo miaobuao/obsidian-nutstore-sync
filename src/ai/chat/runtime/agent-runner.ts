@@ -19,7 +19,10 @@ import {
 import { buildAgentSystemPrompt } from '~/ai/chat/prompts'
 import { AgentEventProjector } from '~/ai/chat/runtime/agent-event-projector'
 import type { SessionRuntimeState } from '~/ai/chat/runtime/chat-state'
-import { resolveSummaryContext } from '~/ai/chat/runtime/context-compression'
+import {
+	resolveSummaryContext,
+	type SummaryToolsContext,
+} from '~/ai/chat/runtime/context-compression'
 import type { ToolExecutor } from '~/ai/chat/runtime/tool-executor'
 import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { ChatAgentState, ChatMessageMeta } from '~/ai/chat/types'
@@ -313,7 +316,11 @@ export class AgentRunner {
 		agent: ChatAgentState,
 		session: ChatSession,
 		model: AIModelConfig,
-	): Promise<{ system?: string; tools?: ToolSet }> {
+	): Promise<{
+		system?: string
+		tools?: ToolSet
+		toolsContext?: SummaryToolsContext
+	}> {
 		return resolveSummaryContext(
 			agent,
 			session,

@@ -21,6 +21,9 @@ import {
 	resolveSummaryOutputTokenBudget,
 } from '~/ai/core/inference'
 import type { AIModelConfig, AIProviderConfig } from '~/ai/core/types'
+import type { DispatchTaskFn } from '~/ai/tools/task'
+import { taskTool } from '~/ai/tools/task'
+import type { AgentDefinition } from '~/ai/chat/agents/registry'
 
 const FALLBACK_CONTEXT_WINDOW = 256 * 1024
 const MIN_CONTEXT_SAFETY_MARGIN = 4096
@@ -32,6 +35,16 @@ const MIN_RECENT_TURNS_TOKEN_BUDGET = 2048
 const MAX_RECENT_TURNS_TOKEN_BUDGET = 4096 * 4
 const MAX_RECENT_TURNS = 8
 const ESTIMATED_UTF8_BYTES_PER_TOKEN = 3
+
+export type SummaryToolSet = ToolSet & { task?: typeof taskTool }
+export type SummaryToolsContext = {
+	task?: {
+		session: ChatSession
+		agentId: string
+		dispatchTask?: DispatchTaskFn
+		dispatchableDefinitions?: readonly AgentDefinition[]
+	}
+}
 
 export type ContextPressure = 'normal' | 'soft' | 'hard'
 
@@ -67,7 +80,9 @@ interface GenerateContextCompressionOptions {
 	/** System prompt identical to the main loop's, so the summarizer replays the warm prefix. */
 	system?: string
 	/** Per-agent tools identical to the main loop's, for the same prefix reason. */
-	tools?: ToolSet
+	tools?: SummaryToolSet
+	/** Context needed while AI SDK materializes dynamic tool definitions. */
+	toolsContext?: SummaryToolsContext
 	/** Builds the source transcript exactly like the agent loop (user-context aware). */
 	buildMessages?: (
 		messages: AppUIMessage[],
@@ -292,14 +307,37 @@ export async function resolveSummaryContext(
 	model: AIModelConfig,
 	toolExecutor: ToolExecutor,
 	app: App,
-): Promise<{ system?: string; tools?: ToolSet }> {
+): Promise<{
+	system?: string
+	tools?: SummaryToolSet
+	toolsContext?: SummaryToolsContext
+}> {
 	try {
 		const definition = toolExecutor.getAgentDefinition(agent.type)
 		const [system, tools] = await Promise.all([
 			buildAgentSystemPrompt(app, agent.type, session.systemPrompt),
 			toolExecutor.createTools(0, definition, session, model),
 		])
-		return { system, tools }
+		const stableContext = toolExecutor.createStableToolsContext(
+			session,
+			definition,
+		)
+		return {
+			system,
+			tools,
+			...(tools.task
+				? {
+						toolsContext: {
+							task: {
+								session,
+								agentId: agent.id,
+								dispatchTask: stableContext.dispatchTask,
+								dispatchableDefinitions: stableContext.dispatchableDefinitions,
+							},
+						},
+					}
+				: {}),
+		}
 	} catch {
 		return {}
 	}
@@ -323,10 +361,13 @@ export async function generateContextCompression(
 		messageSequence,
 	)
 	// This instruction belongs only to the summarizer branch, never the live timeline.
-	const response = await generateText({
+	const response = await generateText<SummaryToolSet>({
 		model: languageModel,
 		...(options.system === undefined ? {} : { system: options.system }),
 		...(options.tools === undefined ? {} : { tools: options.tools }),
+		...(options.toolsContext === undefined
+			? {}
+			: { toolsContext: options.toolsContext as never }),
 		messages: [
 			...preparedMessages,
 			{
