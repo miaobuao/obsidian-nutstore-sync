@@ -162,6 +162,37 @@ export default class NutstoreSyncIntegrationHarness extends Plugin {
 		})
 
 		await run(
+			'preserves UTF-8 when Bash writes a Vault file through a heredoc',
+			async () => {
+				const { execVaultBash } = await import('~/ai/tools/bash/runtime')
+				const path = '.agents/nutstore-sync/e2e/中性 heredoc 🌱.md'
+				const content = [
+					'---',
+					'tags:',
+					'  - 中性标签 🌱',
+					'---',
+					'',
+					'# 中性标题',
+					'',
+					'正文：中文、English、Emoji 🛠️',
+				].join('\n')
+				const result = await execVaultBash(
+					this.app,
+					[`cat > "/${path}" << 'ENDOFFILE'`, content, 'ENDOFFILE'].join('\n'),
+				)
+				assert(result.exitCode === 0, 'Bash heredoc write failed')
+				const bytes = await this.app.vault.adapter.readBinary(path)
+				const actual = new TextDecoder().decode(bytes)
+				assert(
+					actual === `${content}\n`,
+					'Bash heredoc write did not preserve UTF-8 content',
+				)
+				// The MSB guest is disposable; keep the file available for failure
+				// diagnostics instead of racing Obsidian's external-file watcher.
+			},
+		)
+
+		await run(
 			'resolves resource data URLs through the real DataAdapter',
 			async () => {
 				const { resolveResourceDataUrl } =

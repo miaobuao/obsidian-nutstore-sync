@@ -12,6 +12,7 @@ import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import esbuild from 'esbuild'
+import { rawTextPlugin } from './esbuild/plugins/raw-text.mjs'
 import {
 	createObsidianSandbox,
 	startObsidian,
@@ -149,7 +150,11 @@ async function buildHarness(outfile) {
 		platform: 'browser',
 		target: 'es2018',
 		external: ['obsidian'],
-		alias: { '~': join(ROOT, 'src') },
+		alias: {
+			'~': join(ROOT, 'src'),
+			'node:zlib': join(ROOT, 'src/shims/node-zlib.ts'),
+		},
+		plugins: [rawTextPlugin],
 	})
 }
 
