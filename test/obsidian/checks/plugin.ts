@@ -1,8 +1,12 @@
 import type { App } from 'obsidian'
+import { CHATBOX_VIEW_TYPE } from '~/views/chatbox.view'
 import { assert } from './assert'
 
 interface ProductionPlugin {
 	isSyncing: boolean
+	commandService: {
+		openChatbox(): Promise<void>
+	}
 	progressService: {
 		syncProgress: { total: number; completed: unknown[]; current: unknown }
 		preparationProgress: unknown
@@ -46,6 +50,44 @@ export async function reloadsProductionPlugin(app: App) {
 		plugins.plugins['nutstore-sync'],
 		'Production plugin did not reload through the real lifecycle',
 	)
+}
+
+export async function detachesChatboxWhenProductionPluginIsDisabled(app: App) {
+	const plugins = (
+		app as unknown as {
+			plugins: {
+				disablePlugin(id: string): Promise<void>
+				enablePlugin(id: string): Promise<void>
+			}
+		}
+	).plugins
+	const plugin = getProductionPlugin(app)
+	await plugin.commandService.openChatbox()
+	assert(
+		app.workspace.getLeavesOfType(CHATBOX_VIEW_TYPE).length === 1,
+		'ChatBox view did not open before the production plugin was disabled',
+	)
+
+	await plugins.disablePlugin('nutstore-sync')
+	try {
+		assert(
+			app.workspace.getLeavesOfType(CHATBOX_VIEW_TYPE).length === 0,
+			'ChatBox view remained attached after the production plugin was disabled',
+		)
+	} finally {
+		await plugins.enablePlugin('nutstore-sync')
+	}
+
+	const reloadedPlugin = getProductionPlugin(app)
+	try {
+		await reloadedPlugin.commandService.openChatbox()
+		assert(
+			app.workspace.getLeavesOfType(CHATBOX_VIEW_TYPE).length === 1,
+			'Production plugin created duplicate ChatBox views after it was re-enabled',
+		)
+	} finally {
+		app.workspace.detachLeavesOfType(CHATBOX_VIEW_TYPE)
+	}
 }
 
 export async function rendersSyncProgress(app: App) {

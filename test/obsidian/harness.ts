@@ -5,6 +5,7 @@ import {
 	toleratesCorruptChatMeta,
 } from './checks/chat'
 import {
+	detachesChatboxWhenProductionPluginIsDisabled,
 	loadsProductionPlugin,
 	reloadsProductionPlugin,
 	rendersSyncProgress,
@@ -33,6 +34,12 @@ export default class NutstoreSyncIntegrationHarness extends Plugin {
 			OBSIDIAN_E2E_RESULT_PATH,
 			JSON.stringify({ passed: false, started: true, results }),
 		)
+		this.app.workspace.onLayoutReady(() => {
+			void this.runChecks(results)
+		})
+	}
+
+	private async runChecks(results: TestResult[]) {
 		const run = async (name: string, check: () => Promise<void>) => {
 			try {
 				await check()
@@ -53,6 +60,9 @@ export default class NutstoreSyncIntegrationHarness extends Plugin {
 		)
 		await run('reloads the production plugin through the real lifecycle', () =>
 			reloadsProductionPlugin(this.app),
+		)
+		await run('detaches ChatBox when the production plugin is disabled', () =>
+			detachesChatboxWhenProductionPluginIsDisabled(this.app),
 		)
 		await run('round-trips Vault adapter paths and content', () =>
 			roundTripsVaultAdapterContent(this.app),
