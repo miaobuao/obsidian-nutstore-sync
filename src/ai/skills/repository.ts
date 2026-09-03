@@ -142,7 +142,19 @@ export class SkillRepository {
 				for (const folder of folders) {
 					const directoryName = folder.split('/').at(-1) ?? ''
 					const skillPath = normalizePath(`${folder}/SKILL.md`)
-					const stat = await adapter.stat(skillPath)
+					let stat
+					try {
+						stat = await adapter.stat(skillPath)
+					} catch (error) {
+						diagnostics.push({
+							path: skillPath,
+							message:
+								error instanceof Error
+									? error.message
+									: 'Unable to inspect Vault Skill.',
+						})
+						continue
+					}
 					if (!stat || stat.type !== 'file') continue
 
 					let frontmatter: SkillFrontmatter | undefined
