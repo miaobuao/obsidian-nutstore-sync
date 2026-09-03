@@ -527,6 +527,10 @@ export default class ChatService extends BaseService {
 
 	async createSession() {
 		await this.initialize()
+		const activeSession = this.getLoadedActiveSession()
+		if (activeSession && this.isUntitledEmptyActiveSession(activeSession)) {
+			return activeSession
+		}
 		const session = await this.createEmptySession()
 		this.state.loadedSessions.set(session.id, session)
 		this.state.activeSessionId = session.id
@@ -947,6 +951,17 @@ export default class ChatService extends BaseService {
 		return this.state.activeSessionId
 			? this.state.loadedSessions.get(this.state.activeSessionId)
 			: undefined
+	}
+
+	private isUntitledEmptyActiveSession(session: ChatSession) {
+		const runtime = this.runtimeStates.get(session.id)
+		return (
+			this.getActiveSessionTitle() === i18n.t('chatbox.newChat') &&
+			session.subagents.master.timeline.length === 0 &&
+			runtime.draft.text.trim().length === 0 &&
+			runtime.draft.userContext.length === 0 &&
+			runtime.pending.length === 0
+		)
 	}
 
 	private async createEmptySession(): Promise<ChatSession> {

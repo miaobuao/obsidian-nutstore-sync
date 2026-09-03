@@ -841,13 +841,18 @@ function Chatbox(props: ChatboxProps) {
 			<div class=":uno: flex min-w-0 flex-1 flex-col overflow-hidden">
 				{/* Header */}
 				<div class=":uno: relative flex shrink-0 items-center gap-2 border-b border-[var(--background-modifier-border)] px-2 py-2">
-					<div
-						class=":uno: i-lucide-history flex justify-center items-center hover:text-[--interactive-accent] hover:cursor-pointer transition-colors"
+					<button
+						class=":uno: inline-flex size-8 shrink-0 items-center justify-center text-[var(--text-muted)] transition-colors !bg-transparent hover:text-[var(--interactive-accent)] focus-visible:text-[var(--interactive-accent)]"
+						type="button"
+						aria-label={t('chatbox.ui.history.title')}
+						title={t('chatbox.ui.history.title')}
 						onClick={() => {
 							setHistoryOpen((value) => !value)
 							setModelPickerOpen(false)
 						}}
-					/>
+					>
+						<span class=":uno: i-lucide-menu size-5 shrink-0" />
+					</button>
 					<div class=":uno: min-w-0 flex-1 truncate text-sm font-semibold">
 						{props.title || t('chatbox.newChat')}
 					</div>
@@ -1017,6 +1022,15 @@ function Chatbox(props: ChatboxProps) {
 									contained={dialogMountTarget().contained}
 									onToggle={props.onToggleSessionMcpServer}
 								/>
+								<button
+									class=":uno: inline-flex size-9 shrink-0 items-center justify-center rounded-full"
+									type="button"
+									title={t('chatbox.newChat')}
+									aria-label={t('chatbox.newChat')}
+									onClick={() => props.onNewSession()}
+								>
+									<span class=":uno: i-lucide-square-pen size-4 shrink-0" />
+								</button>
 							</div>
 							<button
 								class=":uno: mod-cta inline-flex items-center gap-1.5"
