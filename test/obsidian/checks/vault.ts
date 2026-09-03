@@ -46,6 +46,30 @@ export async function preservesBashHeredocUtf8(app: App) {
 	// diagnostics instead of racing Obsidian's external-file watcher.
 }
 
+export async function expandsExistingVaultPathsInBash(app: App) {
+	const { createVaultFileSystem } = await import('~/ai/tools/vault-filesystem')
+	const { createVaultBash } = await import('~/ai/tools/bash/runtime')
+	const { ReversibleOpRecorder } = await import('~/ai/tools/bash/fs')
+	const path = '中性通配 🌱.md'
+	await app.vault.create(path, 'neutral wildcard content / 中性通配内容 🌱')
+	const filesystem = await createVaultFileSystem(app)
+	assert(
+		filesystem.getAllPaths().includes(`/${path}`),
+		'New Vault filesystem did not index an existing Vault path',
+	)
+
+	const bash = await createVaultBash(app, undefined, new ReversibleOpRecorder())
+	assert(
+		bash.fs.getAllPaths().includes(`/${path}`),
+		'Bash filesystem did not index an existing Vault path',
+	)
+	const result = await bash.exec('ls *.md', { cwd: '/' })
+	assert(
+		result.exitCode === 0,
+		`Bash did not expand an existing Vault path: ${result.stderr}`,
+	)
+}
+
 export async function resolvesResourceDataUrls(app: App) {
 	const { resolveResourceDataUrl } =
 		await import('~/ai/tools/resource-data-url')

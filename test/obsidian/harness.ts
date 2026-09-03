@@ -11,6 +11,7 @@ import {
 } from './checks/plugin'
 import { createsProviderModels } from './checks/providers'
 import {
+	expandsExistingVaultPathsInBash,
 	preservesBashHeredocUtf8,
 	resolvesResourceDataUrls,
 	roundTripsVaultAdapterContent,
@@ -59,6 +60,9 @@ export default class NutstoreSyncIntegrationHarness extends Plugin {
 		await run(
 			'preserves UTF-8 when Bash writes a Vault file through a heredoc',
 			() => preservesBashHeredocUtf8(this.app),
+		)
+		await run('expands existing Vault paths in Bash wildcards', () =>
+			expandsExistingVaultPathsInBash(this.app),
 		)
 		await run('resolves resource data URLs through the real DataAdapter', () =>
 			resolvesResourceDataUrls(this.app),

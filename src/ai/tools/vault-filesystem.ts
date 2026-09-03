@@ -27,6 +27,38 @@ interface SharedVaultFileSystem {
 }
 
 /**
+ * just-bash expands globs from IFileSystem.getAllPaths() before it asks the
+ * filesystem to read a directory. Seed that synchronous index from the
+ * adapter, which is the authoritative view for every path exposed by this
+ * filesystem.
+ */
+async function getInitialVaultPaths(app: App) {
+	const paths = new Set(app.vault.getAllLoadedFiles().map((file) => file.path))
+	const directories = ['']
+	const scannedDirectories = new Set<string>()
+
+	while (directories.length > 0) {
+		const directory = directories.pop()!
+		if (scannedDirectories.has(directory)) continue
+		scannedDirectories.add(directory)
+		try {
+			const listed = await app.vault.adapter.list(directory)
+			for (const path of listed.files) paths.add(normalizePath(path))
+			for (const path of listed.folders) {
+				const normalized = normalizePath(path)
+				paths.add(normalized)
+				directories.push(normalized)
+			}
+		} catch {
+			// The loaded Vault index still provides a useful fallback when an
+			// adapter directory is temporarily unavailable.
+		}
+	}
+
+	return [...paths]
+}
+
+/**
  * Shares immutable built-in Skills for one plugin instance. Vault access,
  * permissions, read tracking, settings IO, and reversible operation recording
  * remain scoped to each tool invocation.
@@ -67,7 +99,7 @@ async function createScopedVaultFileSystem(
 	)
 	const vaultFs = new ObsidianVaultFs(
 		app.vault,
-		[],
+		await getInitialVaultPaths(app),
 		options.permissionGuard,
 		onRead,
 	)
