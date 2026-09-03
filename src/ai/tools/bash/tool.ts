@@ -10,6 +10,7 @@ import {
 	VAULT_MOUNT_POINT,
 } from '~/ai/tools/bash/runtime'
 import { BASH_TMP_MOUNT_POINT, writeBashTmpText } from '~/ai/tools/bash/tmp-fs'
+import { withPermissionPurpose } from '~/ai/tools/permission-guard'
 import {
 	appDep,
 	fileSystemManagerDep,
@@ -38,7 +39,7 @@ export const bashTool = tool({
 		'Prefer supported commands such as ls, cat, rg, jq, sed, awk, od, gzip, gunzip, zcat, zip, unzip, mkdir, mv, cp, and rm. zip and unzip support standard store/deflate archives, but not encrypted, Zip64, or uncommon compression formats.',
 		`Treat the filesystem root as the user's personal knowledge base — only write there for content the user intends to keep; use ${BASH_TMP_MOUNT_POINT} for intermediate or scratch work.`,
 		`The plugin settings file ${SETTINGS_MOUNT_POINT}/settings.json is virtual and reflects live settings (whitelist only, never credentials). To change settings, write the complete file as valid JSON — prefer jq or a full-file rewrite; the plugin validates and applies it on save.`,
-		`The required "purpose" field is a very short (up to 120 characters) plain-language summary of what this command does and why it is being run, safe for users who cannot read shell — no code, no markdown, no newlines, no shell syntax.`,
+		`The required "purpose" field is a very short (up to 120 characters) plain-language summary of what this command does and why it is being run, written in the same language as the user's request and safe for users who cannot read shell — no code, no markdown, no newlines, no shell syntax.`,
 	].join(' '),
 	inputSchema: z.object({
 		purpose: textValue('purpose').check(
@@ -83,7 +84,7 @@ export const bashTool = tool({
 			cwd,
 			stdin: params.stdin,
 			rawScript: params.rawScript,
-			permissionGuard,
+			permissionGuard: withPermissionPurpose(permissionGuard, params.purpose),
 			onRead: readTracker?.markRead.bind(readTracker),
 			getSettingsSnapshot,
 			updateSettings,

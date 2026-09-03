@@ -115,6 +115,16 @@ export default class AIPermissionModal extends Modal {
 		}
 	}
 
+	private renderPurpose() {
+		if (!this.request.purpose) return
+		const rowEl = this.contentEl.createDiv({ cls: ':uno: mb-2' })
+		rowEl.createEl('strong', { text: i18n.t('aiPermission.purpose') })
+		rowEl.createEl('p', {
+			cls: ':uno: mt-1 break-words',
+			text: this.request.purpose,
+		})
+	}
+
 	onOpen() {
 		this.setTitle(i18n.t('aiPermission.title'))
 
@@ -136,6 +146,7 @@ export default class AIPermissionModal extends Modal {
 		contentEl.createEl('p', {
 			text: i18n.t('aiPermission.sessionScopeHint'),
 		})
+		this.renderPurpose()
 
 		if (this.request.type === 'settings') {
 			this.renderSettingsRequest()

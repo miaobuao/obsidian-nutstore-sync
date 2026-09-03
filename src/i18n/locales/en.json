@@ -430,6 +430,7 @@
 		"title": "AI Permission Request",
 		"sessionLabel": "Session \"{{title}}\" is requesting permission",
 		"message": "AI is requesting to perform the following file operations:",
+		"purpose": "Purpose",
 		"sessionScopeHint": "\"Auto-approve this operation\" only applies to this chat session and resets after restarting Obsidian.",
 		"allowOnce": "Approve",
 		"alwaysAllow": "Auto-approve this operation",

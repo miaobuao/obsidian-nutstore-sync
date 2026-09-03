@@ -13,6 +13,7 @@ export interface FSSinglePathPermissionRequest {
 		kind: AISinglePathFileOperation
 		path: string
 	}
+	purpose?: string
 	sessionTitle?: string
 }
 
@@ -23,6 +24,7 @@ export interface FSDualPathPermissionRequest {
 		src: string
 		dest: string
 	}
+	purpose?: string
 	sessionTitle?: string
 }
 
@@ -33,6 +35,7 @@ export interface SettingsPermissionRequest {
 		summary: string
 		changes: unknown
 	}
+	purpose?: string
 	sessionTitle?: string
 }
 
@@ -41,6 +44,19 @@ export type PermissionRequest =
 	| FSDualPathPermissionRequest
 	| SettingsPermissionRequest
 export type PermissionGuard = (request: PermissionRequest) => Promise<void>
+
+/**
+ * Binds the user-facing purpose of a tool call to every permission request it
+ * causes. Operation signatures deliberately remain based on the operation,
+ * not this explanatory text.
+ */
+export function withPermissionPurpose(
+	permissionGuard: PermissionGuard | undefined,
+	purpose: string,
+): PermissionGuard | undefined {
+	if (!permissionGuard) return undefined
+	return async (request) => permissionGuard({ ...request, purpose })
+}
 
 interface RuntimeAutoApproveOperationStore {
 	has(signature: string): boolean

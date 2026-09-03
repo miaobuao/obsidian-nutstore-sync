@@ -430,6 +430,7 @@
 		"title": "AI 权限请求",
 		"sessionLabel": "会话「{{title}}」正在请求权限",
 		"message": "AI 正在请求执行以下文件操作：",
+		"purpose": "用途",
 		"sessionScopeHint": "“自动同意该操作”仅在当前会话生效，重启 Obsidian 后将恢复询问。",
 		"allowOnce": "同意",
 		"alwaysAllow": "自动同意该操作",

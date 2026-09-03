@@ -11,6 +11,7 @@ import {
 	VAULT_MOUNT_POINT,
 } from '~/ai/tools/bash/mount-points'
 import { createVaultFileSystem } from '~/ai/tools/vault-filesystem'
+import { withPermissionPurpose } from './permission-guard'
 import { textValue } from './shared'
 import {
 	appDep,
@@ -342,7 +343,7 @@ function assertUniqueVirtualPaths(paths: string[]) {
 export const applyPatchTool = tool({
 	description: [
 		'Apply a file-oriented patch against the virtual filesystem.',
-		'The required "purpose" field is a very short (up to 120 characters) plain-language summary of what this patch changes and why it is being applied, safe for users who cannot read diffs — no code, no markdown, no newlines, no patch syntax.',
+		'The required "purpose" field is a very short (up to 120 characters) plain-language summary of what this patch changes and why it is being applied, written in the same language as the user\'s request and safe for users who cannot read diffs — no code, no markdown, no newlines, no patch syntax.',
 		`Use a vault-relative path for files in the vault (relative paths resolve from ${VAULT_MOUNT_POINT}), or an absolute virtual path for any writable mounted filesystem. For example, scratch files live under ${BASH_TMP_MOUNT_POINT}, agent data under ${AGENTS_MOUNT_POINT}, and live plugin settings at ${SETTINGS_FILE_PATH}.`,
 		'Every patch, including one that only adds, deletes, updates, or moves a single file, MUST start with "*** Begin Patch" and end with "*** End Patch".',
 		'An Add patch has this complete form: "*** Begin Patch\\n*** Add File: notes/example.md\\n+Example line\\n+\\n+示例行 🌱\\n*** End Patch".',
@@ -378,7 +379,7 @@ export const applyPatchTool = tool({
 		applied: z.literal(true),
 		files: z.array(z.string()),
 	}),
-	execute: async ({ patch }, { context, toolCallId }) => {
+	execute: async ({ patch, purpose }, { context, toolCallId }) => {
 		const {
 			app,
 			fileSystemManager,
@@ -401,7 +402,7 @@ export const applyPatchTool = tool({
 
 		const recorder = new ReversibleOpRecorder()
 		const mountable = await createVaultFileSystem(app, {
-			permissionGuard,
+			permissionGuard: withPermissionPurpose(permissionGuard, purpose),
 			recorder,
 			onRead: (vaultPath) => readTracker?.markRead(vaultPath),
 			getSettingsSnapshot,
