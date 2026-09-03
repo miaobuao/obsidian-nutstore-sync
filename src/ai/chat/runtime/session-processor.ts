@@ -14,19 +14,14 @@ import type { Selection } from '~/ai/chat/runtime/selection'
 import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { UserContextManager } from '~/ai/chat/context/user-context-manager'
 import {
-	ContextCompressionFailedError,
-	runContextCompression,
-	shouldAutoCompressAgent,
-} from '~/ai/chat/runtime/context-compression'
-import {
 	ContextCompactionCoordinator,
 	createContextCompactionRevision,
 	type ContextCompactionRequest,
 } from '~/ai/chat/runtime/context-compaction-coordinator'
+import { runAgentLoop, type AgentLoopError } from '~/ai/chat/runtime/agent-loop'
 import { hasQueuedSubmission } from '~/ai/chat/runtime/pending-submission'
-import { isAbortError } from '~/ai/transport/abort'
+import { createAbortError, isAbortError } from '~/ai/transport/abort'
 import i18n from '~/i18n'
-import type { ToolCallRepeatState } from '~/ai/core/tool-call-repeat'
 import type { AIModelConfig, AIProviderConfig } from '~/ai/core/types'
 import { AgentRunner } from '~/ai/chat/runtime/agent-runner'
 import {
@@ -99,134 +94,107 @@ export class SessionProcessor {
 				session.updatedAt = now
 				await this.store.persistSession(session)
 			}
-			provider = this.selection.getProviderOrThrow(session)
-			model = this.selection.getModelOrThrow(provider, session)
-			let agentContinuation: ToolCallRepeatState | undefined
-			while (true) {
-				const agent = this.messageFactory.getActiveAgent(session)
-				if (consumePendingInputs(agent)) {
-					session.updatedAt = Date.now()
-					await this.store.persistSession(session)
-				}
-				const compactionRequest = this.createCompactionRequest(
-					session,
-					agent,
-					provider,
-					model,
-				)
-				this.compactionCoordinator.startIfNeeded(compactionRequest)
-				if (this.compactionCoordinator.hasJob(compactionRequest)) {
-					const compactionResult =
-						await this.compactionCoordinator.commitReady(compactionRequest)
-					if (compactionResult === 'committed') continue
-					if (compactionResult === 'failed') {
-						throw new ContextCompressionFailedError(
-							i18n.t('chatbox.errors.contextCompressionFailed'),
-						)
-					}
-				}
-				const lastMessage = agent.timeline[agent.timeline.length - 1]
+			const resolvedProvider = this.selection.getProviderOrThrow(session)
+			provider = resolvedProvider
+			const resolvedModel = this.selection.getModelOrThrow(
+				resolvedProvider,
+				session,
+			)
+			model = resolvedModel
+			const agent = this.messageFactory.getActiveAgent(session)
+			if (consumePendingInputs(agent)) {
+				session.updatedAt = Date.now()
+				await this.store.persistSession(session)
+			}
+			const lastMessage = agent.timeline[agent.timeline.length - 1]
 
-				if (
-					!agentContinuation &&
-					(!lastMessage || lastMessage.role !== 'user')
-				) {
-					const flushed = await this.flushPendingMessages(session)
-					if (!flushed) {
-						runtime.runState = 'idle'
-						this.notify()
-						return
-					}
-				}
-
-				if (shouldAutoCompressAgent(agent, model)) {
-					if (
-						!(await this.completeRequiredCompaction(
-							compactionRequest,
-							session,
-							agent,
-							provider,
-							model,
-						))
-					)
-						return
-					continue
-				}
-
-				await this.ensureProviderReady(provider)
-				if (runtime.stopRequested) {
-					this.messageFactory.finishStoppedSessionRun(session, agent)
-					await this.store.persistSession(session)
+			if (!lastMessage || lastMessage.role !== 'user') {
+				const flushed = await this.flushPendingMessages(session)
+				if (!flushed) {
+					runtime.runState = 'idle'
+					this.notify()
 					return
 				}
-				const assistantMeta = {
-					providerId: provider.id,
-					providerName: provider.name,
-					modelId: model.id,
-					modelName: model.name,
-				}
-				const abortController = this.runtimeStates.createAbortController(
-					session.id,
-				)
-				const turnResult = await (async () => {
+			}
+
+			const assistantMeta = {
+				providerId: resolvedProvider.id,
+				providerName: resolvedProvider.name,
+				modelId: resolvedModel.id,
+				modelName: resolvedModel.name,
+			}
+			const isCancelled = () =>
+				runtime.stopRequested === true ||
+				this.state.deletedSessionIds.has(session.id)
+			const loopResult = await runAgentLoop({
+				compactionCoordinator: this.compactionCoordinator,
+				createCompactionRequest: () => {
+					consumePendingInputs(agent)
+					return this.createCompactionRequest(
+						session,
+						agent,
+						resolvedProvider,
+						resolvedModel,
+					)
+				},
+				isCancelled,
+				onStateChange: (state) => {
+					if (state === 'compacting') runtime.runState = 'compressing'
+					if (state === 'running-turn') runtime.runState = 'thinking'
+					this.notify()
+				},
+				runTurn: async (continuation, shouldSuspendAtSafePoint) => {
+					await this.ensureProviderReady(resolvedProvider)
+					if (isCancelled()) throw createAbortError('Agent loop cancelled')
+					const abortController = this.runtimeStates.createAbortController(
+						session.id,
+					)
 					try {
 						return await this.agentRunner.runTurn({
 							session,
 							agent,
-							provider,
-							model,
+							provider: resolvedProvider,
+							model: resolvedModel,
 							depth: 0,
 							assistantMeta,
 							runtime,
-							isCancelled: () =>
-								runtime.stopRequested ||
-								this.state.deletedSessionIds.has(session.id),
+							isCancelled,
 							isDeleted: () => this.state.deletedSessionIds.has(session.id),
-							continuation: agentContinuation,
+							continuation,
 							abortSignal: abortController.signal,
 							buildMessages: (a, tools) => this.buildMessagesForAgent(a, tools),
-							shouldSuspendAfterToolStep: () =>
-								runtime.stopRequested ||
-								this.state.deletedSessionIds.has(session.id) ||
-								this.compactionCoordinator.shouldSuspendAtSafePoint(
-									compactionRequest,
-								),
+							shouldSuspendAfterToolStep: shouldSuspendAtSafePoint,
 						})
 					} finally {
 						this.runtimeStates.clearAbortController(session.id, abortController)
 					}
-				})()
+				},
+			})
 
-				if (this.state.deletedSessionIds.has(session.id)) {
-					runtime.stopRequested = false
-					runtime.runState = 'idle'
-					return
-				}
-
-				if (runtime.stopRequested) {
-					this.messageFactory.finishStoppedSessionRun(session, agent)
-					await this.store.persistSession(session)
-					return
-				}
-
-				if (turnResult.status === 'failed') {
-					this.messageFactory.reportFatalError(
-						session,
-						turnResult.error,
-						assistantMeta,
-						agent,
-					)
-					runtime.runState = 'idle'
-					await this.store.persistSession(session)
-					return
-				}
-				agentContinuation =
-					turnResult.status === 'suspended'
-						? turnResult.continuation
-						: undefined
-				if (turnResult.status === 'completed') runtime.runState = 'idle'
-				continue
+			if (this.state.deletedSessionIds.has(session.id)) {
+				runtime.stopRequested = false
+				runtime.runState = 'idle'
+				return
 			}
+
+			if (loopResult.status === 'cancelled') {
+				this.messageFactory.finishStoppedSessionRun(session, agent)
+				await this.store.persistSession(session)
+				return
+			}
+
+			if (loopResult.status === 'failed') {
+				this.messageFactory.reportFatalError(
+					session,
+					this.agentLoopErrorMessage(loopResult.error),
+					assistantMeta,
+					agent,
+				)
+				runtime.runState = 'idle'
+				await this.store.persistSession(session)
+				return
+			}
+			runtime.runState = 'idle'
 		} catch (error) {
 			await this.handleRunError(error, session, runtime, provider, model)
 		}
@@ -272,85 +240,11 @@ export class SessionProcessor {
 		await this.store.persistSession(session)
 	}
 
-	private async compressContext(
-		session: ChatSession,
-		agent: ChatAgentState,
-		provider: AIProviderConfig,
-		model: AIModelConfig,
-	) {
-		const runtime = this.runtimeStates.get(session.id)
-		runtime.runState = 'compressing'
-		this.notify()
-		await this.ensureProviderReady(provider)
-		if (!runtime.stopRequested) {
-			const abortController = this.runtimeStates.createAbortController(
-				session.id,
-			)
-			try {
-				const result = await runContextCompression({
-					provider,
-					model,
-					session,
-					agent,
-					store: this.store,
-					messageFactory: this.messageFactory,
-					...(await this.agentRunner.resolveSummaryContext(
-						agent,
-						session,
-						model,
-					)),
-					buildMessages: (messages, tools) =>
-						this.buildMessagesForAgent(agent, tools, messages),
-					isCancelled: () =>
-						this.runtimeStates.get(session.id).stopRequested ||
-						this.state.deletedSessionIds.has(session.id),
-					abortSignal: abortController.signal,
-				})
-				if (result !== 'committed' && result !== 'cancelled') {
-					throw new ContextCompressionFailedError(
-						i18n.t('chatbox.errors.contextCompressionFailed'),
-					)
-				}
-			} finally {
-				this.runtimeStates.clearAbortController(session.id, abortController)
-			}
+	private agentLoopErrorMessage(error: AgentLoopError) {
+		if (error.type !== 'turn-failed') {
+			return i18n.t('chatbox.errors.contextCompressionFailed')
 		}
-		if (this.state.deletedSessionIds.has(session.id)) {
-			runtime.stopRequested = false
-			runtime.runState = 'idle'
-			return false
-		}
-		if (runtime.stopRequested) {
-			runtime.runState = 'idle'
-			await this.store.persistSession(session)
-			this.notify()
-			return false
-		}
-		this.notify()
-		return true
-	}
-
-	private async completeRequiredCompaction(
-		request: ContextCompactionRequest,
-		session: ChatSession,
-		agent: ChatAgentState,
-		provider: AIProviderConfig,
-		model: AIModelConfig,
-	) {
-		const runtime = this.runtimeStates.get(session.id)
-		runtime.runState = 'compressing'
-		this.notify()
-		const result = await this.compactionCoordinator.waitAndCommit(request)
-		if (result === 'committed') {
-			this.notify()
-			return true
-		}
-		if (result === 'failed' || result === 'stale') {
-			throw new ContextCompressionFailedError(
-				i18n.t('chatbox.errors.contextCompressionFailed'),
-			)
-		}
-		return this.compressContext(session, agent, provider, model)
+		return extractErrorMessage(error.cause, i18n.t('chatbox.requestFailed'))
 	}
 
 	private async flushPendingMessages(session: ChatSession) {

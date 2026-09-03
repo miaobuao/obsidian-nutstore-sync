@@ -140,6 +140,11 @@ function estimateSerializedTokens(value: unknown) {
 	return Math.ceil(bytes / ESTIMATED_UTF8_BYTES_PER_TOKEN)
 }
 
+/** Stable local estimate used only to verify that compaction made progress. */
+export function estimateContextTokens(agent: ChatAgentState) {
+	return estimateSerializedTokens(selectContextTimeline(agent.timeline))
+}
+
 export async function findRecentTurnStartIndex(
 	messages: AppUIMessage[],
 	tokenBudget: number,

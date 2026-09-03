@@ -256,75 +256,6 @@ describe('TaskManager parent notifications', () => {
 		expect(master.subagents).toEqual({})
 	})
 
-	it('suspends a cancelled background agent after its current tool step', async () => {
-		const master = createEmptyMasterAgent(1)
-		const agent: ChatAgentState = {
-			...createEmptyMasterAgent(2),
-			id: 'child',
-			type: 'subagent',
-			status: 'running',
-			timeline: [
-				{
-					id: 'request',
-					role: 'user',
-					parts: [{ type: 'text', text: 'work' }],
-				},
-			],
-		}
-		master.subagents.child = agent
-		const session: ChatSession = {
-			schemaVersion: 2,
-			id: 'session',
-			createdAt: 1,
-			updatedAt: 1,
-			subagents: { master },
-		}
-		const state = {
-			loadedSessions: new Map([['session', session]]),
-			deletedSessionIds: new Set<string>(),
-			taskModelSelection: new Map(),
-		} as never
-		const manager = new TaskManager(
-			{} as never,
-			vi.fn(),
-			state,
-			{} as never,
-			{} as never,
-			vi.fn(),
-			{} as never,
-			{} as never,
-			{ runTurn: vi.fn() } as never,
-		)
-		const runTurn = vi
-			.spyOn(
-				(
-					manager as never as {
-						agentRunner: { runTurn(options: unknown): unknown }
-					}
-				).agentRunner,
-				'runTurn',
-			)
-			.mockResolvedValue({ status: 'cancelled' } as never)
-
-		const resultPromise = (
-			manager as never as {
-				runBackgroundTaskLoop(
-					agent: ChatAgentState,
-					session: ChatSession,
-					provider: unknown,
-					model: unknown,
-				): Promise<unknown>
-			}
-		).runBackgroundTaskLoop(agent, session, {} as never, {} as never)
-		const options = runTurn.mock.calls[0][0] as {
-			shouldSuspendAfterToolStep: () => boolean
-		}
-		agent.status = 'cancelled'
-
-		expect(options.shouldSuspendAfterToolStep()).toBe(true)
-		await resultPromise
-	})
-
 	it('carries tool-call continuation across a compaction resume', async () => {
 		const master = createEmptyMasterAgent(1)
 		const agent: ChatAgentState = {
@@ -355,8 +286,8 @@ describe('TaskManager parent notifications', () => {
 		} as never
 		const runTurn = vi
 			.fn()
-			.mockResolvedValueOnce({ status: 'suspended', continuation })
-			.mockResolvedValueOnce({ status: 'cancelled' })
+			.mockResolvedValueOnce({ status: 'needs-compaction', continuation })
+			.mockResolvedValueOnce({ status: 'completed', text: NEUTRAL_TEXT })
 		const state = {
 			loadedSessions: new Map([[session.id, session]]),
 			deletedSessionIds: new Set<string>(),
@@ -553,7 +484,7 @@ describe('TaskManager parent notifications', () => {
 			isCancelled: () => false,
 			isCurrent: () => true,
 		}
-		expect(coordinator.startIfNeeded(compactionRequest)).toBe(true)
+		expect(coordinator.inspect(compactionRequest)).toBe('ready')
 		await vi.waitFor(() => expect(signal).toBeDefined())
 
 		const manager = new TaskManager(
@@ -576,6 +507,6 @@ describe('TaskManager parent notifications', () => {
 		await manager.finishAgentAsCompleted(session, agent, NEUTRAL_TEXT)
 
 		expect(signal!.aborted).toBe(true)
-		expect(coordinator.hasJob(compactionRequest)).toBe(false)
+		expect(generateText).toHaveBeenCalledTimes(1)
 	})
 })

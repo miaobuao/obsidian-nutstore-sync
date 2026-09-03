@@ -131,9 +131,24 @@ describe('ContextCompactionCoordinator', () => {
 		const { coordinator } = createHarness()
 		const compactionRequest = request(session, agent, 'neutral-revision')
 
-		expect(coordinator.startIfNeeded(compactionRequest)).toBe(true)
-		expect(await coordinator.waitAndCommit(compactionRequest)).toBe('failed')
+		expect(coordinator.inspect(compactionRequest)).toBe('ready')
+		await expect(coordinator.compact(compactionRequest)).rejects.toMatchObject({
+			reason: 'failed',
+		})
 		expect(generateText).toHaveBeenCalledTimes(1)
+	})
+
+	it('reports measurable progress after committing a summary', async () => {
+		generateText.mockResolvedValue({ text: NEUTRAL_TEXT })
+		const { agent, session } = createPressureState()
+		const { coordinator } = createHarness()
+		const compactionRequest = request(session, agent, 'neutral-revision')
+
+		coordinator.inspect(compactionRequest)
+		const progress = await coordinator.compact(compactionRequest)
+
+		expect(progress.afterTokens).toBeLessThan(progress.beforeTokens)
+		expect(progress.revision).toContain('neutral-revision')
 	})
 
 	it('rejects a ready summary generated with a different configuration', async () => {
@@ -142,16 +157,57 @@ describe('ContextCompactionCoordinator', () => {
 		const { coordinator, store } = createHarness()
 		const originalRequest = request(session, agent, 'neutral-old-revision')
 
-		expect(coordinator.startIfNeeded(originalRequest)).toBe(true)
+		expect(coordinator.inspect(originalRequest)).toBe('ready')
 		await vi.waitFor(() => expect(generateText).toHaveBeenCalledTimes(1))
 		await Promise.resolve()
 
-		expect(
-			await coordinator.commitReady({
+		await expect(
+			coordinator.compact({
 				...originalRequest,
-				revision: 'neutral-new-revision',
+				isCurrent: () => false,
 			}),
-		).toBe('stale')
+		).rejects.toMatchObject({ reason: 'stale' })
 		expect(store.persistSession).not.toHaveBeenCalled()
+	})
+
+	it('does not restart compaction after cancellation', () => {
+		const cancelled = true
+		const { agent, session } = createPressureState()
+		const { coordinator } = createHarness()
+		const compactionRequest = {
+			...request(session, agent, 'neutral-revision'),
+			isCancelled: () => cancelled,
+		}
+
+		coordinator.cancel(session.id, agent.id)
+
+		expect(coordinator.inspect(compactionRequest)).toBe('ready')
+		expect(generateText).not.toHaveBeenCalled()
+	})
+
+	it('aborts an active compaction without starting a replacement', async () => {
+		let cancelled = false
+		let finishProviderSetup: (() => void) | undefined
+		const { agent, session } = createPressureState()
+		const { coordinator } = createHarness()
+		const compactionRequest = {
+			...request(session, agent, 'neutral-revision'),
+			ensureProviderReady: () =>
+				new Promise<void>((resolve) => {
+					finishProviderSetup = resolve
+				}),
+			isCancelled: () => cancelled,
+		}
+
+		coordinator.inspect(compactionRequest)
+		const completion = coordinator.compact(compactionRequest)
+		await vi.waitFor(() => expect(finishProviderSetup).toBeDefined())
+		cancelled = true
+		coordinator.cancel(session.id, agent.id)
+		finishProviderSetup!()
+
+		await expect(completion).rejects.toMatchObject({ name: 'AbortError' })
+		expect(coordinator.inspect(compactionRequest)).toBe('ready')
+		expect(generateText).not.toHaveBeenCalled()
 	})
 })

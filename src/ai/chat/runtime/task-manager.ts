@@ -14,19 +14,12 @@ import {
 } from '~/ai/chat/domain'
 import { extractErrorMessage } from '~/ai/chat/error-utils'
 import {
-	ContextCompressionFailedError,
-	runContextCompression,
-	shouldAutoCompressAgent,
-} from '~/ai/chat/runtime/context-compression'
-import {
 	ContextCompactionCoordinator,
 	createContextCompactionRevision,
 	type ContextCompactionRequest,
 } from '~/ai/chat/runtime/context-compaction-coordinator'
-import {
-	type AgentRunResult,
-	AgentRunner,
-} from '~/ai/chat/runtime/agent-runner'
+import { AgentRunner } from '~/ai/chat/runtime/agent-runner'
+import { runAgentLoop, type AgentLoopError } from '~/ai/chat/runtime/agent-loop'
 import { MAX_CONCURRENT_TASKS_PER_SESSION } from '~/ai/chat/prompts'
 import type { ChatState } from '~/ai/chat/runtime/chat-state'
 import type { Selection } from '~/ai/chat/runtime/selection'
@@ -34,7 +27,6 @@ import type { ToolExecutor } from '~/ai/chat/runtime/tool-executor'
 import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { ChatAgentState } from '~/ai/chat/types'
 import type { AIModelConfig, AIProviderConfig } from '~/ai/core/types'
-import type { ToolCallRepeatState } from '~/ai/core/tool-call-repeat'
 import { BASH_TMP_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 import { writeBashTmpText } from '~/ai/tools/bash/tmp-fs'
 import { consumePendingInputs } from '~/ai/chat/messages/ui-message'
@@ -90,26 +82,52 @@ export class TaskManager {
 				provider,
 				selectedModel.modelId,
 			)
-			let result: AgentRunResult
-			let continuation: ToolCallRepeatState | undefined
-			do {
-				result = await this.runBackgroundTaskLoop(
-					agent,
-					session,
-					provider,
-					model,
-					continuation,
-				)
-				continuation =
-					result.status === 'suspended' ? result.continuation : undefined
-			} while (result.status === 'suspended')
+			const isCancelled = () =>
+				agent.status === 'cancelled' ||
+				this.state.deletedSessionIds.has(session.id)
+			const result = await runAgentLoop({
+				compactionCoordinator: this.compactionCoordinator,
+				createCompactionRequest: () => {
+					consumePendingInputs(agent)
+					return this.createCompactionRequest(
+						session,
+						agent,
+						provider,
+						model,
+						isCancelled,
+					)
+				},
+				isCancelled,
+				runTurn: (continuation, shouldSuspendAtSafePoint) =>
+					this.agentRunner.runTurn({
+						session,
+						agent,
+						provider,
+						model,
+						depth: getAgentDepth(getMasterAgent(session), agent.id),
+						assistantMeta: {
+							providerId: provider.id,
+							providerName: provider.name,
+							modelId: model.id,
+							modelName: model.name,
+						},
+						isCancelled,
+						isDeleted: () => this.state.deletedSessionIds.has(session.id),
+						continuation,
+						shouldSuspendAfterToolStep: shouldSuspendAtSafePoint,
+					}),
+			})
 
 			if (result.status === 'cancelled') {
 				await this.finishAgentAsCancelled(session, agent)
 				return
 			}
 			if (result.status === 'failed') {
-				await this.finishAgentAsFailed(session, agent, result.error)
+				await this.finishAgentAsFailed(
+					session,
+					agent,
+					this.agentLoopErrorMessage(result.error),
+				)
 				return
 			}
 			if (agent.pendingInputs.length > 0) {
@@ -134,96 +152,11 @@ export class TaskManager {
 		}
 	}
 
-	private async runBackgroundTaskLoop(
-		agent: ChatAgentState,
-		session: ChatSession,
-		provider: AIProviderConfig,
-		model: AIModelConfig,
-		continuation?: ToolCallRepeatState,
-	): Promise<AgentRunResult> {
-		consumePendingInputs(agent)
-
-		const isCancelled = () =>
-			agent.status === 'cancelled' ||
-			this.state.deletedSessionIds.has(session.id)
-		if (isCancelled()) return { status: 'cancelled' }
-		const compactionRequest = this.createCompactionRequest(
-			session,
-			agent,
-			provider,
-			model,
-			isCancelled,
-		)
-		this.compactionCoordinator.startIfNeeded(compactionRequest)
-		if (this.compactionCoordinator.hasJob(compactionRequest)) {
-			const compactionResult =
-				await this.compactionCoordinator.commitReady(compactionRequest)
-			if (compactionResult === 'committed') {
-				return this.runBackgroundTaskLoop(
-					agent,
-					session,
-					provider,
-					model,
-					continuation,
-				)
-			}
-			if (compactionResult === 'failed') {
-				throw new ContextCompressionFailedError(
-					i18n.t('chatbox.errors.contextCompressionFailed'),
-				)
-			}
+	private agentLoopErrorMessage(error: AgentLoopError) {
+		if (error.type !== 'turn-failed') {
+			return i18n.t('chatbox.errors.contextCompressionFailed')
 		}
-
-		if (shouldAutoCompressAgent(agent, model)) {
-			const compactionResult =
-				await this.compactionCoordinator.waitAndCommit(compactionRequest)
-			if (compactionResult === 'failed' || compactionResult === 'stale') {
-				throw new ContextCompressionFailedError(
-					i18n.t('chatbox.errors.contextCompressionFailed'),
-				)
-			}
-			if (compactionResult !== 'committed') {
-				const fallbackResult = await runContextCompression({
-					provider,
-					model,
-					session,
-					agent,
-					store: this.store,
-					messageFactory: this.messageFactory,
-					...(await this.agentRunner.resolveSummaryContext(
-						agent,
-						session,
-						model,
-					)),
-					isCancelled,
-				})
-				if (fallbackResult !== 'committed' && fallbackResult !== 'cancelled') {
-					throw new ContextCompressionFailedError(
-						i18n.t('chatbox.errors.contextCompressionFailed'),
-					)
-				}
-			}
-		}
-
-		return this.agentRunner.runTurn({
-			session,
-			agent,
-			provider,
-			model,
-			depth: getAgentDepth(getMasterAgent(session), agent.id),
-			assistantMeta: {
-				providerId: provider.id,
-				providerName: provider.name,
-				modelId: model.id,
-				modelName: model.name,
-			},
-			isCancelled,
-			isDeleted: () => this.state.deletedSessionIds.has(session.id),
-			continuation,
-			shouldSuspendAfterToolStep: () =>
-				isCancelled() ||
-				this.compactionCoordinator.shouldSuspendAtSafePoint(compactionRequest),
-		})
+		return extractErrorMessage(error.cause, i18n.t('chatbox.requestFailed'))
 	}
 
 	private createCompactionRequest(

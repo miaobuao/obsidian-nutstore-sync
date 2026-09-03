@@ -43,13 +43,12 @@ import {
 	createViewImageAttachmentMessage,
 	InMemoryViewImageAttachmentRegistry,
 } from '~/ai/tools/view-image-attachments'
+import { createAbortError } from '~/ai/transport/abort'
 import i18n from '~/i18n'
 
-export type AgentRunResult =
+export type AgentTurnResult =
 	| { status: 'completed'; text: string }
-	| { status: 'failed'; error: string }
-	| { status: 'cancelled' }
-	| { status: 'suspended'; continuation: ToolCallRepeatState }
+	| { status: 'needs-compaction'; continuation: ToolCallRepeatState }
 
 interface RunAgentTurnOptions {
 	session: ChatSession
@@ -79,7 +78,7 @@ export class AgentRunner {
 		private app: App,
 	) {}
 
-	async runTurn(options: RunAgentTurnOptions): Promise<AgentRunResult> {
+	async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
 		const { session, agent } = options
 		const definition = this.toolExecutor.getAgentDefinition(agent.type)
 		const tools = await this.toolExecutor.createTools(
@@ -278,21 +277,20 @@ export class AgentRunner {
 		}
 
 		if (options.isCancelled()) {
-			return { status: 'cancelled' }
+			throw createAbortError('Agent turn cancelled')
 		}
 		if (shouldSuspend) {
 			return {
-				status: 'suspended',
+				status: 'needs-compaction',
 				continuation: repeatState,
 			}
 		}
 		if (repeatState.isRepeatedTooManyTimes) {
-			return {
-				status: 'failed',
-				error: i18n.t('chatbox.repeatedToolCallsStopped', {
+			throw new Error(
+				i18n.t('chatbox.repeatedToolCallsStopped', {
 					count: REPEATED_TOOL_CALL_THRESHOLD,
 				}),
-			}
+			)
 		}
 		if (!finalMessage) {
 			throw new Error('Agent completed without an assistant response')
