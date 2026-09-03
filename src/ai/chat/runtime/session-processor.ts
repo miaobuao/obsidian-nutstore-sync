@@ -139,13 +139,7 @@ export class SessionProcessor {
 					}
 				}
 
-				if (
-					shouldAutoCompressAgent(
-						agent,
-						model,
-						session.inferenceParams?.maxTokens,
-					)
-				) {
+				if (shouldAutoCompressAgent(agent, model)) {
 					if (
 						!(await this.completeRequiredCompaction(
 							compactionRequest,

@@ -76,13 +76,7 @@ export class ContextCompactionCoordinator {
 	) {}
 
 	startIfNeeded(request: ContextCompactionRequest) {
-		if (
-			!shouldStartContextCompaction(
-				request.agent,
-				request.model,
-				request.session.inferenceParams?.maxTokens,
-			)
-		) {
+		if (!shouldStartContextCompaction(request.agent, request.model)) {
 			return false
 		}
 		const key = this.keyFor(request)
@@ -163,11 +157,7 @@ export class ContextCompactionCoordinator {
 		const job = this.jobs.get(this.keyFor(request))
 		return (
 			job?.state === 'ready' ||
-			shouldAutoCompressAgent(
-				request.agent,
-				request.model,
-				request.session.inferenceParams?.maxTokens,
-			)
+			shouldAutoCompressAgent(request.agent, request.model)
 		)
 	}
 

@@ -27,7 +27,7 @@ import {
 	prepareMessagesForModel,
 	resolveLanguageModel,
 } from '~/ai/core/runtime'
-import { resolveOutputTokenBudget } from '~/ai/core/inference'
+import { resolveModelOutputLimit } from '~/ai/core/inference'
 import {
 	REPEATED_TOOL_CALL_THRESHOLD,
 	updateToolCallRepeatState,
@@ -194,11 +194,7 @@ export class AgentRunner {
 			tools,
 			toolsContext,
 			stopWhen: [isLoopFinished(), repeatedToolCalls, suspendAtStepBoundary],
-			temperature: session.inferenceParams?.temperature,
-			maxOutputTokens: resolveOutputTokenBudget(
-				options.model,
-				session.inferenceParams?.maxTokens,
-			),
+			maxOutputTokens: resolveModelOutputLimit(options.model),
 			prepareStep: async ({ messages, steps }) => {
 				readTracker.resetSnapshot()
 				await projector.project({ type: 'step-start' })

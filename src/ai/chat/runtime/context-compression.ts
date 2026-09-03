@@ -17,7 +17,7 @@ import {
 	resolveLanguageModel,
 } from '~/ai/core/runtime'
 import {
-	resolveOutputTokenBudget,
+	resolveModelOutputLimit,
 	resolveSummaryOutputTokenBudget,
 } from '~/ai/core/inference'
 import type { AIModelConfig, AIProviderConfig } from '~/ai/core/types'
@@ -201,14 +201,12 @@ function resolveLatestContextUsage(agent: ChatAgentState) {
 export function resolveContextPressure(
 	agent: ChatAgentState,
 	model?: AIModelConfig,
-	sessionMaxOutputTokens?: number,
 ): ContextPressure {
 	const usedTokens = resolveUsedContextTokens(resolveLatestContextUsage(agent))
 	if (usedTokens <= 0) return 'normal'
 
 	const contextWindow = resolveContextWindow(model)
-	const outputBudget =
-		resolveOutputTokenBudget(model, sessionMaxOutputTokens) ?? 0
+	const outputBudget = resolveModelOutputLimit(model) ?? 0
 	const modelInputLimit = resolveModelInputLimit(model)
 	const availableInputTokens = Math.max(0, contextWindow - outputBudget)
 	const inputCapacity = Math.min(
@@ -231,20 +229,16 @@ export function resolveContextPressure(
 export function shouldAutoCompressAgent(
 	agent: ChatAgentState,
 	model?: AIModelConfig,
-	sessionMaxOutputTokens?: number,
 ) {
-	return resolveContextPressure(agent, model, sessionMaxOutputTokens) === 'hard'
+	return resolveContextPressure(agent, model) === 'hard'
 }
 
 /** True when background compaction should start before reaching the hard limit. */
 export function shouldStartContextCompaction(
 	agent: ChatAgentState,
 	model?: AIModelConfig,
-	sessionMaxOutputTokens?: number,
 ) {
-	return (
-		resolveContextPressure(agent, model, sessionMaxOutputTokens) !== 'normal'
-	)
+	return resolveContextPressure(agent, model) !== 'normal'
 }
 
 /**
@@ -336,7 +330,6 @@ export async function generateContextCompression(
 			},
 		],
 		abortSignal: options.abortSignal,
-		temperature: options.session.inferenceParams?.temperature,
 		maxOutputTokens: resolveSummaryOutputTokenBudget(options.model),
 	})
 	if (options.isCancelled?.()) return undefined

@@ -503,9 +503,6 @@ export class SessionStore {
 				updatedAt: session.updatedAt || session.createdAt,
 				model: session.model ? { ...session.model } : undefined,
 				systemPrompt: session.systemPrompt,
-				inferenceParams: session.inferenceParams
-					? { ...session.inferenceParams }
-					: undefined,
 				disabledMcpServers: Array.isArray(session.disabledMcpServers)
 					? session.disabledMcpServers.filter(
 							(name): name is string => typeof name === 'string',

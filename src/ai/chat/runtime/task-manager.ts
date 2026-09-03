@@ -174,9 +174,7 @@ export class TaskManager {
 			}
 		}
 
-		if (
-			shouldAutoCompressAgent(agent, model, session.inferenceParams?.maxTokens)
-		) {
+		if (shouldAutoCompressAgent(agent, model)) {
 			const compactionResult =
 				await this.compactionCoordinator.waitAndCommit(compactionRequest)
 			if (compactionResult === 'failed' || compactionResult === 'stale') {

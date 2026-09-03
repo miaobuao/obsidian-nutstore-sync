@@ -259,9 +259,9 @@ describe('context compression', () => {
 		const assistant = message('assistant', 'assistant', 1)
 		assistant.metadata!.llm = {
 			usage: {
-				inputTokens: 810_000,
-				outputTokens: 70_000,
-				totalTokens: 880_000,
+				inputTokens: 500_000,
+				outputTokens: 40_000,
+				totalTokens: 540_000,
 			} as never,
 		}
 		agent.timeline = [assistant]
@@ -283,28 +283,7 @@ describe('context compression', () => {
 		).toBe(false)
 	})
 
-	it('reserves the session output override in addition to the safety margin', () => {
-		const agent = createEmptyMasterAgent(1)
-		const assistant = message('assistant', 'assistant', 1)
-		assistant.metadata!.llm = {
-			usage: {
-				inputTokens: 60_000,
-				outputTokens: 14_000,
-				totalTokens: 74_000,
-			} as never,
-		}
-		agent.timeline = [assistant]
-
-		expect(
-			shouldAutoCompressAgent(
-				agent,
-				{ limit: { context: 100_000, output: 32_000 } } as never,
-				8_000,
-			),
-		).toBe(false)
-	})
-
-	it('reaches the hard limit only after reserving the bounded output budget', () => {
+	it('reaches the hard limit after reserving the model output limit', () => {
 		const agent = createEmptyMasterAgent(1)
 		const assistant = message('assistant', 'assistant', 1)
 		assistant.metadata!.llm = {
