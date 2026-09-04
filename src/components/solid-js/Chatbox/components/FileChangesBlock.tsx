@@ -157,7 +157,7 @@ function FileChange(props: {
 	onOpenFile?: (vaultPath: string, line?: number) => Promise<void> | void
 }) {
 	const [diff] = createResource(() => props.change, buildFileDiff)
-	const [open, setOpen] = createSignal(true)
+	const [open, setOpen] = createSignal(false)
 	return (
 		<Show when={diff()} keyed>
 			{(value) => (
