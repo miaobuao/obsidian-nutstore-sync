@@ -9,6 +9,7 @@ import { obsidianFetch } from '~/ai/transport/obsidian-fetch'
 import type {
 	AIModelConfig,
 	AIModelInput,
+	AIModelModality,
 	AIProviderConfig,
 } from '~/ai/core/types'
 import {
@@ -25,7 +26,6 @@ const TOKEN_REFRESH_SKEW_MS = 60 * 1000
 const TOKEN_REFRESH_INTERVAL_MS = 60 * 1000
 
 type NutstoreLlmGatewayModelApi = 'openai-completions'
-type NutstoreLlmGatewayModelInputModality = 'text' | 'image'
 type NutstoreLlmGatewayThinkingFormat = 'openrouter' | 'openai'
 
 interface NutstoreLlmGatewayModelCost {
@@ -46,7 +46,7 @@ interface NutstoreLlmGatewayModel {
 	description: string
 	api: NutstoreLlmGatewayModelApi
 	reasoning: boolean
-	input: NutstoreLlmGatewayModelInputModality[]
+	input: AIModelModality[]
 	cost: NutstoreLlmGatewayModelCost
 	contextWindow: number
 	maxTokens: number

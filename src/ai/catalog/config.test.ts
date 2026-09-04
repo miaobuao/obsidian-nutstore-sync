@@ -129,6 +129,26 @@ describe('ai config', () => {
 		expect(providers['provider-1'].models['model-1'].id).toBe('model-1')
 	})
 
+	it('accepts generic file input modality', () => {
+		const providers = sanitizeProviders({
+			'provider-1': {
+				models: {
+					'model-1': {
+						modalities: {
+							input: ['text', 'file'],
+							output: ['text'],
+						},
+					},
+				},
+			},
+		})
+
+		expect(providers['provider-1'].models['model-1'].modalities.input).toEqual([
+			'text',
+			'file',
+		])
+	})
+
 	it('creates provider configs from presets without sharing model objects', () => {
 		const preset: AIProviderDefinition = {
 			id: 'provider-1',

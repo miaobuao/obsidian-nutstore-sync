@@ -13,9 +13,9 @@
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"test": "run-p test:unit test:obsidian",
 		"test:unit": "vitest --run",
-		"test:models-api": "node scripts/update-models-api.cjs --check",
+		"test:models-api": "jiti scripts/update-models-api.ts --check",
 		"test:obsidian": "node scripts/run-obsidian-integration.mjs",
-		"update:models-api": "node scripts/update-models-api.cjs",
+		"update:models-api": "jiti scripts/update-models-api.ts",
 		"postinstall": "lefthook install"
 	},
 	"dependencies": {

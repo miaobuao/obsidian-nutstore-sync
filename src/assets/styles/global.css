@@ -761,6 +761,20 @@
 	color: color-mix(in srgb, var(--color-purple) 78%, var(--text-normal));
 }
 
+.modality-badge-file {
+	background: color-mix(
+		in srgb,
+		var(--color-cyan) 14%,
+		var(--background-primary)
+	);
+	border-color: color-mix(
+		in srgb,
+		var(--color-cyan) 38%,
+		var(--background-modifier-border)
+	);
+	color: color-mix(in srgb, var(--color-cyan) 78%, var(--text-normal));
+}
+
 .chatbox-input {
 	height: 7rem;
 	padding: 0.75rem;
