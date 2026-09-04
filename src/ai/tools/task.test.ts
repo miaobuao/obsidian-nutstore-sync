@@ -3,6 +3,27 @@ import { taskTool } from '~/ai/tools/task'
 import type { TaskOrigin } from '~/ai/chat/runtime/master-turn-scheduler'
 
 describe('task tool execution context', () => {
+	it('materializes its description from the dispatchable definitions', () => {
+		const description = taskTool.description as never as (options: {
+			context: {
+				dispatchableDefinitions: readonly {
+					id: string
+					description: string
+				}[]
+			}
+		}) => string
+
+		const result = description({
+			context: {
+				dispatchableDefinitions: [
+					{ id: 'neutral-agent', description: 'Handles neutral work 🌿' },
+				],
+			},
+		})
+
+		expect(result).toContain('neutral-agent: Handles neutral work 🌿')
+	})
+
 	it('forwards the captured turn origin instead of resolving a global active turn', async () => {
 		const origin: TaskOrigin = {
 			turnId: 'T1',

@@ -21,9 +21,6 @@ import {
 	resolveSummaryOutputTokenBudget,
 } from '~/ai/core/inference'
 import type { AIModelConfig, AIProviderConfig } from '~/ai/core/types'
-import type { DispatchTaskFn } from '~/ai/tools/task'
-import { taskTool } from '~/ai/tools/task'
-import type { AgentDefinition } from '~/ai/chat/agents/registry'
 
 const FALLBACK_CONTEXT_WINDOW = 256 * 1024
 const MIN_CONTEXT_SAFETY_MARGIN = 4096
@@ -36,15 +33,7 @@ const MAX_RECENT_TURNS_TOKEN_BUDGET = 4096 * 4
 const MAX_RECENT_TURNS = 8
 const ESTIMATED_UTF8_BYTES_PER_TOKEN = 3
 
-export type SummaryToolSet = ToolSet & { task?: typeof taskTool }
-export type SummaryToolsContext = {
-	task?: {
-		session: ChatSession
-		agentId: string
-		dispatchTask?: DispatchTaskFn
-		dispatchableDefinitions?: readonly AgentDefinition[]
-	}
-}
+export type SummaryToolSet = ToolSet
 
 export type ContextPressure = 'normal' | 'soft' | 'hard'
 
@@ -79,10 +68,8 @@ interface GenerateContextCompressionOptions {
 	plan: ContextCompressionPlan
 	/** System prompt identical to the main loop's, so the summarizer replays the warm prefix. */
 	system?: string
-	/** Per-agent tools identical to the main loop's, for the same prefix reason. */
+	/** Per-agent tool schemas, retained only to interpret the transcript. */
 	tools?: SummaryToolSet
-	/** Context needed while AI SDK materializes dynamic tool definitions. */
-	toolsContext?: SummaryToolsContext
 	/** Builds the source transcript exactly like the agent loop (user-context aware). */
 	buildMessages?: (
 		messages: AppUIMessage[],
@@ -310,7 +297,6 @@ export async function resolveSummaryContext(
 ): Promise<{
 	system?: string
 	tools?: SummaryToolSet
-	toolsContext?: SummaryToolsContext
 }> {
 	try {
 		const definition = toolExecutor.getAgentDefinition(agent.type)
@@ -318,25 +304,15 @@ export async function resolveSummaryContext(
 			buildAgentSystemPrompt(app, agent.type, session.systemPrompt),
 			toolExecutor.createTools(0, definition, session, model),
 		])
-		const stableContext = toolExecutor.createStableToolsContext(
-			session,
-			definition,
-		)
+		const summaryTools = Object.fromEntries(
+			Object.entries(tools).map(([name, tool]) => [
+				name,
+				{ ...tool, execute: undefined },
+			]),
+		) as SummaryToolSet
 		return {
 			system,
-			tools,
-			...(tools.task
-				? {
-						toolsContext: {
-							task: {
-								session,
-								agentId: agent.id,
-								dispatchTask: stableContext.dispatchTask,
-								dispatchableDefinitions: stableContext.dispatchableDefinitions,
-							},
-						},
-					}
-				: {}),
+			tools: summaryTools,
 		}
 	} catch {
 		return {}
@@ -365,9 +341,7 @@ export async function generateContextCompression(
 		model: languageModel,
 		...(options.system === undefined ? {} : { system: options.system }),
 		...(options.tools === undefined ? {} : { tools: options.tools }),
-		...(options.toolsContext === undefined
-			? {}
-			: { toolsContext: options.toolsContext as never }),
+		toolChoice: 'none',
 		messages: [
 			...preparedMessages,
 			{
