@@ -262,6 +262,34 @@ export function getMessageText(message: AppUIMessage) {
 		.join('\n')
 }
 
+/** Remove tool calls that cannot be resumed after their owning execution ends. */
+export function removeIncompleteToolCalls(agent: ChatAgentState) {
+	let changed = false
+	agent.timeline = agent.timeline.filter((message) => {
+		if (message.role !== 'assistant') return true
+		const nextParts = message.parts.filter((part) => {
+			if (part.type !== 'dynamic-tool') return true
+			const complete =
+				part.state === 'output-available' ||
+				part.state === 'output-error' ||
+				part.state === 'output-denied'
+			if (!complete) changed = true
+			return complete
+		})
+		if (nextParts.length !== message.parts.length) message.parts = nextParts
+		if (
+			!message.parts.length ||
+			(!getMessageText(message).trim() &&
+				message.parts.every((part) => part.type === 'step-start'))
+		) {
+			changed = true
+			return false
+		}
+		return true
+	})
+	return changed
+}
+
 export function getWorkspaceContextDeltas(message: AppUIMessage) {
 	return message.parts.flatMap((part) =>
 		part.type === 'data-workspace-context' ? part.data.deltas : [],
@@ -397,6 +425,12 @@ export function consumePendingInputs(agent: ChatAgentState) {
 	const inputs = agent.pendingInputs.splice(0)
 	agent.timeline.push(...inputs)
 	return inputs.length > 0
+}
+
+export function assertMasterPendingInputsEmpty(agent: ChatAgentState) {
+	if (agent.id === MASTER_AGENT_ID && agent.pendingInputs.length > 0) {
+		throw new Error('Master agent pendingInputs must remain empty')
+	}
 }
 
 /**

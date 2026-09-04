@@ -152,7 +152,8 @@ export class ToolExecutor {
 			app: this.app,
 			fileSystemManager: this.fileSystemManager,
 			permissionGuard,
-			dispatchTask: (params) => this.dispatchTaskHandler(params),
+			dispatchTask: (params, origin) =>
+				this.dispatchTaskHandler(params, origin),
 			dispatchableDefinitions: listDispatchableDefinitions({
 				fullAccess: Boolean(this.getSettings().yolo),
 			}),

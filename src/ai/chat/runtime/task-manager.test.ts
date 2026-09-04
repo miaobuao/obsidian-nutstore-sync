@@ -12,10 +12,16 @@ import {
 } from '~/ai/chat/agents/registry'
 import type { AppUIMessage, ChatAgentState } from '~/ai/chat/types'
 import { BASH_TMP_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
+import { createMasterTurnScheduler } from '~/ai/chat/runtime/master-turn-scheduler'
+import type { TaskOrigin } from '~/ai/chat/runtime/master-turn-scheduler'
 
 const writeTaskResult = vi.hoisted(() => vi.fn(async () => undefined))
 const generateText = vi.hoisted(() => vi.fn())
 const NEUTRAL_TEXT = 'Hello 你好 🌿'
+
+function testOrigin(turnId = 'T1'): TaskOrigin {
+	return { turnId, signal: new AbortController().signal }
+}
 
 vi.mock('~/ai/tools/bash/tmp-fs', () => ({
 	writeBashTmpText: writeTaskResult,
@@ -90,7 +96,7 @@ describe('TaskManager parent notifications', () => {
 			{} as never,
 		)
 
-		await manager.finishAgentAsCompleted(session, child, 'done')
+		await manager.finishAgentAsCompleted(session, child, 'done', testOrigin())
 		expect(events).toEqual(['persist-result', 'notify-parent'])
 
 		expect(writeTaskResult).toHaveBeenCalledWith(
@@ -110,6 +116,114 @@ describe('TaskManager parent notifications', () => {
 			},
 		})
 		expect(parent.pendingInputs[0].parts).toHaveLength(1)
+	})
+
+	it('persists a completed child after its origin is stopped', async () => {
+		let releasePersist: (() => void) | undefined
+		let isPersistCurrent: (() => boolean) | undefined
+		const controller = new AbortController()
+		const master = createEmptyMasterAgent(1)
+		const child: ChatAgentState = {
+			...createEmptyMasterAgent(2),
+			id: 'completed-child',
+			type: 'subagent',
+			status: 'running',
+		}
+		master.subagents[child.id] = child
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const persistSession = vi.fn(
+			(_session: ChatSession, isCurrent?: () => boolean) => {
+				isPersistCurrent = isCurrent
+				return new Promise<void>((resolve) => {
+					releasePersist = resolve
+				})
+			},
+		)
+		const handler = vi.fn(() => true)
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			{
+				loadedSessions: new Map([[session.id, session]]),
+				deletedSessionIds: new Set<string>(),
+				taskModelSelection: new Map(),
+			} as never,
+			{} as never,
+			{ persistSession } as never,
+			vi.fn(),
+			{} as never,
+			{} as never,
+			{} as never,
+		)
+		manager.setMasterAgentInputHandler(handler)
+
+		const completion = manager.finishAgentAsCompleted(
+			session,
+			child,
+			NEUTRAL_TEXT,
+			{ turnId: 'T1', signal: controller.signal },
+		)
+		await vi.waitFor(() => expect(persistSession).toHaveBeenCalledTimes(1))
+		controller.abort()
+
+		expect(isPersistCurrent?.()).toBe(true)
+		releasePersist!()
+		await completion
+
+		expect(child.status).toBe('completed')
+		expect(handler).not.toHaveBeenCalled()
+	})
+
+	it('does not persist again before enqueuing a master continuation', async () => {
+		const master = createEmptyMasterAgent(1)
+		const child: ChatAgentState = {
+			...createEmptyMasterAgent(2),
+			id: 'master-child',
+			type: 'subagent',
+			status: 'running',
+		}
+		master.subagents[child.id] = child
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const persistSession = vi.fn(async () => undefined)
+		const handler = vi.fn(() => true)
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			{
+				loadedSessions: new Map([[session.id, session]]),
+				deletedSessionIds: new Set<string>(),
+				taskModelSelection: new Map(),
+			} as never,
+			{} as never,
+			{ persistSession } as never,
+			vi.fn(),
+			{} as never,
+			{} as never,
+			{} as never,
+		)
+		manager.setMasterAgentInputHandler(handler)
+
+		await manager.finishAgentAsCompleted(
+			session,
+			child,
+			NEUTRAL_TEXT,
+			testOrigin(),
+		)
+
+		expect(persistSession).toHaveBeenCalledTimes(1)
+		expect(handler).toHaveBeenCalledTimes(1)
 	})
 
 	it('does not settle or notify when persisting the result fails', async () => {
@@ -148,12 +262,239 @@ describe('TaskManager parent notifications', () => {
 		)
 
 		await expect(
-			manager.finishAgentAsCompleted(session, child, 'done'),
+			manager.finishAgentAsCompleted(session, child, 'done', testOrigin()),
 		).rejects.toThrow('disk full')
 
 		expect(child.status).toBe('running')
 		expect(master.pendingInputs).toEqual([])
 		expect(persistSession).not.toHaveBeenCalled()
+	})
+
+	it('settles a child when direct parent delivery cannot be staged', async () => {
+		const master = createEmptyMasterAgent(1)
+		const parent: ChatAgentState = {
+			...createEmptyMasterAgent(2),
+			id: 'parent',
+			type: 'subagent',
+			status: 'running',
+		}
+		const child: ChatAgentState = {
+			...createEmptyMasterAgent(3),
+			id: 'child',
+			type: 'subagent',
+			status: 'running',
+		}
+		parent.subagents[child.id] = child
+		master.subagents[parent.id] = parent
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const persistSession = vi
+			.fn<() => Promise<void>>()
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('neutral parent delivery failure'))
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			{
+				loadedSessions: new Map([[session.id, session]]),
+				deletedSessionIds: new Set<string>(),
+				taskModelSelection: new Map(),
+			} as never,
+			{} as never,
+			{ persistSession } as never,
+			vi.fn(),
+			{} as never,
+			{} as never,
+			{} as never,
+		)
+
+		await expect(
+			manager.finishAgentAsCompleted(
+				session,
+				child,
+				NEUTRAL_TEXT,
+				testOrigin(),
+			),
+		).rejects.toThrow('neutral parent delivery failure')
+
+		expect(child.status).toBe('completed')
+		expect(parent.pendingInputs).toEqual([])
+	})
+
+	it('does not deliver an orphaned child result to the master', async () => {
+		const master = createEmptyMasterAgent(1)
+		const child: ChatAgentState = {
+			...createEmptyMasterAgent(2),
+			id: 'orphaned-child',
+			type: 'subagent',
+			status: 'running',
+		}
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const handler = vi.fn(() => true)
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			{
+				loadedSessions: new Map([[session.id, session]]),
+				deletedSessionIds: new Set<string>(),
+				taskModelSelection: new Map(),
+			} as never,
+			{} as never,
+			{ persistSession: vi.fn(async () => undefined) } as never,
+			vi.fn(),
+			{} as never,
+			{} as never,
+			{} as never,
+		)
+		manager.setMasterAgentInputHandler(handler)
+
+		await expect(
+			manager.finishAgentAsCompleted(
+				session,
+				child,
+				NEUTRAL_TEXT,
+				testOrigin(),
+			),
+		).rejects.toThrow('Task parent is unavailable')
+
+		expect(child.status).toBe('completed')
+		expect(handler).not.toHaveBeenCalled()
+	})
+
+	it.each([
+		'origin is aborted',
+		'session is replaced',
+		'parent becomes terminal',
+	])(
+		'removes a nested continuation when persistence resumes after the %s',
+		async (staleCondition) => {
+			let releaseDeliveryPersist: (() => void) | undefined
+			const controller = new AbortController()
+			const master = createEmptyMasterAgent(1)
+			const parent: ChatAgentState = {
+				...createEmptyMasterAgent(2),
+				id: 'parent',
+				type: 'subagent',
+				status: 'running',
+			}
+			const child: ChatAgentState = {
+				...createEmptyMasterAgent(3),
+				id: 'child',
+				type: 'subagent',
+				status: 'running',
+			}
+			parent.subagents[child.id] = child
+			master.subagents[parent.id] = parent
+			const session: ChatSession = {
+				schemaVersion: 2,
+				id: 'session',
+				createdAt: 1,
+				updatedAt: 1,
+				subagents: { master },
+			}
+			const state = {
+				loadedSessions: new Map([[session.id, session]]),
+				deletedSessionIds: new Set<string>(),
+				taskModelSelection: new Map(),
+			}
+			const persistSession = vi
+				.fn<() => Promise<void>>()
+				.mockResolvedValueOnce(undefined)
+				.mockImplementationOnce(
+					() =>
+						new Promise<void>((resolve) => {
+							releaseDeliveryPersist = resolve
+						}),
+				)
+			const manager = new TaskManager(
+				{} as never,
+				vi.fn(),
+				state as never,
+				{} as never,
+				{ persistSession } as never,
+				vi.fn(),
+				{} as never,
+				{} as never,
+				{} as never,
+			)
+
+			const completion = manager.finishAgentAsCompleted(
+				session,
+				child,
+				NEUTRAL_TEXT,
+				{ turnId: 'T1', signal: controller.signal },
+			)
+			await vi.waitFor(() => expect(persistSession).toHaveBeenCalledTimes(2))
+			if (staleCondition === 'origin is aborted') controller.abort()
+			if (staleCondition === 'session is replaced') {
+				state.loadedSessions.set(session.id, {
+					...session,
+					subagents: { master: createEmptyMasterAgent(4) },
+				})
+			}
+			if (staleCondition === 'parent becomes terminal') {
+				parent.status = 'cancelled'
+			}
+			releaseDeliveryPersist!()
+			await completion
+
+			expect(child.status).toBe('completed')
+			expect(parent.pendingInputs).toEqual([])
+		},
+	)
+
+	it('completes only a running child', async () => {
+		const master = createEmptyMasterAgent(1)
+		const child: ChatAgentState = {
+			...createEmptyMasterAgent(2),
+			id: 'idle-child',
+			type: 'subagent',
+			status: 'idle',
+		}
+		master.subagents[child.id] = child
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			{
+				loadedSessions: new Map([[session.id, session]]),
+				deletedSessionIds: new Set<string>(),
+				taskModelSelection: new Map(),
+			} as never,
+			{} as never,
+			{ persistSession: vi.fn(async () => undefined) } as never,
+			vi.fn(),
+			{} as never,
+			{} as never,
+			{} as never,
+		)
+
+		await manager.finishAgentAsCompleted(
+			session,
+			child,
+			NEUTRAL_TEXT,
+			testOrigin(),
+		)
+
+		expect(child.status).toBe('idle')
+		expect(writeTaskResult).not.toHaveBeenCalled()
 	})
 
 	it('dispatches a typed subagent with an id-agent task id', async () => {
@@ -193,12 +534,15 @@ describe('TaskManager parent notifications', () => {
 			undefined as never,
 		)
 
-		const output = await manager.dispatchTask({
-			prompt: 'Inspect the vault',
-			subagentType: EXPLORER_AGENT_ID,
-			callerAgentId: 'master',
-			sessionId: session.id,
-		})
+		const output = await manager.dispatchTask(
+			{
+				prompt: 'Inspect the vault',
+				subagentType: EXPLORER_AGENT_ID,
+				callerAgentId: 'master',
+				sessionId: session.id,
+			},
+			testOrigin(),
+		)
 
 		const parsed = parseAgentId(output.taskId)
 		expect(parsed?.prefix).toBe(EXPLORER_AGENT_ID)
@@ -210,6 +554,453 @@ describe('TaskManager parent notifications', () => {
 			subagentType: EXPLORER_AGENT_ID,
 			status: 'dispatched',
 		})
+	})
+
+	it('captures master task lineage when dispatching and preserves it for nested tasks', async () => {
+		const master = createEmptyMasterAgent(1)
+		const controller = new AbortController()
+		const origin: TaskOrigin = { turnId: 'T1', signal: controller.signal }
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			model: { providerId: 'provider', modelId: 'model' },
+			subagents: { master },
+		}
+		const state = {
+			loadedSessions: new Map([[session.id, session]]),
+			deletedSessionIds: new Set<string>(),
+			taskModelSelection: new Map(),
+			runtimeBySessionId: new Map([
+				[
+					session.id,
+					{
+						runState: 'thinking',
+						draft: { text: '', userContext: [] },
+						scheduler: {
+							...createMasterTurnScheduler(),
+							active: {
+								turn: {
+									turnId: 'T1',
+									kind: 'user-submission',
+									submission: { text: NEUTRAL_TEXT, userContext: [] },
+								},
+								abortController: controller,
+							},
+						},
+					},
+				],
+			]),
+		} as never
+		const toolExecutor = {
+			getAgentDefinition: (agentType: string) => {
+				const definition = getAgentDefinition(agentType)
+				if (!definition) throw new Error(`Unknown agent type: ${agentType}`)
+				return definition
+			},
+		}
+		const handler = vi.fn(
+			(_sessionId: string, _input: AppUIMessage, _origin: TaskOrigin) => true,
+		)
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			state,
+			{} as never,
+			{ persistSession: vi.fn(async () => undefined) } as never,
+			vi.fn(),
+			toolExecutor as never,
+			{} as never,
+			{} as never,
+		)
+		manager.setMasterAgentInputHandler(handler)
+		vi.spyOn(manager as never, 'runAgent' as never).mockResolvedValue(
+			undefined as never,
+		)
+
+		const first = await manager.dispatchTask(
+			{
+				prompt: NEUTRAL_TEXT,
+				subagentType: EXPLORER_AGENT_ID,
+				callerAgentId: MASTER_AGENT_ID,
+				sessionId: session.id,
+			},
+			origin,
+		)
+		const firstAgent = master.subagents[first.taskId]
+		const second = await manager.dispatchTask(
+			{
+				prompt: NEUTRAL_TEXT,
+				subagentType: EXPLORER_AGENT_ID,
+				callerAgentId: first.taskId,
+				sessionId: session.id,
+			},
+			origin,
+		)
+
+		await manager.finishAgentAsCompleted(
+			session,
+			firstAgent.subagents[second.taskId],
+			NEUTRAL_TEXT,
+			origin,
+		)
+		expect(firstAgent.pendingInputs).toHaveLength(1)
+		await manager.finishAgentAsCompleted(
+			session,
+			firstAgent,
+			NEUTRAL_TEXT,
+			origin,
+		)
+
+		expect(handler).toHaveBeenCalledTimes(1)
+		expect(handler.mock.calls[0]?.[2]).toEqual({
+			turnId: 'T1',
+			signal: controller.signal,
+		})
+		expect(master.pendingInputs).toEqual([])
+	})
+
+	it('cancelling T1 leaves T0 child compaction running', async () => {
+		const master = createEmptyMasterAgent(1)
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			model: { providerId: 'provider', modelId: 'model' },
+			subagents: { master },
+		}
+		const state = {
+			loadedSessions: new Map([[session.id, session]]),
+			deletedSessionIds: new Set<string>(),
+			taskModelSelection: new Map(),
+		} as never
+		const compactionCoordinator = {
+			cancel: vi.fn(),
+		}
+		const toolExecutor = {
+			getAgentDefinition: (agentType: string) => {
+				const definition = getAgentDefinition(agentType)
+				if (!definition) throw new Error(`Unknown agent type: ${agentType}`)
+				return definition
+			},
+		}
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			state,
+			{} as never,
+			{ persistSession: vi.fn(async () => undefined) } as never,
+			vi.fn(),
+			toolExecutor as never,
+			{} as never,
+			{} as never,
+			compactionCoordinator as never,
+		)
+		vi.spyOn(manager as never, 'runAgent' as never).mockResolvedValue(
+			undefined as never,
+		)
+
+		const t0 = await manager.dispatchTask(
+			{
+				prompt: NEUTRAL_TEXT,
+				subagentType: EXPLORER_AGENT_ID,
+				callerAgentId: MASTER_AGENT_ID,
+				sessionId: session.id,
+			},
+			testOrigin('T0'),
+		)
+		const t1 = await manager.dispatchTask(
+			{
+				prompt: NEUTRAL_TEXT,
+				subagentType: EXPLORER_AGENT_ID,
+				callerAgentId: MASTER_AGENT_ID,
+				sessionId: session.id,
+			},
+			testOrigin('T1'),
+		)
+
+		manager.cancelAllNonTerminalAgents(session, 'T1')
+
+		expect(master.subagents[t0.taskId].status).toBe('running')
+		expect(master.subagents[t1.taskId].status).toBe('cancelled')
+		expect(compactionCoordinator.cancel).toHaveBeenCalledWith(
+			session.id,
+			t1.taskId,
+		)
+		expect(compactionCoordinator.cancel).not.toHaveBeenCalledWith(
+			session.id,
+			t0.taskId,
+		)
+	})
+
+	it('does not revive a task completion cancelled while its result is being written', async () => {
+		let releaseWrite: (() => void) | undefined
+		writeTaskResult.mockImplementationOnce(
+			() =>
+				new Promise<undefined>((resolve) => {
+					releaseWrite = () => resolve(undefined)
+				}),
+		)
+		const master = createEmptyMasterAgent(1)
+		const child: ChatAgentState = {
+			...createEmptyMasterAgent(2),
+			id: 'child',
+			type: EXPLORER_AGENT_ID,
+			status: 'running',
+		}
+		master.subagents[child.id] = child
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const handler = vi.fn(
+			(_sessionId: string, _input: AppUIMessage, _origin: TaskOrigin) => true,
+		)
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			{
+				loadedSessions: new Map([[session.id, session]]),
+				deletedSessionIds: new Set<string>(),
+				taskModelSelection: new Map(),
+			} as never,
+			{} as never,
+			{ persistSession: vi.fn(async () => undefined) } as never,
+			vi.fn(),
+			{} as never,
+			{} as never,
+			{} as never,
+		)
+		manager.setMasterAgentInputHandler(handler)
+
+		const completion = manager.finishAgentAsCompleted(
+			session,
+			child,
+			NEUTRAL_TEXT,
+			testOrigin(),
+		)
+		await vi.waitFor(() => expect(writeTaskResult).toHaveBeenCalledTimes(1))
+		child.status = 'cancelled'
+		child.finishedAt = Date.now()
+		releaseWrite!()
+		await completion
+
+		expect(child.status).toBe('cancelled')
+		expect(handler).not.toHaveBeenCalled()
+	})
+
+	it('discards a stale task completion after its session is rehydrated', async () => {
+		let releaseWrite: (() => void) | undefined
+		writeTaskResult.mockImplementationOnce(
+			() =>
+				new Promise<undefined>((resolve) => {
+					releaseWrite = () => resolve(undefined)
+				}),
+		)
+		const master = createEmptyMasterAgent(1)
+		const child: ChatAgentState = {
+			...createEmptyMasterAgent(2),
+			id: 'child',
+			type: EXPLORER_AGENT_ID,
+			status: 'running',
+		}
+		master.subagents[child.id] = child
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const state = {
+			loadedSessions: new Map([[session.id, session]]),
+			deletedSessionIds: new Set<string>(),
+			taskModelSelection: new Map(),
+		}
+		const persistSession = vi.fn(async () => undefined)
+		const handler = vi.fn(() => true)
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			state as never,
+			{} as never,
+			{ persistSession } as never,
+			vi.fn(),
+			{} as never,
+			{} as never,
+			{} as never,
+		)
+		manager.setMasterAgentInputHandler(handler)
+
+		const completion = manager.finishAgentAsCompleted(
+			session,
+			child,
+			NEUTRAL_TEXT,
+			testOrigin(),
+		)
+		await vi.waitFor(() => expect(writeTaskResult).toHaveBeenCalledTimes(1))
+		state.loadedSessions.set(session.id, {
+			...session,
+			subagents: { master: createEmptyMasterAgent(3) },
+		})
+		releaseWrite!()
+		await completion
+
+		expect(child.status).toBe('running')
+		expect(persistSession).not.toHaveBeenCalled()
+		expect(handler).not.toHaveBeenCalled()
+	})
+
+	it('does not deliver a settled task after its session is rehydrated', async () => {
+		let releasePersist: (() => void) | undefined
+		let isPersistCurrent: (() => boolean) | undefined
+		const master = createEmptyMasterAgent(1)
+		const child: ChatAgentState = {
+			...createEmptyMasterAgent(2),
+			id: 'child',
+			type: EXPLORER_AGENT_ID,
+			status: 'running',
+		}
+		master.subagents[child.id] = child
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master },
+		}
+		const state = {
+			loadedSessions: new Map([[session.id, session]]),
+			deletedSessionIds: new Set<string>(),
+			taskModelSelection: new Map(),
+		}
+		const persistSession = vi.fn(
+			(_session: ChatSession, isCurrent?: () => boolean) => {
+				isPersistCurrent = isCurrent
+				return new Promise<void>((resolve) => {
+					releasePersist = resolve
+				})
+			},
+		)
+		const handler = vi.fn(() => true)
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			state as never,
+			{} as never,
+			{ persistSession } as never,
+			vi.fn(),
+			{} as never,
+			{} as never,
+			{} as never,
+		)
+		manager.setMasterAgentInputHandler(handler)
+
+		const completion = manager.finishAgentAsCompleted(
+			session,
+			child,
+			NEUTRAL_TEXT,
+			testOrigin(),
+		)
+		await vi.waitFor(() => expect(persistSession).toHaveBeenCalledTimes(1))
+		state.loadedSessions.set(session.id, {
+			...session,
+			subagents: { master: createEmptyMasterAgent(3) },
+		})
+		expect(isPersistCurrent?.()).toBe(false)
+		releasePersist!()
+		await completion
+
+		expect(handler).not.toHaveBeenCalled()
+		expect(master.pendingInputs).toEqual([])
+	})
+
+	it('fences master delivery after the origin turn is aborted', async () => {
+		const master = createEmptyMasterAgent(1)
+		const controller = new AbortController()
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'session',
+			createdAt: 1,
+			updatedAt: 1,
+			model: { providerId: 'provider', modelId: 'model' },
+			subagents: { master },
+		}
+		const state = {
+			loadedSessions: new Map([[session.id, session]]),
+			deletedSessionIds: new Set<string>(),
+			taskModelSelection: new Map(),
+			runtimeBySessionId: new Map([
+				[
+					session.id,
+					{
+						runState: 'thinking',
+						draft: { text: '', userContext: [] },
+						scheduler: {
+							...createMasterTurnScheduler(),
+							active: {
+								turn: {
+									turnId: 'T1',
+									kind: 'user-submission',
+									submission: { text: NEUTRAL_TEXT, userContext: [] },
+								},
+								abortController: controller,
+							},
+						},
+					},
+				],
+			]),
+		} as never
+		const toolExecutor = {
+			getAgentDefinition: (agentType: string) => {
+				const definition = getAgentDefinition(agentType)
+				if (!definition) throw new Error(`Unknown agent type: ${agentType}`)
+				return definition
+			},
+		}
+		const handler = vi.fn(
+			(_sessionId: string, _input: AppUIMessage, _origin: TaskOrigin) => true,
+		)
+		const manager = new TaskManager(
+			{} as never,
+			vi.fn(),
+			state,
+			{} as never,
+			{ persistSession: vi.fn(async () => undefined) } as never,
+			vi.fn(),
+			toolExecutor as never,
+			{} as never,
+			{} as never,
+		)
+		manager.setMasterAgentInputHandler(handler)
+		vi.spyOn(manager as never, 'runAgent' as never).mockResolvedValue(
+			undefined as never,
+		)
+
+		const output = await manager.dispatchTask(
+			{
+				prompt: NEUTRAL_TEXT,
+				subagentType: EXPLORER_AGENT_ID,
+				callerAgentId: MASTER_AGENT_ID,
+				sessionId: session.id,
+			},
+			{ turnId: 'T1', signal: controller.signal },
+		)
+		controller.abort()
+		await manager.finishAgentAsCompleted(
+			session,
+			master.subagents[output.taskId],
+			NEUTRAL_TEXT,
+			{ turnId: 'T1', signal: controller.signal },
+		)
+
+		expect(handler).not.toHaveBeenCalled()
+		expect(master.pendingInputs).toEqual([])
 	})
 
 	it('rejects non-dispatchable agent types', async () => {
@@ -246,12 +1037,15 @@ describe('TaskManager parent notifications', () => {
 		)
 
 		await expect(
-			manager.dispatchTask({
-				prompt: 'Inspect the vault',
-				subagentType: MASTER_AGENT_ID,
-				callerAgentId: MASTER_AGENT_ID,
-				sessionId: session.id,
-			}),
+			manager.dispatchTask(
+				{
+					prompt: 'Inspect the vault',
+					subagentType: MASTER_AGENT_ID,
+					callerAgentId: MASTER_AGENT_ID,
+					sessionId: session.id,
+				},
+				testOrigin(),
+			),
 		).rejects.toThrow('cannot be dispatched')
 		expect(master.subagents).toEqual({})
 	})
@@ -312,8 +1106,9 @@ describe('TaskManager parent notifications', () => {
 			{} as never,
 			{ runTurn } as never,
 		)
+		manager.setMasterAgentInputHandler(() => true)
 
-		await manager.runAgent(session, agent)
+		await manager.runAgent(session, agent, testOrigin())
 
 		expect(runTurn.mock.calls[1][0].continuation).toBe(continuation)
 	})
@@ -369,7 +1164,7 @@ describe('TaskManager parent notifications', () => {
 			persistMetaAndIndex: vi.fn(async () => undefined),
 			upsertSessionIndexItem: vi.fn(),
 		}
-		const factory = new MessageFactory({} as never, {} as never, vi.fn())
+		const factory = new MessageFactory({} as never, vi.fn())
 		const coordinator = new ContextCompactionCoordinator(
 			store as never,
 			factory,
@@ -405,8 +1200,9 @@ describe('TaskManager parent notifications', () => {
 			} as never,
 			coordinator,
 		)
+		manager.setMasterAgentInputHandler(() => true)
 
-		await manager.runAgent(session, agent)
+		await manager.runAgent(session, agent, testOrigin())
 
 		expect(generateText).toHaveBeenCalledTimes(1)
 		expect(runTurn).not.toHaveBeenCalled()
@@ -466,7 +1262,7 @@ describe('TaskManager parent notifications', () => {
 			persistMetaAndIndex: vi.fn(async () => undefined),
 			upsertSessionIndexItem: vi.fn(),
 		}
-		const factory = new MessageFactory({} as never, {} as never, vi.fn())
+		const factory = new MessageFactory({} as never, vi.fn())
 		const coordinator = new ContextCompactionCoordinator(
 			store as never,
 			factory,
@@ -503,8 +1299,14 @@ describe('TaskManager parent notifications', () => {
 			{} as never,
 			coordinator,
 		)
+		manager.setMasterAgentInputHandler(() => true)
 
-		await manager.finishAgentAsCompleted(session, agent, NEUTRAL_TEXT)
+		await manager.finishAgentAsCompleted(
+			session,
+			agent,
+			NEUTRAL_TEXT,
+			testOrigin(),
+		)
 
 		expect(signal!.aborted).toBe(true)
 		expect(generateText).toHaveBeenCalledTimes(1)

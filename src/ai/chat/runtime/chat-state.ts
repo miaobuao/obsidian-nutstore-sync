@@ -3,15 +3,15 @@ import type { ChatSession } from '~/ai/chat/domain'
 import type { ChatRunState, ChatSubmission } from '~/ai/chat/types'
 import type { ChatSessionIndexItem } from '~/ai/chat/domain'
 import type { ViewImageAttachmentRegistry } from '~/ai/tools/view-image-attachments'
+import type { MasterTurnScheduler } from '~/ai/chat/runtime/master-turn-scheduler'
 
 export interface SessionRuntimeState {
 	runState: ChatRunState
 	processing?: Promise<void>
-	stopRequested?: boolean
-	abortController?: AbortController
+	manualCompressionAbortController?: AbortController
 	viewImageAttachments?: ViewImageAttachmentRegistry
 	draft: ChatSubmission
-	pending: ChatSubmission[]
+	scheduler: MasterTurnScheduler
 }
 
 interface TaskModelSelection {

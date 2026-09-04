@@ -75,7 +75,7 @@ function createHarness() {
 		store,
 		coordinator: new ContextCompactionCoordinator(
 			store as never,
-			new MessageFactory({} as never, {} as never, vi.fn()),
+			new MessageFactory({} as never, vi.fn()),
 		),
 	}
 }

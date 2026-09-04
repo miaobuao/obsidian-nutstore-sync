@@ -4,7 +4,6 @@ import type { ChatSession, LegacyChatSession } from '~/ai/chat/domain'
 import { ChatSessionIndexItem } from '~/ai/chat/domain'
 import { deriveTitle } from '~/ai/chat/messages/message-utils'
 import type { ChatState } from '~/ai/chat/runtime/chat-state'
-import type { RuntimeStates } from '~/ai/chat/runtime/runtime-state'
 import type { Selection } from '~/ai/chat/runtime/selection'
 import type { ChatMetaRecord } from '~/storage'
 import {
@@ -25,9 +24,9 @@ import {
 	normalizeLegacySession,
 } from '~/ai/chat/session/session-migration'
 import type { ChatAgentState, ReversibleToolOp } from '~/ai/chat/types'
-import { getSessionSubagents } from '~/ai/chat/domain'
 import { normalizeReversibleToolOpRecord } from '~/ai/chat/messages/reversible-op-utils'
 import { MASTER_AGENT_ID } from '~/ai/chat/agents/registry'
+import { normalizeRehydratedExecution } from '~/ai/chat/session/rehydration-execution'
 import logger from '~/utils/logger'
 
 /**
@@ -67,10 +66,13 @@ export class SessionStore {
 
 	constructor(
 		private state: ChatState,
-		private runtimeStates: RuntimeStates,
 		private selection: Selection,
 		private backend: SessionsFileBackend,
 		private legacy: SessionLegacyStore,
+		private resetSessionExecution: (
+			sessionId: string,
+			session: ChatSession,
+		) => void = () => {},
 	) {}
 
 	async loadSessionIndex() {
@@ -291,9 +293,8 @@ export class SessionStore {
 		}
 
 		const { session, changed } = this.rehydrateSession(stored)
+		this.resetSessionExecution(sessionId, session)
 		this.state.loadedSessions.set(sessionId, session)
-		const runtime = this.runtimeStates.get(sessionId)
-		runtime.pending = []
 
 		const existing = this.state.sessionIndex.find(
 			(item) => item.id === sessionId,
@@ -313,8 +314,12 @@ export class SessionStore {
 		return session
 	}
 
-	async persistSession(session: ChatSession) {
-		if (this.state.deletedSessionIds.has(session.id)) {
+	async persistSession(
+		session: ChatSession,
+		isCurrent: () => boolean = () =>
+			this.state.loadedSessions.get(session.id) === session,
+	) {
+		if (this.state.deletedSessionIds.has(session.id) || !isCurrent()) {
 			return
 		}
 		const sessionId = session.id
@@ -323,9 +328,9 @@ export class SessionStore {
 		const write = previous
 			.catch(() => undefined)
 			.then(async () => {
-				if (this.state.deletedSessionIds.has(sessionId)) return
+				if (this.state.deletedSessionIds.has(sessionId) || !isCurrent()) return
 				const snapshot = await encodeChatSessionForStorage(session)
-				if (this.state.deletedSessionIds.has(sessionId)) return
+				if (this.state.deletedSessionIds.has(sessionId) || !isCurrent()) return
 				await this.backend.writeSessionFile(sessionId, {
 					session: snapshot,
 					title,
@@ -393,14 +398,7 @@ export class SessionStore {
 			this.selection.sanitizeSessionSelection(rehydrated) ||
 			opsRewritten
 
-		for (const agent of getSessionSubagents(rehydrated)) {
-			if (agent.status !== 'queued' && agent.status !== 'running') {
-				continue
-			}
-			agent.status = 'cancelled'
-			agent.finishedAt = Date.now()
-			changed = true
-		}
+		changed = normalizeRehydratedExecution(rehydrated) || changed
 
 		return {
 			session: rehydrated,
@@ -447,6 +445,21 @@ export class SessionStore {
 				}
 				return normalized
 			}
+			const storedPendingInputs = Array.isArray(agent.pendingInputs)
+				? agent.pendingInputs
+				: []
+			const pendingInputs =
+				agent.id === MASTER_AGENT_ID
+					? // Master continuation is runtime-only now; do not revive persisted
+						// execution input after reload.
+						[]
+					: storedPendingInputs.map(normalizeMessage)
+			const timeline = Array.isArray(agent.timeline)
+				? agent.timeline.map(normalizeMessage)
+				: []
+			if (agent.id === MASTER_AGENT_ID && storedPendingInputs.length > 0) {
+				changed = true
+			}
 			return {
 				id: agent.id,
 				type:
@@ -456,12 +469,8 @@ export class SessionStore {
 				createdAt: agent.createdAt || session.createdAt,
 				startedAt: normalizeTimestamp(agent.startedAt),
 				finishedAt: normalizeTimestamp(agent.finishedAt),
-				timeline: Array.isArray(agent.timeline)
-					? agent.timeline.map(normalizeMessage)
-					: [],
-				pendingInputs: Array.isArray(agent.pendingInputs)
-					? agent.pendingInputs.map(normalizeMessage)
-					: [],
+				timeline,
+				pendingInputs,
 				operations: Object.fromEntries(
 					Object.entries(agent.operations ?? {}).map(
 						([messageId, operations]) => [

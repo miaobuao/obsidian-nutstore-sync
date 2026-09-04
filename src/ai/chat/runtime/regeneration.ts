@@ -12,7 +12,9 @@ export interface RegenerationTransaction {
 	originalOperations: Record<string, ReversibleToolOp[]>
 	originalToolTimings: Record<string, ToolTiming>
 	originalReadVaultPaths?: string[]
+	originalSessionUpdatedAt: number
 	originalSessionIndexItem?: ChatSessionIndexItem
 	originalSessionIndexPosition: number
+	prefixLength: number
 	suffix: AppUIMessage[]
 }

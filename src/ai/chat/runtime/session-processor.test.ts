@@ -61,12 +61,12 @@ function createHarness(
 		appendAgentInput: vi.fn(() => true),
 		removeIncompleteToolCalls: vi.fn(() => false),
 		reportFatalError: vi.fn(),
-	} as never
+	}
 	const messageOps = {
 		beginRegeneration: vi.fn(),
 		commitRegeneration: vi.fn(),
 		rollbackRegeneration: vi.fn(),
-	} as never
+	}
 	const selection = {
 		getProviderOrThrow: () => ({ id: 'provider', name: 'Provider' }),
 		getModelOrThrow: () => ({ id: 'model', name: 'Model' }),
@@ -84,7 +84,8 @@ function createHarness(
 		}),
 		shouldSuspendAtSafePoint: () => false,
 		cancel: vi.fn(),
-	} as never
+	}
+	const reportTransientError = vi.fn()
 	const processor = new SessionProcessor(
 		async () => undefined,
 		state,
@@ -92,17 +93,28 @@ function createHarness(
 		store as never,
 		vi.fn(),
 		selection,
-		messageFactory,
-		messageOps,
+		messageFactory as never,
+		messageOps as never,
 		userContextManager,
 		agentRunner,
-		compactionCoordinator,
+		compactionCoordinator as never,
 		{
 			cancelAllNonTerminalAgents: vi.fn(() => false),
 			startQueuedAgentsForSession: vi.fn(),
 		},
+		reportTransientError,
 	)
-	return { master, processor, runtime: runtimeStates.get(session.id), session }
+	return {
+		master,
+		processor,
+		runtime: runtimeStates.get(session.id),
+		session,
+		messageFactory,
+		messageOps,
+		compactionCoordinator,
+		store,
+		reportTransientError,
+	}
 }
 
 describe('SessionProcessor master turn worker', () => {
@@ -166,6 +178,83 @@ describe('SessionProcessor master turn worker', () => {
 		expect(runtime.scheduler.active).toBeUndefined()
 	})
 
+	it('drains queued work after an unexpected worker rejection', async () => {
+		let releaseFirstTurn:
+			| ((result: { status: string; text: string }) => void)
+			| undefined
+		const runTurn = vi.fn(() => {
+			if (runTurn.mock.calls.length === 1) {
+				return new Promise<{ status: string; text: string }>((resolve) => {
+					releaseFirstTurn = resolve
+				})
+			}
+			return Promise.resolve({ status: 'completed', text: TEXT_TWO })
+		})
+		const { master, processor, runtime, reportTransientError } =
+			createHarness(runTurn)
+
+		processor.enqueueUserSubmission('session', {
+			text: TEXT_ONE,
+			userContext: [],
+		})
+		await vi.waitFor(() => expect(runTurn).toHaveBeenCalledTimes(1))
+		processor.enqueueUserSubmission('session', {
+			text: TEXT_TWO,
+			userContext: [],
+		})
+		master.pendingInputs.push({
+			id: 'unexpected-pending-input',
+			role: 'user',
+			metadata: { createdAt: 1 },
+			parts: [{ type: 'text', text: '中性内容 🌿' }],
+		})
+		reportTransientError.mockImplementationOnce(() => {
+			master.pendingInputs = []
+		})
+
+		releaseFirstTurn!({ status: 'completed', text: TEXT_ONE })
+
+		await vi.waitFor(() => expect(runTurn).toHaveBeenCalledTimes(2))
+		await runtime.processing
+
+		expect(reportTransientError).toHaveBeenCalledWith(
+			'Master agent pendingInputs must remain empty',
+		)
+		expect(runtime.scheduler.queued).toEqual([])
+		expect(runtime.scheduler.active).toBeUndefined()
+	})
+
+	it('claims queued work without a fallible pre-claim persistence step', async () => {
+		const runTurn = vi.fn(async () => ({ status: 'completed', text: TEXT_TWO }))
+		const { processor, runtime, messageFactory, store, reportTransientError } =
+			createHarness(runTurn)
+		messageFactory.removeIncompleteToolCalls.mockReturnValue(true)
+		store.persistSession.mockRejectedValueOnce(
+			new Error('neutral persistence failure'),
+		)
+
+		processor.enqueueUserSubmission('session', {
+			text: TEXT_ONE,
+			userContext: [],
+		})
+		await runtime.processing
+
+		const [persistedSession] = (
+			store.persistSession.mock.calls as unknown as Array<[ChatSession]>
+		)[0]
+		expect(persistedSession).toMatchObject({
+			subagents: {
+				master: {
+					timeline: [{ parts: [{ type: 'text', text: TEXT_ONE }] }],
+				},
+			},
+		})
+		expect(runTurn).not.toHaveBeenCalled()
+		expect(runtime.scheduler.queued).toEqual([])
+		expect(runtime.scheduler.active).toBeUndefined()
+		expect(reportTransientError).not.toHaveBeenCalled()
+	})
+
 	it('materializes a claimed user submission after Stop without starting the model', async () => {
 		let releasePrepare:
 			| ((value: { dedupedItems: unknown[] }) => void)
@@ -196,6 +285,37 @@ describe('SessionProcessor master turn worker', () => {
 		expect(runtime.scheduler.active).toBeUndefined()
 	})
 
+	it('stops only the active master turn compaction', async () => {
+		const runTurn = vi.fn(
+			({ abortSignal }: { abortSignal?: AbortSignal }) =>
+				new Promise((_, reject) => {
+					abortSignal?.addEventListener(
+						'abort',
+						() => reject(new Error('neutral abort')),
+						{ once: true },
+					)
+				}),
+		)
+		const { processor, runtime, compactionCoordinator } = createHarness(runTurn)
+
+		processor.enqueueUserSubmission('session', {
+			text: TEXT_ONE,
+			userContext: [],
+		})
+		await vi.waitFor(() => expect(runTurn).toHaveBeenCalledTimes(1))
+		await processor.stopActiveTurn('session')
+		await runtime.processing
+
+		expect(compactionCoordinator.cancel).toHaveBeenCalledWith(
+			'session',
+			'master',
+		)
+		expect(compactionCoordinator.cancel).not.toHaveBeenCalledWith(
+			'session',
+			undefined,
+		)
+	})
+
 	it('does not infer work from a user message at the timeline tail', async () => {
 		const runTurn = vi.fn(async () => ({ status: 'completed', text: TEXT_TWO }))
 		const { master, processor, runtime } = createHarness(runTurn)
@@ -210,5 +330,228 @@ describe('SessionProcessor master turn worker', () => {
 		await processor.start('session')
 
 		expect(runTurn).not.toHaveBeenCalled()
+	})
+
+	it('records the configured model on a normal turn failure', async () => {
+		const runTurn = vi.fn(async () => {
+			throw new Error('neutral model failure')
+		})
+		const { processor, runtime, messageFactory } = createHarness(runTurn)
+
+		processor.enqueueUserSubmission('session', {
+			text: TEXT_ONE,
+			userContext: [],
+		})
+		await runtime.processing
+
+		expect(messageFactory.reportFatalError).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.any(String),
+			{
+				providerId: 'provider',
+				providerName: 'Provider',
+				modelId: 'model',
+				modelName: 'Model',
+			},
+			expect.anything(),
+		)
+	})
+
+	it('restores the exact transcript when regeneration fails', async () => {
+		const request = {
+			id: 'request',
+			role: 'user' as const,
+			metadata: { createdAt: 1 },
+			parts: [{ type: 'text' as const, text: TEXT_ONE }],
+		}
+		const response = {
+			id: 'response',
+			role: 'assistant' as const,
+			metadata: { createdAt: 2 },
+			parts: [{ type: 'text' as const, text: TEXT_TWO }],
+		}
+		const originalTimeline = [request, response]
+		const runTurn = vi.fn(async () => {
+			throw new Error('neutral regeneration failure')
+		})
+		const { master, processor, runtime, session, messageFactory, messageOps } =
+			createHarness(runTurn)
+		master.timeline = originalTimeline.slice()
+		const transaction = {
+			targetMessageId: response.id,
+			targetToolCallIds: [],
+			originalTimeline,
+			originalOperations: {},
+			originalToolTimings: {},
+			originalSessionUpdatedAt: session.updatedAt,
+			originalSessionIndexPosition: -1,
+			prefixLength: 1,
+			suffix: [],
+		}
+		messageOps.beginRegeneration.mockImplementation(async () => {
+			master.timeline = [request]
+			return transaction
+		})
+		messageOps.rollbackRegeneration.mockImplementation(() => {
+			master.timeline = originalTimeline.slice()
+		})
+		messageFactory.reportFatalError.mockImplementation(
+			(_currentSession: ChatSession, message: string) => {
+				master.timeline.push({
+					id: 'unexpected-error',
+					role: 'assistant',
+					metadata: { createdAt: 3 },
+					parts: [{ type: 'text', text: message }],
+				})
+			},
+		)
+
+		processor.enqueueRegenerate(session.id, response.id)
+		await runtime.processing
+
+		expect(master.timeline).toEqual(originalTimeline)
+		expect(messageFactory.reportFatalError).not.toHaveBeenCalled()
+	})
+
+	it('keeps the streamed replacement and restores the suffix when regeneration stops', async () => {
+		const prefix = {
+			id: 'prefix',
+			role: 'user' as const,
+			metadata: { createdAt: 1 },
+			parts: [{ type: 'text' as const, text: TEXT_ONE }],
+		}
+		const target = {
+			id: 'target',
+			role: 'assistant' as const,
+			metadata: { createdAt: 2 },
+			parts: [{ type: 'text' as const, text: 'Original response' }],
+		}
+		const suffix = {
+			id: 'suffix',
+			role: 'user' as const,
+			metadata: { createdAt: 3 },
+			parts: [{ type: 'text' as const, text: TEXT_TWO }],
+		}
+		const partial = {
+			id: 'replacement-partial',
+			role: 'assistant' as const,
+			metadata: { createdAt: 4 },
+			parts: [{ type: 'text' as const, text: 'Replacement partial 🌿' }],
+		}
+		let masterForRun: ReturnType<typeof createEmptyMasterAgent> | undefined
+		const runTurn = vi.fn(
+			({ abortSignal }: { abortSignal?: AbortSignal }) =>
+				new Promise((_, reject) => {
+					masterForRun!.timeline.push(partial)
+					abortSignal?.addEventListener(
+						'abort',
+						() => reject(new Error('neutral abort')),
+						{ once: true },
+					)
+				}),
+		)
+		const { master, processor, runtime, session, messageFactory, messageOps } =
+			createHarness(runTurn)
+		masterForRun = master
+		const originalTimeline = [prefix, target, suffix]
+		master.timeline = originalTimeline.slice()
+		const transaction = {
+			targetMessageId: target.id,
+			targetToolCallIds: [],
+			originalTimeline,
+			originalOperations: {},
+			originalToolTimings: {},
+			originalSessionUpdatedAt: session.updatedAt,
+			originalSessionIndexPosition: -1,
+			prefixLength: 1,
+			suffix: [suffix],
+		}
+		messageOps.beginRegeneration.mockImplementation(async () => {
+			master.timeline = [prefix]
+			return transaction
+		})
+		messageOps.commitRegeneration.mockImplementation(() => {
+			master.timeline = [...master.timeline, suffix]
+		})
+
+		processor.enqueueRegenerate(session.id, target.id)
+		await vi.waitFor(() => expect(runTurn).toHaveBeenCalledTimes(1))
+		await processor.stopActiveTurn(session.id)
+		await runtime.processing
+
+		expect(master.timeline).toEqual([prefix, partial, suffix])
+		expect(messageFactory.removeIncompleteToolCalls).toHaveBeenCalledWith(
+			master,
+		)
+	})
+
+	it('commits a completed regeneration once when Stop arrives during persistence', async () => {
+		const prefix = {
+			id: 'prefix',
+			role: 'user' as const,
+			metadata: { createdAt: 1 },
+			parts: [{ type: 'text' as const, text: TEXT_ONE }],
+		}
+		const target = {
+			id: 'target',
+			role: 'assistant' as const,
+			metadata: { createdAt: 2 },
+			parts: [{ type: 'text' as const, text: 'Original response' }],
+		}
+		const replacement = {
+			id: 'replacement',
+			role: 'assistant' as const,
+			metadata: { createdAt: 3 },
+			parts: [{ type: 'text' as const, text: 'Replacement 你好 🌿' }],
+		}
+		const suffix = {
+			id: 'suffix',
+			role: 'user' as const,
+			metadata: { createdAt: 4 },
+			parts: [{ type: 'text' as const, text: TEXT_TWO }],
+		}
+		let releasePersist: (() => void) | undefined
+		const runTurn = vi.fn(async () => ({ status: 'completed', text: TEXT_TWO }))
+		const { master, processor, runtime, session, messageOps, store } =
+			createHarness(runTurn)
+		master.timeline = [prefix, target, suffix]
+		const transaction = {
+			targetMessageId: target.id,
+			targetToolCallIds: [],
+			originalTimeline: master.timeline.slice(),
+			originalOperations: {},
+			originalToolTimings: {},
+			originalSessionUpdatedAt: session.updatedAt,
+			originalSessionIndexPosition: -1,
+			prefixLength: 1,
+			suffix: [suffix],
+		}
+		messageOps.beginRegeneration.mockImplementation(async () => {
+			master.timeline = [prefix, replacement]
+			return transaction
+		})
+		messageOps.commitRegeneration.mockImplementation(() => {
+			master.timeline.push(...transaction.suffix)
+		})
+		messageOps.rollbackRegeneration.mockImplementation(() => {
+			master.timeline = transaction.originalTimeline.slice()
+		})
+		store.persistSession.mockImplementationOnce(
+			() =>
+				new Promise<undefined>((resolve) => {
+					releasePersist = () => resolve(undefined)
+				}),
+		)
+
+		processor.enqueueRegenerate(session.id, target.id)
+		await vi.waitFor(() =>
+			expect(store.persistSession).toHaveBeenCalledTimes(1),
+		)
+		await processor.stopActiveTurn(session.id)
+		releasePersist!()
+		await runtime.processing
+
+		expect(messageOps.commitRegeneration).toHaveBeenCalledTimes(1)
+		expect(master.timeline).toEqual([prefix, replacement, suffix])
 	})
 })

@@ -306,7 +306,7 @@ describe('context compression', () => {
 		).toBe(true)
 	})
 
-	it('forwards the shared system prompt and tools to the summarizer', async () => {
+	it('forwards shared tool schemas but never execution or tool context to the summarizer', async () => {
 		const master = createEmptyMasterAgent(1)
 		master.timeline = [message('u1', 'user', 1)]
 		const session: ChatSession = {
@@ -322,7 +322,8 @@ describe('context compression', () => {
 			persistMetaAndIndex: vi.fn(async () => undefined),
 		}
 		const factory = new MessageFactory({} as never, vi.fn())
-		const tools = { bash: { execute: 1 } } as never
+		const execute = vi.fn()
+		const tools = { bash: { execute } } as never
 
 		await runContextCompression({
 			provider: {} as never,
@@ -338,10 +339,14 @@ describe('context compression', () => {
 		expect(generateText).toHaveBeenCalledWith(
 			expect.objectContaining({
 				system: 'SYSTEM',
-				tools,
+				tools: { bash: {} },
 				toolChoice: 'none',
 			}),
 		)
+		expect(generateText).toHaveBeenCalledWith(
+			expect.not.objectContaining({ toolsContext: expect.anything() }),
+		)
+		expect(execute).not.toHaveBeenCalled()
 	})
 
 	it('exposes tool schemas without execution capabilities to the summarizer', async () => {

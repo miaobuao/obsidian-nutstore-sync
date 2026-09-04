@@ -8,13 +8,14 @@ import {
 	generateContextCompression,
 	shouldAutoCompressAgent,
 	shouldStartContextCompaction,
-	type SummaryToolsContext,
 	type ContextCompressionPlan,
 } from '~/ai/chat/runtime/context-compression'
 import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { AppUIMessage, ChatAgentState } from '~/ai/chat/types'
 import type { AIModelConfig, AIProviderConfig } from '~/ai/core/types'
 import { createAbortError } from '~/ai/transport/abort'
+
+export { createContextCompactionRevision } from '~/ai/chat/runtime/context-compaction-revision'
 
 export interface ContextCompactionRequest {
 	session: ChatSession
@@ -25,7 +26,6 @@ export interface ContextCompactionRequest {
 	resolveSummaryContext: () => Promise<{
 		system?: string
 		tools?: ToolSet
-		toolsContext?: SummaryToolsContext
 	}>
 	buildMessages?: (
 		messages: AppUIMessage[],
@@ -65,19 +65,6 @@ export class ContextCompactionError extends Error {
 		super(`Context compaction ${reason}`)
 		this.name = 'ContextCompactionError'
 	}
-}
-
-export function createContextCompactionRevision(
-	session: ChatSession,
-	provider: AIProviderConfig,
-	model: AIModelConfig,
-) {
-	return JSON.stringify({
-		providerId: provider.id,
-		modelId: model.id,
-		systemPrompt: session.systemPrompt ?? null,
-		disabledMcpServers: session.disabledMcpServers ?? [],
-	})
 }
 
 /**

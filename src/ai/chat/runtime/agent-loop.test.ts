@@ -36,7 +36,7 @@ describe('runAgentLoop', () => {
 				shouldSuspendAtSafePoint: vi.fn(() => false),
 			} as never,
 			createCompactionRequest: request,
-			isCancelled: () => false,
+			isTurnAlive: () => true,
 			runTurn,
 			onStateChange: (state) => states.push(state),
 		})
@@ -60,7 +60,7 @@ describe('runAgentLoop', () => {
 		const result = await runAgentLoop({
 			compactionCoordinator: { inspect } as never,
 			createCompactionRequest: request,
-			isCancelled: () => true,
+			isTurnAlive: () => false,
 			runTurn,
 		})
 
@@ -82,7 +82,7 @@ describe('runAgentLoop', () => {
 				compact,
 			} as never,
 			createCompactionRequest: request,
-			isCancelled: () => cancelled,
+			isTurnAlive: () => !cancelled,
 			runTurn: vi.fn(),
 		})
 
@@ -101,7 +101,7 @@ describe('runAgentLoop', () => {
 				})),
 			} as never,
 			createCompactionRequest: request,
-			isCancelled: () => false,
+			isTurnAlive: () => true,
 			runTurn: vi.fn(),
 		})
 
@@ -119,7 +119,7 @@ describe('runAgentLoop', () => {
 				shouldSuspendAtSafePoint: vi.fn(() => false),
 			} as never,
 			createCompactionRequest: request,
-			isCancelled: () => false,
+			isTurnAlive: () => true,
 			runTurn: vi.fn(async () => {
 				throw cause
 			}),

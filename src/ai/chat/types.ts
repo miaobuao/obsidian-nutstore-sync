@@ -192,6 +192,7 @@ export interface ChatAgentState {
 	startedAt?: number
 	finishedAt?: number
 	timeline: AppUIMessage[]
+	/** Continuation inbox for non-master subagents; the master scheduler owns master input. */
 	pendingInputs: AppUIMessage[]
 	operations: Record<string, ReversibleToolOp[]>
 	toolTimings: Record<string, ToolTiming>

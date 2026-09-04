@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatSession, LegacyChatSession } from '~/ai/chat/domain'
 import { createEmptyMasterAgent } from '~/ai/chat/messages/ui-message'
+import { normalizeRehydratedExecution } from '~/ai/chat/session/rehydration-execution'
 import {
 	migrateChatSession,
 	normalizeLegacySession,
@@ -12,6 +13,104 @@ import {
 } from '~/ai/chat/session/session-persistence'
 
 describe('chat session persistence', () => {
+	it('cleans incomplete execution state from every agent on rehydrate', () => {
+		const master = createEmptyMasterAgent(1)
+		master.timeline.push({
+			id: 'incomplete-tool',
+			role: 'assistant',
+			metadata: { createdAt: 1 },
+			parts: [
+				{
+					type: 'dynamic-tool',
+					toolName: 'neutral-tool',
+					toolCallId: 'neutral-call',
+					state: 'input-available',
+					input: { text: '中性 🌿' },
+				},
+			],
+		})
+		const idle = {
+			...createEmptyMasterAgent(2),
+			id: 'idle-child',
+			type: 'subagent',
+			status: 'idle' as const,
+			pendingInputs: [
+				{
+					id: 'idle-input',
+					role: 'user' as const,
+					metadata: { createdAt: 1 },
+					parts: [{ type: 'text' as const, text: '中性 input 🌿' }],
+				},
+			],
+		}
+		const queued = {
+			...createEmptyMasterAgent(3),
+			id: 'queued-child',
+			type: 'subagent',
+			status: 'queued' as const,
+			pendingInputs: idle.pendingInputs.slice(),
+		}
+		const running = {
+			...createEmptyMasterAgent(4),
+			id: 'running-child',
+			type: 'subagent',
+			status: 'running' as const,
+			pendingInputs: idle.pendingInputs.slice(),
+		}
+		const completed = {
+			...createEmptyMasterAgent(5),
+			id: 'completed-child',
+			type: 'subagent',
+			status: 'completed' as const,
+			pendingInputs: idle.pendingInputs.slice(),
+			timeline: [
+				{
+					id: 'completed-incomplete-tool',
+					role: 'assistant' as const,
+					metadata: { createdAt: 1 },
+					parts: [
+						{
+							type: 'dynamic-tool' as const,
+							toolName: 'neutral-child-tool',
+							toolCallId: 'neutral-child-call',
+							state: 'input-available' as const,
+							input: { text: '中性子任务 🌿' },
+						},
+					],
+				},
+			],
+		}
+		master.subagents[idle.id] = idle
+		master.subagents[queued.id] = queued
+		master.subagents[running.id] = running
+		master.subagents[completed.id] = completed
+		const session: ChatSession = {
+			schemaVersion: 2,
+			id: 'rehydrated-session',
+			createdAt: 1,
+			updatedAt: 2,
+			subagents: { master },
+		}
+		const changed = normalizeRehydratedExecution(session)
+		const children = Object.values(session.subagents.master.subagents)
+
+		expect(changed).toBe(true)
+		expect(children.map((agent) => agent.status)).toEqual([
+			'cancelled',
+			'cancelled',
+			'cancelled',
+			'completed',
+		])
+		expect(children.map((agent) => agent.pendingInputs)).toEqual([
+			[],
+			[],
+			[],
+			[],
+		])
+		expect(master.timeline).toEqual([])
+		expect(completed.timeline).toEqual([])
+	})
+
 	it('captures an isolated V2 UIMessage snapshot', async () => {
 		const master = createEmptyMasterAgent(1)
 		const toolInput = { nested: { value: 'before' } }

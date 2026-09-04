@@ -1,7 +1,6 @@
 import type { ChatSession } from '~/ai/chat/domain'
 import { getMasterAgent, getSessionSubagents } from '~/ai/chat/domain'
 import type { SessionRuntimeState } from '~/ai/chat/runtime/chat-state'
-import { hasQueuedSubmission } from '~/ai/chat/runtime/pending-submission'
 import { projectTimelineMessageGroups } from '~/ai/chat/ui/display-blocks'
 import type { ChatboxProps } from '~/ai/chat/ui/types'
 
@@ -106,7 +105,7 @@ export function collectOtherBusySessionIds(
 			return (
 				runtime.runState !== 'idle' ||
 				!!runtime.processing ||
-				hasQueuedSubmission(runtime) ||
+				runtime.scheduler.queued.length > 0 ||
 				getSessionSubagents(session).some(
 					(agent) => agent.status === 'running' || agent.status === 'queued',
 				)

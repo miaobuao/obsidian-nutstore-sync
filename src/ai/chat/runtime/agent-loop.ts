@@ -33,7 +33,7 @@ interface AgentLoopOptions {
 		'inspect' | 'compact' | 'shouldSuspendAtSafePoint'
 	>
 	createCompactionRequest: () => ContextCompactionRequest
-	isCancelled: () => boolean
+	isTurnAlive: () => boolean
 	runTurn: (
 		continuation: ToolCallRepeatState | undefined,
 		shouldSuspendAtSafePoint: () => boolean,
@@ -71,21 +71,21 @@ interface AgentLoopOptions {
 export async function runAgentLoop({
 	compactionCoordinator,
 	createCompactionRequest,
-	isCancelled,
+	isTurnAlive,
 	runTurn,
 	onStateChange,
 }: AgentLoopOptions): Promise<AgentLoopResult> {
 	let state: AgentLoopState = { type: 'checking-context' }
 
 	while (true) {
-		if (isCancelled()) return { status: 'cancelled' }
+		if (!isTurnAlive()) return { status: 'cancelled' }
 		onStateChange?.(state.type)
 		try {
 			switch (state.type) {
 				case 'checking-context': {
 					const request = createCompactionRequest()
 					const decision = compactionCoordinator.inspect(request)
-					if (isCancelled()) return { status: 'cancelled' }
+					if (!isTurnAlive()) return { status: 'cancelled' }
 					state = {
 						type: decision === 'compact' ? 'compacting' : 'running-turn',
 						request,
@@ -96,7 +96,7 @@ export async function runAgentLoop({
 
 				case 'compacting': {
 					const progress = await compactionCoordinator.compact(state.request)
-					if (isCancelled()) return { status: 'cancelled' }
+					if (!isTurnAlive()) return { status: 'cancelled' }
 					if (progress.afterTokens >= progress.beforeTokens) {
 						return {
 							status: 'failed',
@@ -115,10 +115,10 @@ export async function runAgentLoop({
 					const result: AgentTurnResult = await runTurn(
 						state.continuation,
 						() =>
-							isCancelled() ||
+							!isTurnAlive() ||
 							compactionCoordinator.shouldSuspendAtSafePoint(request),
 					)
-					if (isCancelled()) return { status: 'cancelled' }
+					if (!isTurnAlive()) return { status: 'cancelled' }
 					if (result.status === 'completed') return result
 					state = {
 						type: 'checking-context',
@@ -128,7 +128,7 @@ export async function runAgentLoop({
 				}
 			}
 		} catch (cause) {
-			if (isCancelled()) return { status: 'cancelled' }
+			if (!isTurnAlive()) return { status: 'cancelled' }
 			return {
 				status: 'failed',
 				error:

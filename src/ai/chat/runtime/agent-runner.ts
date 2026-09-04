@@ -19,10 +19,7 @@ import {
 import { buildAgentSystemPrompt } from '~/ai/chat/prompts'
 import { AgentEventProjector } from '~/ai/chat/runtime/agent-event-projector'
 import type { SessionRuntimeState } from '~/ai/chat/runtime/chat-state'
-import {
-	resolveSummaryContext,
-	type SummaryToolsContext,
-} from '~/ai/chat/runtime/context-compression'
+import { resolveSummaryContext } from '~/ai/chat/runtime/context-compression'
 import type { ToolExecutor } from '~/ai/chat/runtime/tool-executor'
 import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { ChatAgentState, ChatMessageMeta } from '~/ai/chat/types'
@@ -36,6 +33,7 @@ import {
 	updateToolCallRepeatState,
 	type ToolCallRepeatState,
 } from '~/ai/core/tool-call-repeat'
+import type { TaskOrigin } from '~/ai/chat/runtime/master-turn-scheduler'
 import type {
 	AIModelConfig,
 	AIProviderConfig,
@@ -61,8 +59,8 @@ interface RunAgentTurnOptions {
 	depth: number
 	assistantMeta: ChatMessageMeta
 	runtime?: SessionRuntimeState
-	isCancelled: () => boolean
-	isDeleted: () => boolean
+	isTurnAlive: () => boolean
+	taskOrigin: TaskOrigin
 	continuation?: ToolCallRepeatState
 	abortSignal?: AbortSignal
 	shouldSuspendAfterToolStep?: () => boolean | Promise<boolean>
@@ -114,8 +112,7 @@ export class AgentRunner {
 			messageFactory: this.messageFactory,
 			notify: this.notify,
 			assistantMeta: options.assistantMeta,
-			isDeleted: options.isDeleted,
-			isCancelled: options.isCancelled,
+			isTurnAlive: options.isTurnAlive,
 		})
 
 		const { model } = resolveLanguageModel(options.provider, options.model.id)
@@ -161,6 +158,7 @@ export class AgentRunner {
 						task: {
 							session,
 							agentId: agent.id,
+							origin: options.taskOrigin,
 							dispatchTask: stableContext.dispatchTask,
 							dispatchableDefinitions: stableContext.dispatchableDefinitions,
 						},
@@ -279,7 +277,7 @@ export class AgentRunner {
 			}
 		}
 
-		if (options.isCancelled()) {
+		if (!options.isTurnAlive()) {
 			throw createAbortError('Agent turn cancelled')
 		}
 		if (shouldSuspend) {
@@ -310,7 +308,8 @@ export class AgentRunner {
 	 * Resolve the system prompt + per-agent tools used by the summarizer so the
 	 * compression call replays a genuine prefix of the last routed request.
 	 * Delegates to {@link resolveSummaryContext} with this runner's own
-	 * tool executor and Obsidian app.
+	 * tool executor and Obsidian app. Compression receives schemas only: its
+	 * model call cannot execute tools or dispatch subagents.
 	 */
 	async resolveSummaryContext(
 		agent: ChatAgentState,
@@ -319,7 +318,6 @@ export class AgentRunner {
 	): Promise<{
 		system?: string
 		tools?: ToolSet
-		toolsContext?: SummaryToolsContext
 	}> {
 		return resolveSummaryContext(
 			agent,

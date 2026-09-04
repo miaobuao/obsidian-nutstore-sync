@@ -25,17 +25,27 @@ import type { ChatState } from '~/ai/chat/runtime/chat-state'
 import type { Selection } from '~/ai/chat/runtime/selection'
 import type { ToolExecutor } from '~/ai/chat/runtime/tool-executor'
 import type { SessionStore } from '~/ai/chat/session/session-store'
-import type { ChatAgentState } from '~/ai/chat/types'
+import type { AppUIMessage, ChatAgentState } from '~/ai/chat/types'
 import type { AIModelConfig, AIProviderConfig } from '~/ai/core/types'
 import { BASH_TMP_MOUNT_POINT } from '~/ai/tools/bash/mount-points'
 import { writeBashTmpText } from '~/ai/tools/bash/tmp-fs'
-import { consumePendingInputs } from '~/ai/chat/messages/ui-message'
+import {
+	assertMasterPendingInputsEmpty,
+	consumePendingInputs,
+} from '~/ai/chat/messages/ui-message'
+import type { TaskOrigin } from '~/ai/chat/runtime/master-turn-scheduler'
 import i18n from '~/i18n'
 import createId, { createUniqueWordId } from '~/utils/create-id'
 import type { DispatchTaskParams, DispatchTaskResult } from '~/ai/tools/task'
+import { createAbortError } from '~/ai/transport/abort'
 
 export class TaskManager {
-	private wakeAgent: (sessionId: string, agentId: string) => void = () => {}
+	private enqueueMasterAgentInput: (
+		sessionId: string,
+		input: AppUIMessage,
+		origin: TaskOrigin,
+	) => boolean = () => false
+	private taskOrigins = new Map<string, TaskOrigin>()
 
 	constructor(
 		private app: App,
@@ -56,17 +66,29 @@ export class TaskManager {
 
 	private readonly compactionCoordinator: ContextCompactionCoordinator
 
-	setWakeAgentHandler(handler: (sessionId: string, agentId: string) => void) {
-		this.wakeAgent = handler
+	setMasterAgentInputHandler(
+		handler: (
+			sessionId: string,
+			input: AppUIMessage,
+			origin: TaskOrigin,
+		) => boolean,
+	) {
+		this.enqueueMasterAgentInput = handler
 	}
 
-	async runAgent(session: ChatSession, agent: ChatAgentState) {
+	async runAgent(
+		session: ChatSession,
+		agent: ChatAgentState,
+		origin: TaskOrigin,
+	) {
+		if (!this.isAgentExecutionAlive(session, agent, origin)) return
 		const selectedModel = this.state.taskModelSelection.get(agent.id)
 		if (!selectedModel?.providerId || !selectedModel.modelId) {
 			await this.finishAgentAsFailed(
 				session,
 				agent,
 				i18n.t('chatbox.errors.taskSessionUnavailable'),
+				origin,
 			)
 			return
 		}
@@ -82,9 +104,8 @@ export class TaskManager {
 				provider,
 				selectedModel.modelId,
 			)
-			const isCancelled = () =>
-				agent.status === 'cancelled' ||
-				this.state.deletedSessionIds.has(session.id)
+			const isTurnAlive = () =>
+				this.isAgentExecutionAlive(session, agent, origin)
 			const result = await runAgentLoop({
 				compactionCoordinator: this.compactionCoordinator,
 				createCompactionRequest: () => {
@@ -94,10 +115,10 @@ export class TaskManager {
 						agent,
 						provider,
 						model,
-						isCancelled,
+						isTurnAlive,
 					)
 				},
-				isCancelled,
+				isTurnAlive,
 				runTurn: (continuation, shouldSuspendAtSafePoint) =>
 					this.agentRunner.runTurn({
 						session,
@@ -111,15 +132,16 @@ export class TaskManager {
 							modelId: model.id,
 							modelName: model.name,
 						},
-						isCancelled,
-						isDeleted: () => this.state.deletedSessionIds.has(session.id),
+						isTurnAlive,
 						continuation,
+						taskOrigin: origin,
+						abortSignal: origin.signal,
 						shouldSuspendAfterToolStep: shouldSuspendAtSafePoint,
 					}),
 			})
 
 			if (result.status === 'cancelled') {
-				await this.finishAgentAsCancelled(session, agent)
+				await this.finishAgentAsCancelled(session, agent, origin)
 				return
 			}
 			if (result.status === 'failed') {
@@ -127,27 +149,29 @@ export class TaskManager {
 					session,
 					agent,
 					this.agentLoopErrorMessage(result.error),
+					origin,
 				)
 				return
 			}
 			if (agent.pendingInputs.length > 0) {
-				void this.store.persistSession(session)
-				void this.runAgent(session, agent)
+				void this.persistCurrentSession(session)
+				void this.runAgent(session, agent, origin)
 				return
 			}
 			if (this.hasActiveChildAgents(agent)) {
 				agent.status = 'idle'
-				void this.store.persistSession(session)
+				void this.persistCurrentSession(session)
 				this.notify()
 				return
 			}
 
-			await this.finishAgentAsCompleted(session, agent, result.text)
+			await this.finishAgentAsCompleted(session, agent, result.text, origin)
 		} catch (error) {
 			await this.finishAgentAsFailed(
 				session,
 				agent,
 				extractErrorMessage(error, i18n.t('chatbox.requestFailed')),
+				origin,
 			)
 		}
 	}
@@ -164,7 +188,7 @@ export class TaskManager {
 		agent: ChatAgentState,
 		provider: AIProviderConfig,
 		model: AIModelConfig,
-		isCancelled: () => boolean,
+		isTurnAlive: () => boolean,
 	): ContextCompactionRequest {
 		const selectedModel = this.state.taskModelSelection.get(agent.id)
 		// Capture primitive ids at request creation. The selection object can be
@@ -183,10 +207,11 @@ export class TaskManager {
 			ensureProviderReady: () => this.ensureProviderReady(provider),
 			resolveSummaryContext: () =>
 				this.agentRunner.resolveSummaryContext(agent, session, model),
-			isCancelled,
+			isCancelled: () => !isTurnAlive(),
 			isCurrent: () => {
 				const currentSelection = this.state.taskModelSelection.get(agent.id)
 				return (
+					isTurnAlive() &&
 					currentSelection?.providerId === selectedProviderId &&
 					currentSelection?.modelId === selectedModelId &&
 					createContextCompactionRevision(session, provider, model) === revision
@@ -195,12 +220,21 @@ export class TaskManager {
 		}
 	}
 
-	async dispatchTask(params: DispatchTaskParams): Promise<DispatchTaskResult> {
+	async dispatchTask(
+		params: DispatchTaskParams,
+		origin: TaskOrigin,
+	): Promise<DispatchTaskResult> {
 		const session = this.state.loadedSessions.get(params.sessionId)
 		if (!session) throw new Error(i18n.t('chatbox.errors.sessionNotFound'))
 		const parent = findAgent(getMasterAgent(session), params.callerAgentId)
 		if (!parent) {
 			throw new Error(`Caller agent not found: ${params.callerAgentId}`)
+		}
+		if (isTerminalAgent(parent)) {
+			throw new Error('Caller agent is no longer active')
+		}
+		if (origin.signal.aborted) {
+			throw createAbortError('Task origin cancelled')
 		}
 		const definition = this.toolExecutor.getAgentDefinition(params.subagentType)
 		if (!definition.dispatchable) {
@@ -216,6 +250,9 @@ export class TaskManager {
 			MAX_CONCURRENT_TASKS_PER_SESSION
 		const now = Date.now()
 		const agentId = await this.createAgentId(session, definition.id)
+		if (isTerminalAgent(parent) || origin.signal.aborted) {
+			throw createAbortError('Task origin cancelled')
+		}
 		const agent: ChatAgentState = {
 			id: agentId,
 			type: definition.id,
@@ -238,11 +275,12 @@ export class TaskManager {
 			subagents: {},
 		}
 		parent.subagents[agent.id] = agent
+		this.taskOrigins.set(this.originKey(session.id, agent.id), origin)
 		this.state.taskModelSelection.set(agent.id, session.model)
-		void this.store.persistSession(session)
+		void this.persistCurrentSession(session)
 		this.notify()
 		if (shouldQueue) this.startQueuedAgentsForSession(session)
-		else void this.runAgent(session, agent)
+		else void this.runAgent(session, agent, origin)
 
 		return {
 			taskId: agent.id,
@@ -257,15 +295,50 @@ export class TaskManager {
 		)
 	}
 
-	private async afterAgentSettled(
+	private originKey(sessionId: string, agentId: string) {
+		return `${sessionId}:${agentId}`
+	}
+
+	private isCurrentSession(session: ChatSession) {
+		return (
+			this.state.loadedSessions.get(session.id) === session &&
+			!this.state.deletedSessionIds.has(session.id)
+		)
+	}
+
+	private isOriginAlive(origin: TaskOrigin) {
+		return !origin.signal.aborted
+	}
+
+	private isAgentExecutionAlive(
+		session: ChatSession,
+		agent: ChatAgentState,
+		origin: TaskOrigin,
+	) {
+		return (
+			this.isCurrentSession(session) &&
+			this.isOriginAlive(origin) &&
+			!isTerminalAgent(agent)
+		)
+	}
+
+	private persistCurrentSession(session: ChatSession) {
+		return this.store.persistSession(session, () =>
+			this.isCurrentSession(session),
+		)
+	}
+
+	private async stageParentContinuation(
 		session: ChatSession,
 		agent: ChatAgentState,
 		resultPath: string,
+		origin: TaskOrigin,
 	) {
-		this.compactionCoordinator.cancel(session.id, agent.id)
 		const master = getMasterAgent(session)
-		const parent = findParentAgent(master, agent.id) ?? master
-		parent.pendingInputs.push({
+		assertMasterPendingInputsEmpty(master)
+		const parent = findParentAgent(master, agent.id)
+		if (!parent) throw new Error('Task parent is unavailable')
+		const input: AppUIMessage = {
 			id: createId('input'),
 			role: 'user',
 			metadata: { createdAt: Date.now() },
@@ -279,12 +352,43 @@ export class TaskManager {
 					},
 				},
 			],
-		})
-		await this.store.persistSession(session)
+		}
+		if (!this.isCurrentSession(session) || !this.isOriginAlive(origin))
+			return false
 		if (parent.id === MASTER_AGENT_ID) {
-			this.wakeAgent(session.id, parent.id)
-		} else this.wakeSubagent(session, parent.id)
-		this.cleanupAgentTracking(agent.id)
+			if (!this.enqueueMasterAgentInput(session.id, input, origin)) {
+				throw new Error('Unable to stage master task continuation')
+			}
+			return true
+		}
+		if (isTerminalAgent(parent)) return false
+		parent.pendingInputs.push(input)
+		try {
+			await this.persistCurrentSession(session)
+		} catch (error) {
+			this.removePendingInput(parent, input)
+			throw error
+		}
+		if (
+			!this.isCurrentSession(session) ||
+			!this.isOriginAlive(origin) ||
+			isTerminalAgent(parent)
+		) {
+			this.removePendingInput(parent, input)
+			return false
+		}
+		this.wakeSubagent(session, parent.id)
+		return true
+	}
+
+	private removePendingInput(agent: ChatAgentState, input: AppUIMessage) {
+		const inputIndex = agent.pendingInputs.indexOf(input)
+		if (inputIndex !== -1) agent.pendingInputs.splice(inputIndex, 1)
+	}
+
+	private finalizeAgentSettlement(session: ChatSession, agent: ChatAgentState) {
+		this.compactionCoordinator.cancel(session.id, agent.id)
+		this.cleanupAgentTracking(session.id, agent.id)
 		this.startQueuedAgentsForSession(session)
 		this.notify()
 	}
@@ -302,10 +406,12 @@ export class TaskManager {
 	private wakeSubagent(session: ChatSession, agentId: string) {
 		const agent = findAgent(getMasterAgent(session), agentId)
 		if (!agent || agent.status === 'running' || isTerminalAgent(agent)) return
+		const origin = this.taskOrigins.get(this.originKey(session.id, agent.id))
+		if (!origin) throw new Error('Subagent task origin is unavailable')
 		agent.status = 'running'
 		agent.startedAt ??= Date.now()
-		void this.store.persistSession(session)
-		void this.runAgent(session, agent)
+		void this.persistCurrentSession(session)
+		void this.runAgent(session, agent, origin)
 	}
 
 	private hasActiveChildAgents(agent: ChatAgentState) {
@@ -318,34 +424,68 @@ export class TaskManager {
 		session: ChatSession,
 		agent: ChatAgentState,
 		summary: string,
+		origin: TaskOrigin,
 	) {
-		if (agent.status !== 'running') return
-		const text = summary || i18n.t('chatbox.task.emptyResult')
-		const resultPath = await this.persistAgentResult(session, agent, text)
-		agent.status = 'completed'
-		agent.finishedAt = Date.now()
-		await this.afterAgentSettled(session, agent, resultPath)
+		await this.settleAgent(
+			session,
+			agent,
+			summary || i18n.t('chatbox.task.emptyResult'),
+			'completed',
+			origin,
+		)
 	}
 
 	async finishAgentAsFailed(
 		session: ChatSession,
 		agent: ChatAgentState,
 		message: string,
+		origin: TaskOrigin,
 	) {
-		if (agent.status !== 'queued' && agent.status !== 'running') return
-		const resultPath = await this.persistAgentResult(session, agent, message)
-		agent.status = 'failed'
-		agent.finishedAt = Date.now()
-		await this.afterAgentSettled(session, agent, resultPath)
+		await this.settleAgent(session, agent, message, 'failed', origin)
 	}
 
-	async finishAgentAsCancelled(session: ChatSession, agent: ChatAgentState) {
-		if (agent.status !== 'queued' && agent.status !== 'running') return
-		const text = i18n.t('chatbox.task.cancelledSummary', { task: agent.id })
-		const resultPath = await this.persistAgentResult(session, agent, text)
-		agent.status = 'cancelled'
+	async finishAgentAsCancelled(
+		session: ChatSession,
+		agent: ChatAgentState,
+		origin: TaskOrigin,
+	) {
+		await this.settleAgent(
+			session,
+			agent,
+			i18n.t('chatbox.task.cancelledSummary', { task: agent.id }),
+			'cancelled',
+			origin,
+		)
+	}
+
+	private async settleAgent(
+		session: ChatSession,
+		agent: ChatAgentState,
+		resultText: string,
+		status: 'completed' | 'failed' | 'cancelled',
+		origin: TaskOrigin,
+	) {
+		if (
+			!this.isAgentExecutionAlive(session, agent, origin) ||
+			agent.status !== 'running'
+		)
+			return
+		const resultPath = await this.persistAgentResult(session, agent, resultText)
+		if (
+			!this.isAgentExecutionAlive(session, agent, origin) ||
+			agent.status !== 'running'
+		)
+			return
+		agent.status = status
 		agent.finishedAt = Date.now()
-		await this.afterAgentSettled(session, agent, resultPath)
+		try {
+			await this.persistCurrentSession(session)
+			if (this.isCurrentSession(session) && this.isOriginAlive(origin)) {
+				await this.stageParentContinuation(session, agent, resultPath, origin)
+			}
+		} finally {
+			this.finalizeAgentSettlement(session, agent)
+		}
 	}
 
 	countRunningAgentsForSession(session: ChatSession) {
@@ -364,32 +504,54 @@ export class TaskManager {
 				.filter((agent) => agent.status === 'queued')
 				.sort((left, right) => left.createdAt - right.createdAt)[0]
 			if (!nextAgent) return
+			const origin = this.taskOrigins.get(
+				this.originKey(session.id, nextAgent.id),
+			)
+			if (!origin) throw new Error('Subagent task origin is unavailable')
 			nextAgent.status = 'running'
 			nextAgent.startedAt ??= Date.now()
-			void this.store.persistSession(session)
+			void this.persistCurrentSession(session)
 			this.notify()
-			void this.runAgent(session, nextAgent)
+			void this.runAgent(session, nextAgent, origin)
 		}
 	}
 
-	cancelAllNonTerminalAgents(session: ChatSession) {
+	cancelAllNonTerminalAgents(session: ChatSession, originTurnId?: string) {
 		let changed = false
 		for (const agent of getSessionSubagents(session)) {
 			if (isTerminalAgent(agent)) continue
+			if (
+				originTurnId &&
+				this.taskOrigins.get(this.originKey(session.id, agent.id))?.turnId !==
+					originTurnId
+			)
+				continue
 			agent.status = 'cancelled'
 			agent.finishedAt = Date.now()
-			this.cleanupAgentTracking(agent.id)
+			this.compactionCoordinator.cancel(session.id, agent.id)
+			this.cleanupAgentTracking(session.id, agent.id)
 			changed = true
 		}
 		return changed
 	}
 
 	cleanupSessionAgentTracking(session: ChatSession) {
-		for (const agent of getSessionSubagents(session))
-			this.cleanupAgentTracking(agent.id)
+		for (const agent of getSessionSubagents(session)) {
+			this.compactionCoordinator.cancel(session.id, agent.id)
+			this.cleanupAgentTracking(session.id, agent.id)
+		}
+		const prefix = `${session.id}:`
+		for (const [key] of this.taskOrigins) {
+			if (!key.startsWith(prefix)) continue
+			const agentId = key.slice(prefix.length)
+			this.compactionCoordinator.cancel(session.id, agentId)
+			this.taskOrigins.delete(key)
+			this.state.taskModelSelection.delete(agentId)
+		}
 	}
 
-	private cleanupAgentTracking(agentId: string) {
+	private cleanupAgentTracking(sessionId: string, agentId: string) {
 		this.state.taskModelSelection.delete(agentId)
+		this.taskOrigins.delete(this.originKey(sessionId, agentId))
 	}
 }

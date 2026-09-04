@@ -13,13 +13,13 @@ import type { ToolExecutor } from '~/ai/chat/runtime/tool-executor'
 import type { SessionStore } from '~/ai/chat/session/session-store'
 import type { AppUIMessage, ChatAgentState } from '~/ai/chat/types'
 import {
-	prepareMessagesForModel,
-	resolveLanguageModel,
-} from '~/ai/core/runtime'
-import {
 	resolveModelOutputLimit,
 	resolveSummaryOutputTokenBudget,
 } from '~/ai/core/inference'
+import {
+	prepareMessagesForModel,
+	resolveLanguageModel,
+} from '~/ai/core/runtime'
 import type { AIModelConfig, AIProviderConfig } from '~/ai/core/types'
 
 const FALLBACK_CONTEXT_WINDOW = 256 * 1024
@@ -34,6 +34,23 @@ const MAX_RECENT_TURNS = 8
 const ESTIMATED_UTF8_BYTES_PER_TOKEN = 3
 
 export type SummaryToolSet = ToolSet
+
+/**
+ * A summary replays prior tool calls for transcript conversion only.  Its
+ * tools must therefore retain schemas while dropping every executable entry
+ * point, including when a manual caller supplies an unfiltered tool set.
+ */
+function createSummaryToolSchemas(
+	tools: ToolSet | undefined,
+): SummaryToolSet | undefined {
+	if (!tools) return undefined
+	return Object.fromEntries(
+		Object.entries(tools).map(([name, tool]) => {
+			const { execute: _execute, ...schema } = tool
+			return [name, schema]
+		}),
+	)
+}
 
 export type ContextPressure = 'normal' | 'soft' | 'hard'
 
@@ -304,15 +321,9 @@ export async function resolveSummaryContext(
 			buildAgentSystemPrompt(app, agent.type, session.systemPrompt),
 			toolExecutor.createTools(0, definition, session, model),
 		])
-		const summaryTools = Object.fromEntries(
-			Object.entries(tools).map(([name, tool]) => [
-				name,
-				{ ...tool, execute: undefined },
-			]),
-		) as SummaryToolSet
 		return {
 			system,
-			tools: summaryTools,
+			tools: createSummaryToolSchemas(tools),
 		}
 	} catch {
 		return {}
@@ -323,14 +334,15 @@ export async function resolveSummaryContext(
 export async function generateContextCompression(
 	options: GenerateContextCompressionOptions,
 ): Promise<string | undefined> {
+	const tools = createSummaryToolSchemas(options.tools)
 	const { model: languageModel } = resolveLanguageModel(
 		options.provider,
 		options.model.id,
 	)
 	const messageSequence =
-		options.buildMessages && options.tools
-			? await options.buildMessages(options.plan.messages, options.tools)
-			: await uiMessagesToModelMessages(options.plan.messages, options.tools)
+		options.buildMessages && tools
+			? await options.buildMessages(options.plan.messages, tools)
+			: await uiMessagesToModelMessages(options.plan.messages, tools)
 	const preparedMessages = prepareMessagesForModel(
 		options.provider,
 		options.model.id,
@@ -340,7 +352,7 @@ export async function generateContextCompression(
 	const response = await generateText<SummaryToolSet>({
 		model: languageModel,
 		...(options.system === undefined ? {} : { system: options.system }),
-		...(options.tools === undefined ? {} : { tools: options.tools }),
+		...(tools === undefined ? {} : { tools }),
 		toolChoice: 'none',
 		messages: [
 			...preparedMessages,
