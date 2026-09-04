@@ -5,6 +5,7 @@ import type { PermissionGuard } from '~/ai/tools/permission-guard'
 import { ObsidianVaultFs, ReversibleOpRecorder } from './bash/fs'
 import {
 	AGENTS_MOUNT_POINT,
+	AGENTS_VAULT_PATH,
 	BUILTIN_SKILLS_MOUNT_POINT,
 	getConfigDirMountPoint,
 	SETTINGS_MOUNT_POINT,
@@ -28,34 +29,32 @@ interface SharedVaultFileSystem {
 
 /**
  * just-bash expands globs from IFileSystem.getAllPaths() before it asks the
- * filesystem to read a directory. Seed that synchronous index from the
- * adapter, which is the authoritative view for every path exposed by this
- * filesystem.
+ * filesystem to read a directory. Seed that synchronous index from Obsidian's
+ * in-memory vault index — the authoritative view shared with the file explorer
+ * — plus the plugin's agent domain directory, which the vault index excludes
+ * because it is hidden. Other hidden paths stay out of the snapshot.
  */
 async function getInitialVaultPaths(app: App) {
-	const paths = new Set(app.vault.getAllLoadedFiles().map((file) => file.path))
-	const directories = ['']
-	const scannedDirectories = new Set<string>()
+	const paths = app.vault.getAllLoadedFiles().map((file) => file.path)
+	const agents = await listAgentDomainPaths(app)
+	return [...new Set([...paths, ...agents])]
+}
 
+async function listAgentDomainPaths(app: App) {
+	const paths: string[] = []
+	const directories = [AGENTS_VAULT_PATH]
 	while (directories.length > 0) {
 		const directory = directories.pop()!
-		if (scannedDirectories.has(directory)) continue
-		scannedDirectories.add(directory)
 		try {
 			const listed = await app.vault.adapter.list(directory)
-			for (const path of listed.files) paths.add(normalizePath(path))
-			for (const path of listed.folders) {
-				const normalized = normalizePath(path)
-				paths.add(normalized)
-				directories.push(normalized)
-			}
+			for (const path of [...listed.files, ...listed.folders])
+				paths.push(normalizePath(path))
+			for (const path of listed.folders) directories.push(normalizePath(path))
 		} catch {
-			// The loaded Vault index still provides a useful fallback when an
-			// adapter directory is temporarily unavailable.
+			// A missing agent domain directory simply contributes nothing.
 		}
 	}
-
-	return [...paths]
+	return paths
 }
 
 /**

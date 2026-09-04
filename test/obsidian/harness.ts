@@ -12,6 +12,8 @@ import {
 } from './checks/plugin'
 import { createsProviderModels } from './checks/providers'
 import {
+	excludesUnrelatedHiddenPathsFromGlobSnapshot,
+	expandsAgentDomainPathsInBash,
 	expandsExistingVaultPathsInBash,
 	preservesBashHeredocUtf8,
 	resolvesResourceDataUrls,
@@ -40,6 +42,12 @@ export default class NutstoreSyncIntegrationHarness extends Plugin {
 	}
 
 	private async runChecks(results: TestResult[]) {
+		const writeSnapshot = () =>
+			this.app.vault.adapter.write(
+				OBSIDIAN_E2E_RESULT_PATH,
+				JSON.stringify({ passed: false, started: true, results }, null, 2),
+			)
+
 		const run = async (name: string, check: () => Promise<void>) => {
 			try {
 				await check()
@@ -50,6 +58,9 @@ export default class NutstoreSyncIntegrationHarness extends Plugin {
 					error: error instanceof Error ? error.stack : String(error),
 				})
 			}
+			// Record progress per check: a hung check must still leave every
+			// completed result behind for failure diagnostics.
+			await writeSnapshot()
 		}
 
 		await run('loads the production plugin', () =>
@@ -61,6 +72,15 @@ export default class NutstoreSyncIntegrationHarness extends Plugin {
 		await run('reloads the production plugin through the real lifecycle', () =>
 			reloadsProductionPlugin(this.app),
 		)
+		await run('expands existing Vault paths in Bash wildcards', () =>
+			expandsExistingVaultPathsInBash(this.app),
+		)
+		await run('excludes unrelated hidden paths from Bash wildcards', () =>
+			excludesUnrelatedHiddenPathsFromGlobSnapshot(this.app),
+		)
+		await run('expands plugin agent domain paths in Bash wildcards', () =>
+			expandsAgentDomainPathsInBash(this.app),
+		)
 		await run('detaches ChatBox when the production plugin is disabled', () =>
 			detachesChatboxWhenProductionPluginIsDisabled(this.app),
 		)
@@ -70,9 +90,6 @@ export default class NutstoreSyncIntegrationHarness extends Plugin {
 		await run(
 			'preserves UTF-8 when Bash writes a Vault file through a heredoc',
 			() => preservesBashHeredocUtf8(this.app),
-		)
-		await run('expands existing Vault paths in Bash wildcards', () =>
-			expandsExistingVaultPathsInBash(this.app),
 		)
 		await run('resolves resource data URLs through the real DataAdapter', () =>
 			resolvesResourceDataUrls(this.app),

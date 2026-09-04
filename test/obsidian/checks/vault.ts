@@ -70,6 +70,63 @@ export async function expandsExistingVaultPathsInBash(app: App) {
 	)
 }
 
+export async function excludesUnrelatedHiddenPathsFromGlobSnapshot(app: App) {
+	const { createVaultFileSystem } = await import('~/ai/tools/vault-filesystem')
+	const hiddenDir = '.隐藏样例 🌱'
+	const hiddenPath = `${hiddenDir}/中性样例 🌱.md`
+	await app.vault.adapter.mkdir(hiddenDir)
+	await app.vault.adapter.write(
+		hiddenPath,
+		'neutral hidden content / 中性隐藏内容 🌱',
+	)
+	try {
+		const filesystem = await createVaultFileSystem(app)
+		assert(
+			!filesystem.getAllPaths().includes(`/${hiddenPath}`),
+			'Glob snapshot should exclude hidden paths outside the plugin domain',
+		)
+	} finally {
+		await app.vault.adapter.remove(hiddenPath)
+		await app.vault.adapter.rmdir(hiddenDir, true)
+	}
+}
+
+export async function expandsAgentDomainPathsInBash(app: App) {
+	const { createVaultFileSystem } = await import('~/ai/tools/vault-filesystem')
+	const { createVaultBash } = await import('~/ai/tools/bash/runtime')
+	const { ReversibleOpRecorder } = await import('~/ai/tools/bash/fs')
+	const skillDir = '.agents/skills/中性技能 🌱'
+	const skillPath = `${skillDir}/SKILL.md`
+	await app.vault.adapter.mkdir(skillDir)
+	await app.vault.adapter.write(
+		skillPath,
+		'neutral skill content / 中性技能内容 🌱',
+	)
+	try {
+		const filesystem = await createVaultFileSystem(app)
+		assert(
+			filesystem.getAllPaths().includes(`/${skillPath}`),
+			'Glob snapshot did not index the plugin agent domain directory',
+		)
+
+		const bash = await createVaultBash(
+			app,
+			undefined,
+			new ReversibleOpRecorder(),
+		)
+		const result = await bash.exec('ls /.agents/skills/*/SKILL.md', {
+			cwd: '/',
+		})
+		assert(
+			result.exitCode === 0 && result.stdout.includes('SKILL.md'),
+			`Bash did not expand plugin agent domain paths: exit=${result.exitCode} stdout=${JSON.stringify(result.stdout)} stderr=${JSON.stringify(result.stderr)}`,
+		)
+	} finally {
+		await app.vault.adapter.remove(skillPath)
+		await app.vault.adapter.rmdir(skillDir, true)
+	}
+}
+
 export async function resolvesResourceDataUrls(app: App) {
 	const { resolveResourceDataUrl } =
 		await import('~/ai/tools/resource-data-url')

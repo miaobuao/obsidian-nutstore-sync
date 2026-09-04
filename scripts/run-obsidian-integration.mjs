@@ -245,10 +245,14 @@ async function waitForResult(sandbox) {
 	const deadline = Date.now() + STARTUP_TIMEOUT_MS
 	while (Date.now() < deadline) {
 		try {
-			return JSON.parse(await fs.readToString(path))
+			const parsed = JSON.parse(await fs.readToString(path))
+			// The harness writes a `started: true` sentinel on load and only
+			// clears it in the final result, so keep polling until it finishes.
+			if (!parsed.started) return parsed
 		} catch {
-			await delay(250)
+			// The result file may not exist yet on a fresh guest.
 		}
+		await delay(250)
 	}
 	fail('Timed out waiting for the integration harness result')
 }
