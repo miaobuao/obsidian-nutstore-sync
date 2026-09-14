@@ -48,7 +48,7 @@ export default class AIConflictResolverService extends BaseService {
 		const action = this.getOrCreateAction(view)
 		const file = view.file
 		if (!file || !this.hasConfiguredModel()) {
-			action.hidden = true
+			action.hide()
 			return
 		}
 
@@ -62,14 +62,19 @@ export default class AIConflictResolverService extends BaseService {
 				return
 			}
 			const count = countMergeConflictBlocks(content)
-			action.hidden = count === 0
+			if (count === 0) {
+				action.hide()
+				return
+			}
+
 			const title = i18n.t('chatbox.conflictResolution.action', { count })
 			action.setAttribute('aria-label', title)
 			action.setAttribute('data-tooltip-position', 'bottom')
 			action.setAttribute('aria-disabled', 'false')
 			action.setAttribute('title', title)
+			action.show()
 		} catch (error) {
-			action.hidden = true
+			action.hide()
 			logger.error(`Failed to inspect merge conflicts: ${file.path}`, error)
 		}
 	}
@@ -85,7 +90,7 @@ export default class AIConflictResolverService extends BaseService {
 				void this.prepareResolution(view)
 			},
 		)
-		action.hidden = true
+		action.hide()
 		this.actions.set(view, action)
 		return action
 	}
@@ -116,14 +121,14 @@ export default class AIConflictResolverService extends BaseService {
 		action.setAttribute('aria-disabled', 'true')
 		try {
 			if (!this.hasConfiguredModel()) {
-				action.hidden = true
+				action.hide()
 				new Notice(i18n.t('chatbox.conflictResolution.modelUnavailable'))
 				return
 			}
 
 			const content = await this.plugin.app.vault.cachedRead(file)
 			if (countMergeConflictBlocks(content) === 0) {
-				action.hidden = true
+				action.hide()
 				new Notice(i18n.t('chatbox.conflictResolution.alreadyResolved'))
 				return
 			}
