@@ -7,7 +7,10 @@ import {
 	listProviders,
 	resolveInitialSelection,
 } from '~/ai/catalog/config'
-import { type UserContextItem } from '~/ai/chat/context/user-context'
+import {
+	haveSameUserContextItems,
+	type UserContextItem,
+} from '~/ai/chat/context/user-context'
 import { UserContextManager } from '~/ai/chat/context/user-context-manager'
 import type { ChatSession, ChatSessionIndexItem } from '~/ai/chat/domain'
 import { extractErrorMessage } from '~/ai/chat/error-utils'
@@ -548,6 +551,18 @@ export default class ChatService extends BaseService {
 	}
 
 	async createDraftSession(text: string, userContext: UserContextItem[] = []) {
+		await this.initialize()
+		const activeSession = this.getLoadedActiveSession()
+		if (activeSession) {
+			const draft = this.runtimeStates.get(activeSession.id).draft
+			if (
+				draft.text === text &&
+				haveSameUserContextItems(draft.userContext, userContext)
+			) {
+				return activeSession
+			}
+		}
+
 		const session = await this.createSession()
 		for (const item of userContext) {
 			this.userContextManager.addUserContext(item)
