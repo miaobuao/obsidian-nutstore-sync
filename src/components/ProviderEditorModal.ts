@@ -107,6 +107,7 @@ export default class ProviderEditorModal extends Modal {
 			.then((s) => addClassTokens(s.settingEl, ':uno: setting-required'))
 			.addText((text) =>
 				text
+					// eslint-disable-next-line obsidianmd/ui/sentence-case -- URL examples are case-sensitive machine input, not prose.
 					.setPlaceholder('https://api.openai.com/v1')
 					.setValue(this.draft.api || '')
 					.onChange((value) => {

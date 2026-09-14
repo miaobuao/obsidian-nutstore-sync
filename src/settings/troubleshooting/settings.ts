@@ -6,6 +6,7 @@ import { blobStore } from '~/storage/blob'
 import { formatLocalTimestampForFilename } from '~/utils/local-date'
 import logger from '~/utils/logger'
 import logsStringify from '~/utils/logs-stringify'
+import { getWebviewRuntimeInfo } from '~/utils/webview-runtime-info'
 import BaseSettings from '../settings.base'
 
 export default class TroubleshootingSettings extends BaseSettings {
@@ -129,7 +130,8 @@ export default class TroubleshootingSettings extends BaseSettings {
 			const fileName = `nutstore-logs-${timestamp}.md`
 			const dirPath = 'nutstore-sync/logs'
 			const filePath = `${dirPath}/${fileName}`
-			const content = `# Nutstore Plugin Logs\n\nGenerated at: ${now.toLocaleString()}\n\nPlugin version: ${this.plugin.manifest.version}\n\n---\n\n${this.logs}`
+			const { runtime, userAgent } = getWebviewRuntimeInfo()
+			const content = `# Nutstore Plugin Logs\n\nGenerated at: ${now.toLocaleString()}\n\nPlugin version: ${this.plugin.manifest.version}\n\nRuntime (UA-reported): ${runtime ?? 'Unknown'}\n\nUser Agent: ${userAgent}\n\n---\n\n${this.logs}`
 
 			const folderExists = await this.app.vault.adapter.exists(dirPath)
 			if (!folderExists) {

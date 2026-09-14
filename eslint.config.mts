@@ -67,36 +67,6 @@ const markdownPlugin = markdown as unknown as NonNullable<
 	Config['plugins']
 >[string]
 
-const restrictedGlobals = obsidianRecommended
-	.map((config) => config.rules?.['no-restricted-globals'])
-	.filter((rule) => Array.isArray(rule))
-	.at(-1)
-if (
-	!Array.isArray(restrictedGlobals) ||
-	!restrictedGlobals.some(
-		(option: unknown) =>
-			typeof option === 'object' &&
-			option !== null &&
-			'name' in option &&
-			option.name === 'fetch',
-	)
-) {
-	throw new Error(
-		'Expected an upstream fetch restriction for native fetch callers',
-	)
-}
-const nativeFetchGlobals = restrictedGlobals
-	.slice(1)
-	.filter(
-		(option: unknown) =>
-			!(
-				typeof option === 'object' &&
-				option !== null &&
-				'name' in option &&
-				option.name === 'fetch'
-			),
-	)
-
 export default defineConfig([
 	{
 		ignores: [
@@ -110,16 +80,10 @@ export default defineConfig([
 
 	...obsidianRecommended,
 
-	// Providers explicitly opt into browser CORS/streaming. Image export avoids
-	// requestUrl's mobile base64 bridge copies and resolves local resource URLs.
-	// These two callers require native fetch; preserve all other restrictions.
 	{
-		files: [
-			'src/ai/transport/provider-fetch.ts',
-			'src/ai/chat/messages/export-session.ts',
-		],
+		files: codeFiles,
 		rules: {
-			'no-restricted-globals': ['error', ...nativeFetchGlobals],
+			'eslint-comments/no-restricted-disable': 'off',
 		},
 	},
 
@@ -214,25 +178,6 @@ export default defineConfig([
 			'obsidianmd/no-global-this': 'off',
 			'obsidianmd/no-nodejs-modules': 'off',
 			'obsidianmd/prefer-file-manager-trash-file': 'off',
-		},
-	},
-
-	{
-		files: [
-			'src/components/McpServerEditorModal.ts',
-			'src/components/ProviderEditorModal.ts',
-		],
-		rules: {
-			// URL placeholders are machine-oriented examples, not prose UI labels.
-			'obsidianmd/ui/sentence-case': 'off',
-		},
-	},
-
-	{
-		files: ['src/ai/chat/messages/ui-message.ts'],
-		rules: {
-			// Reads the deprecated field solely to migrate persisted legacy sessions.
-			'@typescript-eslint/no-deprecated': 'off',
 		},
 	},
 

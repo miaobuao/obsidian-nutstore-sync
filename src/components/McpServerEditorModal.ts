@@ -61,6 +61,7 @@ export default class McpServerEditorModal extends Modal {
 			.then((s) => addClassTokens(s.settingEl, ':uno: setting-required'))
 			.addText((text) =>
 				text
+					// eslint-disable-next-line obsidianmd/ui/sentence-case -- URL examples are case-sensitive machine input, not prose.
 					.setPlaceholder('https://example.com/mcp')
 					.setValue(this.draft.config.url)
 					.onChange((value) => {

@@ -363,6 +363,7 @@ export function selectContextTimeline(
 			...messages.slice(checkpointIndex + 1),
 		]
 	}
+	// eslint-disable-next-line @typescript-eslint/no-deprecated -- Read legacy checkpoints created before snapshot compaction.
 	if (checkpoint.data.preservedTurnCount === undefined) {
 		return messages.slice(checkpointIndex)
 	}
@@ -370,6 +371,7 @@ export function selectContextTimeline(
 	const priorContext: AppUIMessage[] = selectContextTimeline(
 		messages.slice(0, checkpointIndex),
 	)
+	// eslint-disable-next-line @typescript-eslint/no-deprecated -- Preserve the retained turns of legacy checkpoints.
 	let remainingTurns = checkpoint.data.preservedTurnCount
 	let preservedStart = priorContext.length
 	for (let index = priorContext.length - 1; index >= 0; index -= 1) {

@@ -420,7 +420,9 @@
 			"pluginInfo": "Plugin and environment information",
 			"platform": "Platform",
 			"language": "Interface language",
-			"unknownPlatform": "Unknown platform"
+			"unknownPlatform": "Unknown platform",
+			"webviewRuntime": "Runtime",
+			"unknownRuntime": "Unknown"
 		},
 		"cache": {
 			"title": "Cache management",

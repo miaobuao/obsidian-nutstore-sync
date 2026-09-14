@@ -420,7 +420,9 @@
 			"pluginInfo": "插件与环境信息",
 			"platform": "运行平台",
 			"language": "界面语言",
-			"unknownPlatform": "未知平台"
+			"unknownPlatform": "未知平台",
+			"webviewRuntime": "运行时",
+			"unknownRuntime": "未知"
 		},
 		"cache": {
 			"title": "缓存管理",
