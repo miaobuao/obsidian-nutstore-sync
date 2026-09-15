@@ -732,7 +732,11 @@
 				"contextArea": "上下文",
 				"reasoning": "推理",
 				"todoList": "待办列表",
-				"systemNotification": "系统通知"
+				"systemNotification": "系统通知",
+				"agentMessage": "Agent 消息",
+				"followupTask": "后续任务",
+				"sender": "发送方",
+				"recipient": "接收方"
 			},
 			"fileChanges": {
 				"create": "新增",
@@ -762,7 +766,8 @@
 				"noSubagentMessages": "该子 Agent 尚未产生消息。",
 				"copied": "已复制",
 				"loadingContextItem": "加载中…",
-				"todoEmpty": "暂无待办"
+				"todoEmpty": "暂无待办",
+				"agentWaiting": "正在等待 Agent 消息"
 			},
 			"placeholders": {
 				"input": "输入消息，Enter 发送，Shift+Enter 换行"

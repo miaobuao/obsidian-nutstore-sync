@@ -206,6 +206,107 @@ describe('AgentRunner input handoff', () => {
 		},
 	)
 
+	it('receives an agent message only after all parallel tools have terminal outcomes', async () => {
+		let release!: () => void
+		const gate = new Promise<void>((resolve) => {
+			release = resolve
+		})
+		const view = harness({
+			lookup: tool({
+				inputSchema: z.object({ text: z.string() }),
+				execute: ({ text }) => text,
+			}),
+			inspect: tool({
+				inputSchema: z.object({ text: z.string() }),
+				execute: async ({ text }) => {
+					await gate
+					return text
+				},
+			}),
+		})
+		const running = view.run(() => false)
+		await vi.waitFor(() =>
+			expect(view.agent.toolTimings.lookup?.finishedAt).toBeDefined(),
+		)
+		view.agent.pendingInputs.push({
+			id: 'agent-mail',
+			role: 'user',
+			parts: [
+				{
+					type: 'data-system-notification',
+					data: {
+						kind: 'agent-message',
+						sender: 'explorer',
+						recipient: 'master',
+						message: '补充依据 / Additional evidence 🌿',
+						createdAt: 1,
+					},
+				},
+			],
+		})
+		expect(
+			view.agent.timeline.some((message) => message.id === 'agent-mail'),
+		).toBe(false)
+		release()
+		expect(await running).toMatchObject({ status: 'needs-input' })
+		expect(view.model.doStreamCalls).toHaveLength(1)
+		await view.run(() => false)
+		const transcript = await uiMessagesToModelMessages(view.agent.timeline)
+		expect(transcript.map((message) => message.role)).toEqual([
+			'user',
+			'assistant',
+			'tool',
+			'user',
+			'assistant',
+		])
+		expect(JSON.stringify(transcript[3])).toContain('AgentInformation')
+		expect(view.agent.pendingInputs).toEqual([])
+	})
+
+	it('waits until a pure text response ends before receiving agent input', async () => {
+		const view = harness({})
+		let output!: ReadableStreamDefaultController<StreamPart>
+		view.model.doStream = async () => ({
+			stream: new ReadableStream<StreamPart>({
+				start(controller) {
+					output = controller
+					controller.enqueue({ type: 'text-start', id: 'text' })
+					controller.enqueue({
+						type: 'text-delta',
+						id: 'text',
+						delta: '主题 / Theme 🌿',
+					})
+				},
+			}),
+		})
+		const running = view.run(() => false)
+		await vi.waitFor(() => expect(output).toBeDefined())
+		view.agent.pendingInputs.push({
+			id: 'agent-mail',
+			role: 'user',
+			parts: [
+				{
+					type: 'data-system-notification',
+					data: {
+						kind: 'agent-message',
+						sender: 'explorer',
+						recipient: 'master',
+						message: '补充依据 / Additional evidence 🌿',
+						createdAt: 1,
+					},
+				},
+			],
+		})
+		expect(
+			view.agent.timeline.some((message) => message.id === 'agent-mail'),
+		).toBe(false)
+		output.enqueue({ type: 'text-end', id: 'text' })
+		output.enqueue(finish(false))
+		output.close()
+		expect(await running).toMatchObject({ status: 'needs-input' })
+		expect(view.agent.pendingInputs).toHaveLength(1)
+	})
+
 	it('continues the tool loop when no input is queued', async () => {
 		const view = harness({
 			lookup: tool({

@@ -9,7 +9,9 @@ export function RunStateCard(props: {
 }) {
 	const label = () => runStateLabel(props.runState)
 	const canStop = () =>
-		props.runState === 'thinking' || props.runState === 'waiting_for_tools'
+		props.runState === 'thinking' ||
+		props.runState === 'waiting_for_tools' ||
+		props.runState === 'waiting_for_agents'
 
 	return (
 		<Show when={label()}>

@@ -1,3 +1,4 @@
+import { getSessionSubagents, isTerminalAgent } from '~/ai/chat/domain'
 import type { LanguageModelUsage } from 'ai'
 import { Notice } from 'obsidian'
 import {
@@ -195,6 +196,7 @@ export default class ChatService extends BaseService {
 			agentRunner,
 			this.compactionCoordinator,
 		)
+		this.toolExecutor.setAgentCommunication(this.taskManager)
 		this.toolExecutor.setDispatchTaskHandler((params, origin) =>
 			this.taskManager.dispatchTask(params, origin),
 		)
@@ -232,6 +234,9 @@ export default class ChatService extends BaseService {
 			this.compactionCoordinator,
 			this.taskManager,
 			reportTransientError,
+		)
+		this.taskManager.setUserInputPendingHandler((sessionId) =>
+			this.sessionProcessor.hasQueuedUserInput(sessionId),
 		)
 		this.taskManager.setMasterAgentInputHandler((sessionId, input, origin) =>
 			this.sessionProcessor.enqueueAgentInput(sessionId, input, origin),
@@ -273,6 +278,7 @@ export default class ChatService extends BaseService {
 		const initialSession = await this.store.loadInitialSession()
 		if (initialSession) {
 			this.taskManager.restoreMasterTaskContinuations(initialSession)
+			await this.store.persistSession(initialSession)
 		}
 
 		if (this.state.sessionIndex.length === 0) {
@@ -349,7 +355,15 @@ export default class ChatService extends BaseService {
 			providers: this.buildProviderOptions(),
 			selectedProviderId: selection.selectedProviderId,
 			selectedModelId: selection.selectedModelId,
-			runState: activeRuntime.runState,
+			runState:
+				activeSession &&
+				(activeSession.subagents.master.status === 'waiting' ||
+					(activeRuntime.runState === 'idle' &&
+						getSessionSubagents(activeSession).some(
+							(agent) => !isTerminalAgent(agent),
+						)))
+					? 'waiting_for_agents'
+					: activeRuntime.runState,
 			draft: {
 				text: activeRuntime.draft.text,
 				userContext: activeRuntime.draft.userContext.slice(),
@@ -581,6 +595,7 @@ export default class ChatService extends BaseService {
 		const session = await this.store.loadSessionById(sessionId)
 		this.state.activeSessionId = sessionId
 		this.taskManager.restoreMasterTaskContinuations(session)
+		await this.store.persistSession(session)
 		await this.store.persistMetaAndIndex()
 		this.notify()
 	}
@@ -903,6 +918,10 @@ export default class ChatService extends BaseService {
 		if (await this.sessionProcessor.stopActiveTurn(session.id)) {
 			if (options.waitForWorker) await runtime.processing
 			return
+		}
+		if (this.taskManager.cancelAllNonTerminalAgents(session)) {
+			await this.store.persistSession(session)
+			this.notify()
 		}
 		const controller = runtime.manualCompressionAbortController
 		if (!controller) return

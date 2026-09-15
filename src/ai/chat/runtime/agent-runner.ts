@@ -13,6 +13,8 @@ import type { ChatSession } from '~/ai/chat/domain'
 import type { MessageFactory } from '~/ai/chat/messages/message-factory'
 import { messageToText } from '~/ai/chat/messages/message-utils'
 import {
+	consumePendingInputs,
+	hasPendingInputs,
 	isTerminalToolPart,
 	selectContextTimeline,
 	uiMessagesToModelMessages,
@@ -50,7 +52,10 @@ import i18n from '~/i18n'
 
 export type AgentTurnResult =
 	| { status: 'completed'; text: string }
-	| { status: 'needs-compaction'; continuation: ToolCallRepeatState }
+	| {
+			status: 'needs-compaction' | 'needs-input'
+			continuation: ToolCallRepeatState
+	  }
 
 /**
  * Tool calls of the most recent assistant step. A run that yielded at a tool
@@ -116,7 +121,10 @@ export class AgentRunner {
 			this.app,
 			agent.type,
 			session.systemPrompt,
+			undefined,
+			agent.id,
 		)
+		consumePendingInputs(agent)
 		const messages = options.buildMessages
 			? await options.buildMessages(agent, tools)
 			: await uiMessagesToModelMessages(
@@ -154,7 +162,16 @@ export class AgentRunner {
 			readTracker,
 			recordMetadata,
 		}
+		const communicationContext = {
+			session,
+			agentId: agent.id,
+			origin: options.taskOrigin,
+			communication: stableContext.communication!,
+		}
 		const toolsContext = {
+			list_agents: communicationContext,
+			send_message: communicationContext,
+			followup_task: communicationContext,
 			bash: {
 				...fileToolsContext,
 				getSettingsSnapshot: stableContext.getSettingsSnapshot,
@@ -215,7 +232,8 @@ export class AgentRunner {
 				)
 			)
 				return false
-			if (options.shouldYieldAfterToolStep?.()) return true
+			if (hasPendingInputs(agent) || options.shouldYieldAfterToolStep?.())
+				return true
 			shouldSuspend = (await options.shouldSuspendAfterToolStep?.()) ?? false
 			return shouldSuspend
 		}
@@ -312,6 +330,9 @@ export class AgentRunner {
 
 		if (!options.isTurnAlive()) {
 			throw createAbortError('Agent turn cancelled')
+		}
+		if (hasPendingInputs(agent)) {
+			return { status: 'needs-input', continuation: repeatState }
 		}
 		if (shouldSuspend) {
 			return {

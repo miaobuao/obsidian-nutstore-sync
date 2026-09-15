@@ -1,3 +1,4 @@
+import { agentCommunicationTools } from './agent-communication'
 import { bashTool } from './bash/tool'
 import { applyPatchTool } from './apply-patch'
 import { todoWriteTool } from './todowrite'
@@ -13,6 +14,7 @@ export interface CreateAIToolsOptions {
 
 export function createAITools(options: CreateAIToolsOptions = {}) {
 	return {
+		...agentCommunicationTools,
 		...(options.enableTodoWrite ? { todowrite: todoWriteTool } : {}),
 		update_session_title: updateSessionTitleTool,
 		apply_patch: applyPatchTool,

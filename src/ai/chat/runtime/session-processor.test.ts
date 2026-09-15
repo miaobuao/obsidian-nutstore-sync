@@ -320,7 +320,7 @@ describe('SessionProcessor master turn worker', () => {
 		expect(runtime.scheduler.active).toBeUndefined()
 	})
 
-	it('drains queued work after an unexpected worker rejection', async () => {
+	it('consumes agent inbox input at the response boundary before queued user work', async () => {
 		let releaseFirstTurn:
 			((result: { status: string; text: string }) => void) | undefined
 		const runTurn = vi.fn(() => {
@@ -349,18 +349,19 @@ describe('SessionProcessor master turn worker', () => {
 			metadata: { createdAt: 1 },
 			parts: [{ type: 'text', text: '中性内容 🌿' }],
 		})
-		reportTransientError.mockImplementationOnce(() => {
-			master.pendingInputs = []
-		})
 
 		releaseFirstTurn!({ status: 'completed', text: TEXT_ONE })
 
-		await vi.waitFor(() => expect(runTurn).toHaveBeenCalledTimes(2))
+		await vi.waitFor(() => expect(runTurn).toHaveBeenCalledTimes(3))
 		await runtime.processing
 
-		expect(reportTransientError).toHaveBeenCalledWith(
-			'Master agent pendingInputs must remain empty',
-		)
+		expect(reportTransientError).not.toHaveBeenCalled()
+		expect(master.pendingInputs).toEqual([])
+		expect(
+			master.timeline.some(
+				(message) => message.id === 'unexpected-pending-input',
+			),
+		).toBe(true)
 		expect(runtime.scheduler.queued).toEqual([])
 		expect(runtime.scheduler.active).toBeUndefined()
 	})

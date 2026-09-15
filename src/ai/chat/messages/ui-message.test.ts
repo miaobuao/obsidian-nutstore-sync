@@ -153,7 +153,7 @@ describe('UIMessage model round-trip', () => {
 				content: [
 					{
 						type: 'text',
-						text: `<SystemNotification>{"kind":"task-result-ready","taskId":"explorer-one","resultPath":"${BASH_TMP_MOUNT_POINT}/session/tasks/explorer-one.txt"}</SystemNotification>`,
+						text: `<AgentInformation>{"kind":"task-result-ready","taskId":"explorer-one","resultPath":"${BASH_TMP_MOUNT_POINT}/session/tasks/explorer-one.txt"}</AgentInformation>`,
 					},
 				],
 			},

@@ -420,7 +420,7 @@ export async function uiMessagesToModelMessages(
 			if (part.type === 'data-system-notification') {
 				return {
 					type: 'text',
-					text: `<SystemNotification>${JSON.stringify(part.data)}</SystemNotification>`,
+					text: `<AgentInformation>${JSON.stringify(part.data)}</AgentInformation>`,
 				}
 			}
 			if (part.type === 'data-model-file') {
@@ -431,16 +431,30 @@ export async function uiMessagesToModelMessages(
 	})
 }
 
+// Only committed deliveries may enter a model transcript. The set is transient;
+// every inbox entry read from disk is already durable.
+const uncommittedInputs = new WeakSet<AppUIMessage>()
+export function stagePendingInput(agent: ChatAgentState, input: AppUIMessage) {
+	uncommittedInputs.add(input)
+	agent.pendingInputs.push(input)
+}
+export function commitPendingInput(input: AppUIMessage) {
+	uncommittedInputs.delete(input)
+}
+export function hasPendingInputs(agent: ChatAgentState) {
+	return (
+		!!agent.pendingInputs[0] && !uncommittedInputs.has(agent.pendingInputs[0])
+	)
+}
 export function consumePendingInputs(agent: ChatAgentState) {
-	const inputs = agent.pendingInputs.splice(0)
+	const inputs: AppUIMessage[] = []
+	while (
+		agent.pendingInputs.length &&
+		!uncommittedInputs.has(agent.pendingInputs[0])
+	)
+		inputs.push(agent.pendingInputs.shift()!)
 	agent.timeline.push(...inputs)
 	return inputs.length > 0
-}
-
-export function assertMasterPendingInputsEmpty(agent: ChatAgentState) {
-	if (agent.id === MASTER_AGENT_ID && agent.pendingInputs.length > 0) {
-		throw new Error('Master agent pendingInputs must remain empty')
-	}
 }
 
 /**

@@ -1,4 +1,5 @@
 import type { App } from 'obsidian'
+import type { AgentCommunication } from '~/ai/tools/agent-communication'
 import type { ChatSession } from '~/ai/chat/domain'
 
 import { findAgent } from '~/ai/chat/agents/agent-tree'
@@ -40,6 +41,7 @@ export interface StableToolsContext {
 	app: App
 	fileSystemManager: VaultFileSystemManager
 	permissionGuard?: PermissionGuard
+	communication?: AgentCommunication
 	dispatchTask?: DispatchTaskFn
 	dispatchableDefinitions?: readonly AgentDefinition[]
 	getSettingsSnapshot?: SettingsSnapshotFn
@@ -64,6 +66,12 @@ export class ToolExecutor {
 		},
 	) {
 		this.fileSystemManager = new VaultFileSystemManager(app)
+	}
+
+	private communication?: AgentCommunication
+
+	setAgentCommunication(communication: AgentCommunication) {
+		this.communication = communication
 	}
 
 	getFileSystemManager() {
@@ -161,6 +169,7 @@ export class ToolExecutor {
 			app: this.app,
 			fileSystemManager: this.fileSystemManager,
 			permissionGuard,
+			communication: this.communication,
 			dispatchTask: (params, origin) =>
 				this.dispatchTaskHandler(params, origin),
 			dispatchableDefinitions: listDispatchableDefinitions({

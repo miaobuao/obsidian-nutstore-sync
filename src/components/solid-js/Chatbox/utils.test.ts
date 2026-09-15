@@ -79,11 +79,13 @@ describe('chat detail markdown', () => {
 
 	it('formats bilingual system notification data as JSON', () => {
 		const markdown = formatSystemNotificationMarkdown({
-			message: '状态更新 / Status update',
+			kind: 'task-result-ready',
+			taskId: '状态更新 / Status update 🌿',
+			resultPath: '/result.txt',
 		})
 
 		expect(markdown).toContain('```json')
-		expect(markdown).toContain('"message": "状态更新 / Status update"')
+		expect(markdown).toContain('"taskId": "状态更新 / Status update 🌿"')
 	})
 
 	it('omits the params section when params are hidden', () => {

@@ -191,7 +191,7 @@ describe('TaskManager parent notifications', () => {
 		expect(handler).not.toHaveBeenCalled()
 	})
 
-	it('does not persist again before enqueuing a master continuation', async () => {
+	it('persists the master inbox before enqueuing its continuation', async () => {
 		const master = createEmptyMasterAgent(1)
 		const child: ChatAgentState = {
 			...createEmptyMasterAgent(2),
@@ -233,7 +233,7 @@ describe('TaskManager parent notifications', () => {
 			testOrigin(),
 		)
 
-		expect(persistSession).toHaveBeenCalledTimes(1)
+		expect(persistSession).toHaveBeenCalledTimes(2)
 		expect(handler).toHaveBeenCalledTimes(1)
 	})
 
@@ -307,36 +307,20 @@ describe('TaskManager parent notifications', () => {
 			normalizeRehydratedExecution(session)
 			manager.restoreMasterTaskContinuations(session)
 
-			expect(handler).toHaveBeenCalledTimes(1)
-			expect(handler.mock.calls[0]?.[0]).toBe(session.id)
-			expect(handler.mock.calls[0]?.[1]).toMatchObject({
-				role: 'user',
-				parts: [
-					{
-						type: 'data-system-notification',
-						data: {
-							kind: 'task-result-ready',
-							taskId: child.id,
-							resultPath: child.resultPath,
-						},
-					},
-				],
+			expect(handler).not.toHaveBeenCalled()
+			expect(parent.pendingInputs).toHaveLength(1)
+			expect(parent.pendingInputs[0].parts[0]).toMatchObject({
+				type: 'data-system-notification',
+				data: { taskId: child.id, resultPath: child.resultPath },
 			})
-			expect(master.pendingInputs).toEqual([])
-			expect(parent.pendingInputs).toEqual([])
 			if (depth > 0) expect(parent.status).toBe('cancelled')
-
-			// Once the recovered turn is durable, another reload must not replay it.
-			master.timeline.push(handler.mock.calls[0]![1])
-			handler.mockClear()
+			// Both pending and consumed legacy notifications deduplicate by artifact path.
+			manager.restoreMasterTaskContinuations(session)
+			expect(parent.pendingInputs).toHaveLength(1)
+			parent.timeline.push(...parent.pendingInputs.splice(0))
 			normalizeRehydratedExecution(session)
 			manager.restoreMasterTaskContinuations(session)
-			expect(handler).not.toHaveBeenCalled()
-
-			// A result already consumed by its direct parent also needs no replay.
-			master.timeline = []
-			parent.timeline.push(pendingInput)
-			manager.restoreMasterTaskContinuations(session)
+			expect(parent.pendingInputs).toEqual([])
 			expect(handler).not.toHaveBeenCalled()
 		},
 	)
@@ -481,7 +465,7 @@ describe('TaskManager parent notifications', () => {
 				NEUTRAL_TEXT,
 				testOrigin(),
 			),
-		).rejects.toThrow('Task parent is unavailable')
+		).rejects.toThrow('Task initiator is unavailable')
 
 		expect(child.status).toBe('completed')
 		expect(handler).not.toHaveBeenCalled()
@@ -492,7 +476,7 @@ describe('TaskManager parent notifications', () => {
 		'session is replaced',
 		'parent becomes terminal',
 	])(
-		'removes a nested continuation when persistence resumes after the %s',
+		'retains a durable nested continuation without reviving execution when persistence resumes after the %s',
 		async (staleCondition) => {
 			let releaseDeliveryPersist: (() => void) | undefined
 			const controller = new AbortController()
@@ -565,7 +549,7 @@ describe('TaskManager parent notifications', () => {
 			await completion
 
 			expect(child.status).toBe('completed')
-			expect(parent.pendingInputs).toEqual([])
+			expect(parent.pendingInputs).toHaveLength(1)
 		},
 	)
 
@@ -950,7 +934,7 @@ describe('TaskManager parent notifications', () => {
 			turnId: 'T1',
 			signal: controller.signal,
 		})
-		expect(master.pendingInputs).toEqual([])
+		expect(master.pendingInputs).toHaveLength(1)
 	})
 
 	it('cancelling T1 leaves T0 child compaction running', async () => {

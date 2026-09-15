@@ -732,7 +732,11 @@
 				"contextArea": "Context",
 				"reasoning": "Reasoning",
 				"todoList": "Todo List",
-				"systemNotification": "System Notification"
+				"systemNotification": "System Notification",
+				"agentMessage": "Agent message",
+				"followupTask": "Follow-up task",
+				"sender": "From",
+				"recipient": "To"
 			},
 			"fileChanges": {
 				"create": "Added",
@@ -762,7 +766,8 @@
 				"noSubagentMessages": "This subagent has not produced any messages yet.",
 				"copied": "Copied!",
 				"loadingContextItem": "Loading…",
-				"todoEmpty": "No todos"
+				"todoEmpty": "No todos",
+				"agentWaiting": "Waiting for agent messages"
 			},
 			"placeholders": {
 				"input": "Type a message. Enter to send, Shift+Enter for newline"

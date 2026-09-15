@@ -41,7 +41,7 @@ describe('createAgentDefinitions', () => {
 		expect(findDefinition(askDefinitions, MEMORY_AGENT_ID)).toMatchObject({
 			permissionMode: 'ask',
 			dispatchable: true,
-			tools: ['bash'],
+			tools: ['bash', 'list_agents', 'send_message', 'followup_task'],
 		})
 		expect(
 			findDefinition(fullDefinitions, MEMORY_AGENT_ID).permissionMode,

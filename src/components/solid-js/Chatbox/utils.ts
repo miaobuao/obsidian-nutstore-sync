@@ -1,3 +1,4 @@
+import type { SystemNotificationData } from '~/ai/chat/types'
 import type { ChatDisplayToolCallBlock, ChatRunState } from '~/ai/chat/types'
 export { formatDuration } from '~/utils/format-duration'
 import { t } from '../i18n'
@@ -135,7 +136,23 @@ export function formatToolDetailsMarkdown(params?: unknown, result?: string) {
 	return lines.join('\n')
 }
 
-export function formatSystemNotificationMarkdown(notification: unknown) {
+export function formatSystemNotificationMarkdown(
+	notification: SystemNotificationData,
+) {
+	if (
+		notification.kind === 'agent-message' ||
+		notification.kind === 'followup-task'
+	) {
+		return [
+			t(
+				notification.kind === 'agent-message'
+					? 'chatbox.ui.labels.agentMessage'
+					: 'chatbox.ui.labels.followupTask',
+			),
+			`${t('chatbox.ui.labels.sender')}: ${notification.sender} → ${t('chatbox.ui.labels.recipient')}: ${notification.recipient}`,
+			fencedCode('text', notification.message),
+		].join('\n\n')
+	}
 	return fencedCode('json', stringifyJsonValue(notification))
 }
 
@@ -145,6 +162,8 @@ export function runStateLabel(runState: ChatRunState) {
 			return t('chatbox.ui.states.thinking')
 		case 'compressing':
 			return t('chatbox.ui.states.compressing')
+		case 'waiting_for_agents':
+			return t('chatbox.ui.states.agentWaiting')
 		case 'waiting_for_tools':
 			return t('chatbox.ui.states.processingTools')
 		default:

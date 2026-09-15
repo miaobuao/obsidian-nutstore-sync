@@ -448,12 +448,7 @@ export class SessionStore {
 			const storedPendingInputs = Array.isArray(agent.pendingInputs)
 				? agent.pendingInputs
 				: []
-			const pendingInputs =
-				agent.id === MASTER_AGENT_ID
-					? // Master continuation is runtime-only now; do not revive persisted
-						// execution input after reload.
-						[]
-					: storedPendingInputs.map(normalizeMessage)
+			const pendingInputs = storedPendingInputs.map(normalizeMessage)
 			const timeline = Array.isArray(agent.timeline)
 				? agent.timeline.map(normalizeMessage)
 				: []
@@ -466,9 +461,6 @@ export class SessionStore {
 							modelId: agent.model.modelId,
 						}
 					: undefined
-			if (agent.id === MASTER_AGENT_ID && storedPendingInputs.length > 0) {
-				changed = true
-			}
 			if (agent.model !== undefined && !model) changed = true
 			return {
 				id: agent.id,
@@ -482,6 +474,8 @@ export class SessionStore {
 				finishedAt: normalizeTimestamp(agent.finishedAt),
 				resultPath:
 					typeof agent.resultPath === 'string' ? agent.resultPath : undefined,
+				executionId: agent.executionId,
+				executions: agent.executions,
 				timeline,
 				pendingInputs,
 				operations: Object.fromEntries(

@@ -1,4 +1,5 @@
 import type { ToolSet } from 'ai'
+import { agentCommunicationTools } from '~/ai/tools/agent-communication'
 import { isMcpToolName } from '~/ai/mcp/types'
 import memoryProtocol from '../../skills/builtin/long-term-memory/SKILL.md?raw'
 
@@ -40,7 +41,7 @@ const MASTER_SYSTEM_PROMPT = [
 
 const EXPLORER_SYSTEM_PROMPT = [
 	'You are a read-only explorer subagent investigating an Obsidian vault.',
-	'You operate in an isolated context and cannot see the caller conversation; your only input is the task prompt.',
+	'You operate in an isolated context and cannot see the caller conversation; you receive a task prompt and explicitly delivered agent information.',
 	'Gather evidence with available read-only vault tools. You cannot edit, create, or delete files.',
 	'Base every conclusion on tool output and cite the file paths or commands that support it.',
 	'When citing vault files, use their vault-relative path (for example notes/idea.md), matching the path the user sees inside the vault.',
@@ -51,7 +52,7 @@ const EXPLORER_SYSTEM_PROMPT = [
 
 const MEMORY_SYSTEM_PROMPT = [
 	'You are the long-term memory subagent for an Obsidian vault.',
-	'You operate in an isolated context and receive only a task prompt from the main conversational agent. Carry out only the retrieval or maintenance scope explicitly delegated in that prompt; do not infer additional user intent or perform unrelated vault work.',
+	'You operate in an isolated context and receive a task prompt and explicitly delivered agent information. Carry out only the retrieval or maintenance scope explicitly delegated in that prompt; do not infer additional user intent or perform unrelated vault work.',
 	'Use the memory protocol below as the authority for storage, retrieval, correction, and forgetting. Keep your final answer concise: state the result, relevant memory facts or changes, and any source paths needed by the caller. Do not expose hidden internal paths to the user unless the delegated task explicitly requires it.',
 	'<memory-protocol>',
 	memoryProtocol.trim(),
@@ -119,7 +120,10 @@ export function createAgentDefinitions(
 		createMasterAgentDefinition(settings, canDispatch),
 		createExplorerAgentDefinition(explorerEnabled, canDispatch),
 		createMemoryAgentDefinition(settings),
-	]
+	].map((definition) => ({
+		...definition,
+		tools: [...definition.tools, ...Object.keys(agentCommunicationTools)],
+	}))
 }
 
 export function getAgentDefinition(

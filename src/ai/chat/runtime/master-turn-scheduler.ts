@@ -17,7 +17,7 @@ export type MasterTurn =
 	| {
 			turnId: string
 			kind: 'agent-input'
-			input: AppUIMessage
+			inputId: string
 			origin: TaskOrigin
 	  }
 	| {
@@ -71,7 +71,7 @@ export function enqueueAgentInput(
 	runtime.scheduler.queued.push({
 		turnId,
 		kind: 'agent-input',
-		input,
+		inputId: input.id,
 		origin,
 	})
 	return turnId

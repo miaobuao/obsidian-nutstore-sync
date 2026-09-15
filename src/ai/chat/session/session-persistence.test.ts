@@ -138,12 +138,9 @@ describe('chat session persistence', () => {
 			'cancelled',
 			'completed',
 		])
-		expect(children.map((agent) => agent.pendingInputs)).toEqual([
-			[],
-			[],
-			[],
-			[],
-		])
+		expect(children.map((agent) => agent.pendingInputs)).toEqual(
+			Array.from({ length: 4 }, () => idle.pendingInputs),
+		)
 		expect(master.timeline).toEqual([])
 		expect(completed.timeline).toEqual([])
 	})

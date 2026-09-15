@@ -65,11 +65,7 @@ export interface ContextCompressionPlan {
 }
 
 export type ContextCompressionResult =
-	| 'committed'
-	| 'unavailable'
-	| 'cancelled'
-	| 'failed'
-	| 'stale'
+	'committed' | 'unavailable' | 'cancelled' | 'failed' | 'stale'
 
 export class ContextCompressionFailedError extends Error {
 	constructor(message: string) {
@@ -318,7 +314,13 @@ export async function resolveSummaryContext(
 	try {
 		const definition = toolExecutor.getAgentDefinition(agent.type)
 		const [system, tools] = await Promise.all([
-			buildAgentSystemPrompt(app, agent.type, session.systemPrompt),
+			buildAgentSystemPrompt(
+				app,
+				agent.type,
+				session.systemPrompt,
+				undefined,
+				agent.id,
+			),
 			toolExecutor.createTools(0, definition, session, model),
 		])
 		return {

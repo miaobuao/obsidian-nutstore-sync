@@ -92,7 +92,12 @@ describe('virtual filesystem guidance', () => {
 		if (!definition) throw new Error('Expected memory agent definition')
 		const prompt = createSystemPromptForAgent(definition)
 
-		expect(definition.tools).toEqual(['bash'])
+		expect(definition.tools).toEqual([
+			'bash',
+			'list_agents',
+			'send_message',
+			'followup_task',
+		])
 		expect(prompt).toContain('<memory-protocol>')
 		expect(prompt).toContain('memory/archive/<YYYY>/<YYYY-MM-DD>.md')
 		expect(prompt).toContain('isolated context')
@@ -207,6 +212,18 @@ describe('buildAgentSystemPrompt', () => {
 		const prompt = await buildAgentSystemPrompt(app, 'master')
 		expect(prompt).toContain('Use todowrite to create and maintain')
 		expect(prompt).toContain('vault-relative path')
+	})
+
+	it('states the scheduling semantics of agent communication', async () => {
+		const app = {
+			vault: { adapter: { read: async () => '中性规则 / Neutral rule 🌿' } },
+		} as never
+		const prompt = await buildAgentSystemPrompt(app, 'master')
+
+		expect(prompt).toContain('does not start a turn for an idle agent')
+		expect(prompt).toContain('Use followup_task when the target must run')
+		expect(prompt).toContain('schedules the caller automatically')
+		expect(prompt).not.toContain('wait_agent')
 	})
 
 	it('degrades to no AGENTS.md instructions when the file is missing', async () => {
