@@ -14,6 +14,29 @@ export function SessionHistoryItem(props: {
 }) {
 	const activate = () => props.onSelect(props.session.id)
 
+	const showSessionMenu = (event: MouseEvent) => {
+		event.preventDefault()
+		event.stopPropagation()
+		const sessionId = props.session.id
+		const onExport = props.onExport
+		const onDelete = props.onDelete
+		const menu = new Menu()
+		menu.addItem((item) =>
+			item
+				.setTitle(t('chatbox.ui.actions.exportAsMarkdown'))
+				.setIcon('download')
+				.onClick(() => onExport(sessionId)),
+		)
+		menu.addItem((item) => {
+			item
+				.setTitle(t('chatbox.ui.actions.deleteSession'))
+				.setIcon('trash')
+				.setWarning(true)
+				.onClick(() => onDelete(sessionId))
+		})
+		menu.showAtMouseEvent(event)
+	}
+
 	return (
 		<div
 			role="button"
@@ -25,6 +48,7 @@ export function SessionHistoryItem(props: {
 					: ':uno: border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] hover:bg-[var(--background-modifier-hover)] hover:cursor-pointer',
 			].join(' ')}
 			onClick={activate}
+			onContextMenu={showSessionMenu}
 			onKeyDown={(event) => {
 				if (event.key === 'Enter' || event.key === ' ') {
 					event.preventDefault()
@@ -53,28 +77,7 @@ export function SessionHistoryItem(props: {
 					<div
 						class=":uno: i-lucide-ellipsis-vertical flex justify-center items-center hover:text-[--interactive-accent] hover:cursor-pointer transition-colors"
 						aria-label={t('chatbox.ui.history.sessionActions')}
-						onClick={(event) => {
-							event.preventDefault()
-							event.stopPropagation()
-							const sessionId = props.session.id
-							const onExport = props.onExport
-							const onDelete = props.onDelete
-							const menu = new Menu()
-							menu.addItem((item) =>
-								item
-									.setTitle(t('chatbox.ui.actions.exportAsMarkdown'))
-									.setIcon('download')
-									.onClick(() => onExport(sessionId)),
-							)
-							menu.addItem((item) => {
-								item
-									.setTitle(t('chatbox.ui.actions.deleteSession'))
-									.setIcon('trash')
-									.setWarning(true)
-									.onClick(() => onDelete(sessionId))
-							})
-							menu.showAtMouseEvent(event)
-						}}
+						onClick={showSessionMenu}
 					/>
 				</div>
 			</div>
