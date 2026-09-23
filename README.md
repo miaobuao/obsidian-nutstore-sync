@@ -103,12 +103,10 @@ Agent 支持：
 #### 配置 AI
 
 1. 打开 Nutstore Sync 设置中的 **AI** 标签页。
-2. 添加服务商、API Key 和模型，或在账号可用时授权实验性的 Nutstore AI。
+2. 添加服务商、API Key 和模型，或授权 Nutstore AI。
 3. 选择默认模型。
 4. 点击功能区的机器人图标，或从命令面板运行 **Open chatbox**。
 5. 按需配置 Explorer 或 Memory 子 Agent、添加 MCP 服务或管理 Skills。
-
-模型能力取决于你选择的服务商和具体模型。Nutstore AI 仍是实验性功能，并非所有账号都可用。
 
 #### 操作权限
 
@@ -208,12 +206,12 @@ The Agent supports:
 #### Configure AI
 
 1. Open the **AI** tab in Nutstore Sync settings.
-2. Add a provider, API key, and model, or authorize the experimental Nutstore AI service if it is available for your account.
+2. Add a provider, API key, and model, or authorize Nutstore AI.
 3. Select a default model.
 4. Click the robot ribbon icon, or run **Open chatbox** from the command palette.
 5. Optionally configure Explorer or Memory subagents, add MCP servers, or manage Skills.
 
-Capabilities vary by provider and model. Nutstore AI is experimental and is not available to every account.
+Capabilities vary by provider and model.
 
 #### Permissions
 

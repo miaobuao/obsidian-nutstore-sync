@@ -106,7 +106,7 @@
 				"desc": "新建对话时可选的默认模型"
 			},
 			"nutstoreLlmGateway": {
-				"name": "坚果云 AI（实验性）",
+				"name": "坚果云 AI",
 				"providerName": "坚果云",
 				"desc": "授权后可使用坚果云提供的模型。",
 				"pendingDesc": "请在浏览器中完成授权，当前验证码：{{code}}",
@@ -155,12 +155,6 @@
 					"resetsAt": "下次重置：{{time}}",
 					"expiresAt": "到期时间：{{time}}",
 					"usedPercent": "已使用 {{percent}}%"
-				},
-				"betaModal": {
-					"title": "功能内测中",
-					"message": "坚果云 AI 目前处于内测阶段，尚未向所有用户开放。如果您不在内测名单中，授权后可能暂时无法使用相关功能，请继续等待，我们正在陆续开放中。",
-					"cancel": "取消",
-					"confirm": "我知道了，继续授权"
 				},
 				"errors": {
 					"authorizationRequired": "请先授权坚果云 AI",

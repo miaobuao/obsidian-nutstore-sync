@@ -148,7 +148,7 @@
 				"desc": "Optional model selected for new chat sessions"
 			},
 			"nutstoreLlmGateway": {
-				"name": "Nutstore AI (Experimental)",
+				"name": "Nutstore AI",
 				"providerName": "Nutstore",
 				"desc": "Authorize to use models provided by Nutstore.",
 				"pendingDesc": "Finish authorization in your browser. Current code: {{code}}",
@@ -197,12 +197,6 @@
 					"resetsAt": "Resets at {{time}}",
 					"expiresAt": "Expires {{time}}",
 					"usedPercent": "{{percent}}% used"
-				},
-				"betaModal": {
-					"title": "Feature in Beta",
-					"message": "Nutstore AI is currently in beta and not yet available to all users. If you are not on the beta list, you may not be able to use the feature after authorizing. We are gradually opening access — please check back later.",
-					"cancel": "Cancel",
-					"confirm": "I understand, continue"
 				},
 				"errors": {
 					"authorizationRequired": "Authorize Nutstore AI first",

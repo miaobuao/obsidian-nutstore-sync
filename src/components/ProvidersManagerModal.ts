@@ -22,7 +22,6 @@ import {
 } from '~/utils/class-tokens'
 import logger from '~/utils/logger'
 import type NutstorePlugin from '..'
-import NutstoreLlmGatewayBetaConfirmModal from './NutstoreLlmGatewayBetaConfirmModal'
 import NutstoreLlmGatewayModal from './NutstoreLlmGatewayModal'
 import ProviderEditorModal from './ProviderEditorModal'
 import ProviderModelsUpdateConfirmModal from './ProviderModelsUpdateConfirmModal'
@@ -375,22 +374,20 @@ export default class ProvidersManagerModal extends Modal {
 					)
 					return
 				}
-				button.onClick(() => {
-					new NutstoreLlmGatewayBetaConfirmModal(this.plugin.app, async () => {
-						try {
-							await this.plugin.nutstoreLlmGatewayService.startAuthorization()
-							await this.plugin.nutstoreLlmGatewayService.openPendingAuthorizationPage()
-							this.render()
-						} catch (error) {
-							logger.error(error)
-							new Notice(
-								error instanceof Error
-									? error.message
-									: i18n.t('settings.login.failure'),
-								10000,
-							)
-						}
-					}).open()
+				button.onClick(async () => {
+					try {
+						await this.plugin.nutstoreLlmGatewayService.startAuthorization()
+						await this.plugin.nutstoreLlmGatewayService.openPendingAuthorizationPage()
+						this.render()
+					} catch (error) {
+						logger.error(error)
+						new Notice(
+							error instanceof Error
+								? error.message
+								: i18n.t('settings.login.failure'),
+							10000,
+						)
+					}
 				})
 			})
 			if (pendingAuthorization) {
