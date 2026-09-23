@@ -711,9 +711,10 @@
 
 .ns-settings-tabs {
 	--ns-settings-tab-height: max(var(--input-height), 36px);
+	--ns-settings-tab-curve: var(--size-4-2);
 	display: flex;
 	align-items: flex-end;
-	gap: var(--size-4-1);
+	gap: var(--ns-settings-tab-curve);
 	overflow-x: auto;
 	padding-top: var(--size-4-1);
 	margin-bottom: var(--size-4-4);
@@ -721,10 +722,11 @@
 }
 
 .ns-settings-tabs > button.ns-settings-tab {
+	position: relative;
 	appearance: none;
 	box-sizing: border-box;
 	flex: 0 0 auto;
-	min-height: var(--ns-settings-tab-height);
+	min-height: calc(var(--ns-settings-tab-height) + var(--size-4-1));
 	height: auto;
 	padding: var(--size-4-2) var(--size-4-5);
 	white-space: nowrap;
@@ -733,10 +735,15 @@
 	border-radius: var(--radius-m) var(--radius-m) 0 0;
 	background: transparent;
 	box-shadow: none;
+	overflow: visible;
 	color: var(--tab-text-color, var(--text-muted));
 	font-size: var(--font-ui-small);
 	font-weight: var(--tab-font-weight, var(--font-normal));
 	cursor: var(--cursor);
+	transition:
+		background-color 220ms ease,
+		border-color 220ms ease,
+		color 220ms ease;
 }
 
 .ns-settings-tabs > button.ns-settings-tab:not(.is-active):hover {
@@ -750,11 +757,69 @@
 }
 
 .ns-settings-tabs > button.ns-settings-tab.is-active {
-	min-height: calc(var(--ns-settings-tab-height) + var(--size-4-1));
+	z-index: 1;
 	border-color: var(--background-modifier-border);
 	border-bottom-color: var(--background-primary);
 	background: var(--background-primary);
 	color: var(--tab-text-color-focused-active, var(--text-normal));
+}
+
+.ns-settings-tabs > button.ns-settings-tab::before,
+.ns-settings-tabs > button.ns-settings-tab::after {
+	content: '';
+	position: absolute;
+	bottom: -1px;
+	width: calc(var(--ns-settings-tab-curve) + 1px);
+	height: var(--ns-settings-tab-curve);
+	opacity: 0;
+	transform: scale(0.65);
+	pointer-events: none;
+	transition:
+		opacity 160ms ease,
+		transform 300ms cubic-bezier(0.2, 1.25, 0.35, 1);
+}
+
+.ns-settings-tabs > button.ns-settings-tab.is-active::before,
+.ns-settings-tabs > button.ns-settings-tab.is-active::after {
+	opacity: 1;
+	transform: scale(1);
+}
+
+.ns-settings-tabs > button.ns-settings-tab:first-child::before,
+.ns-settings-tabs > button.ns-settings-tab:last-child::after {
+	display: none;
+}
+
+.ns-settings-tabs > button.ns-settings-tab::before {
+	left: calc(-1 * var(--ns-settings-tab-curve));
+	transform-origin: top right;
+	background: radial-gradient(
+		circle at top left,
+		var(--background-primary) calc(var(--ns-settings-tab-curve) - 1px),
+		var(--background-modifier-border) calc(var(--ns-settings-tab-curve) - 1px),
+		var(--background-modifier-border) var(--ns-settings-tab-curve),
+		var(--background-primary) var(--ns-settings-tab-curve)
+	);
+}
+
+.ns-settings-tabs > button.ns-settings-tab::after {
+	right: calc(-1 * var(--ns-settings-tab-curve));
+	transform-origin: top left;
+	background: radial-gradient(
+		circle at top right,
+		var(--background-primary) calc(var(--ns-settings-tab-curve) - 1px),
+		var(--background-modifier-border) calc(var(--ns-settings-tab-curve) - 1px),
+		var(--background-modifier-border) var(--ns-settings-tab-curve),
+		var(--background-primary) var(--ns-settings-tab-curve)
+	);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ns-settings-tabs > button.ns-settings-tab,
+	.ns-settings-tabs > button.ns-settings-tab::before,
+	.ns-settings-tabs > button.ns-settings-tab::after {
+		transition: none;
+	}
 }
 
 .ns-settings-tabs.is-mobile {
