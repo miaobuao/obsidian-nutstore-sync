@@ -160,7 +160,44 @@
 				"authorized": "Nutstore AI authorized",
 				"disconnect": "Disconnect",
 				"disconnected": "Nutstore AI disconnected",
-				"refreshModels": "Refresh",
+				"refreshModels": "Refresh models",
+				"tabs": {
+					"models": "Models",
+					"usage": "Credits"
+				},
+				"models": {
+					"title": "Available models",
+					"available": "Models available now",
+					"count": "{{count}} total",
+					"empty": "No available models.",
+					"changes": "Model list changes",
+					"diffSummary": "+{{added}} added · −{{removed}} removed",
+					"refreshed": "Updated",
+					"updatedAt": "Model list updated {{time}}"
+				},
+				"usage": {
+					"button": "Overview",
+					"title": "Nutstore AI overview",
+					"description": "View quota usage or refresh the available model list.",
+					"refresh": "Refresh credits",
+					"refreshing": "Refreshing…",
+					"refreshed": "Updated",
+					"updatingModels": "Updating…",
+					"loading": "Loading quota…",
+					"loadFailed": "Failed to load quota information",
+					"empty": "The service did not return quota or usage information.",
+					"updatedAt": "Updated {{time}}",
+					"availableCredit": "Credits available now",
+					"requestLimit": "Request limit",
+					"monthly": "Monthly credits",
+					"grant": "Granted credits",
+					"topup": "Purchased credits",
+					"requestCount": "{{used}} / {{total}} requests used",
+					"creditAmount": "{{used}} / {{total}} credits used",
+					"resetsAt": "Resets at {{time}}",
+					"expiresAt": "Expires {{time}}",
+					"usedPercent": "{{percent}}% used"
+				},
 				"betaModal": {
 					"title": "Feature in Beta",
 					"message": "Nutstore AI is currently in beta and not yet available to all users. If you are not on the beta list, you may not be able to use the feature after authorizing. We are gradually opening access — please check back later.",
@@ -174,6 +211,7 @@
 					"missingClientId": "Missing LLM_GATEWAY_CLIENT_ID. Nutstore AI authorization cannot start.",
 					"modelsFailed": "Failed to fetch Nutstore AI models: {{status}}",
 					"emptyModels": "Nutstore AI did not return any available models",
+					"usageFailed": "Failed to fetch Nutstore AI quota: {{status}}",
 					"refreshFailed": "Failed to refresh Nutstore AI models"
 				}
 			},

@@ -23,6 +23,7 @@ import {
 import logger from '~/utils/logger'
 import type NutstorePlugin from '..'
 import NutstoreLlmGatewayBetaConfirmModal from './NutstoreLlmGatewayBetaConfirmModal'
+import NutstoreLlmGatewayModal from './NutstoreLlmGatewayModal'
 import ProviderEditorModal from './ProviderEditorModal'
 import ProviderModelsUpdateConfirmModal from './ProviderModelsUpdateConfirmModal'
 
@@ -430,26 +431,13 @@ export default class ProvidersManagerModal extends Modal {
 		setting
 			.addButton((button) =>
 				button
-					.setButtonText(i18n.t('settings.ai.nutstoreLlmGateway.refreshModels'))
-					.onClick(async () => {
-						try {
-							await this.plugin.nutstoreLlmGatewayService.refreshModels({
-								removeOnAuthError: true,
-							})
-							await this.plugin.settingsService.saveSettings()
+					.setButtonText(i18n.t('settings.ai.nutstoreLlmGateway.usage.button'))
+					.onClick(() =>
+						new NutstoreLlmGatewayModal(this.plugin, async () => {
+							await this.onChanged()
 							this.render()
-						} catch (error) {
-							logger.error(error)
-							new Notice(
-								error instanceof Error
-									? error.message
-									: i18n.t(
-											'settings.ai.nutstoreLlmGateway.errors.refreshFailed',
-										),
-								10000,
-							)
-						}
-					}),
+						}).open(),
+					),
 			)
 			.addButton((button) => {
 				let confirmDisconnect = false

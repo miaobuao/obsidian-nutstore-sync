@@ -83,6 +83,35 @@ export interface NutstoreLlmGatewayPendingAuthorization {
 	expiresAt: number
 }
 
+export interface NutstoreLlmGatewayUsageWindow {
+	limit: number
+	used: number
+	remaining: number
+	remaining_percentage: number
+	next_reset_at: string | null
+}
+
+export interface NutstoreLlmGatewayCreditPackage {
+	package_id: string
+	source_type: string
+	total_credit: number
+	used_credit: number
+	remaining_credit: number
+	remaining_percentage: number
+	expires_at: string
+	status: string
+}
+
+export interface NutstoreLlmGatewayUsage {
+	available_credit?: number
+	unbilled_requests?: NutstoreLlmGatewayUsageWindow
+	credit_usage?: {
+		monthly?: NutstoreLlmGatewayCreditPackage
+		grant_packages?: NutstoreLlmGatewayCreditPackage[]
+		topup_packages?: NutstoreLlmGatewayCreditPackage[]
+	}
+}
+
 function expiresAtFromNow(seconds: number | undefined) {
 	return Date.now() + Math.max(0, seconds || 0) * 1000
 }
@@ -271,6 +300,56 @@ export default class NutstoreLlmGatewayService extends BaseService {
 			this.plugin.settings.ai.defaultModel,
 		)
 		return true
+	}
+
+	async getUsage(): Promise<NutstoreLlmGatewayUsage> {
+		const hadAuthorization = this.isAuthorized()
+		const previousAccessToken = this.settings.accessToken
+		let token: string | undefined
+		try {
+			token = await this.ensureAccessToken({ removeOnAuthError: true })
+		} catch (error) {
+			if (hadAuthorization && !this.isAuthorized()) {
+				await this.plugin.settingsService.saveSettings()
+			}
+			throw error
+		}
+
+		if (!token) {
+			if (hadAuthorization) {
+				await this.plugin.settingsService.saveSettings()
+			}
+			throw new Error(
+				i18n.t('settings.ai.nutstoreLlmGateway.errors.authorizationRequired'),
+			)
+		}
+
+		if (token !== previousAccessToken) {
+			this.updateProviderApiKey(token)
+			await this.plugin.settingsService.saveSettings()
+		}
+
+		const response = await obsidianFetch(
+			this.client.getLlmGatewayEndpoints().rateLimits,
+			{
+				method: 'GET',
+				headers: { Authorization: `Bearer ${token}` },
+				cache: 'no-store',
+			},
+		)
+		if (!response.ok) {
+			if (isAuthError(response.status)) {
+				this.clearProviderAndAuth()
+				await this.plugin.settingsService.saveSettings()
+			}
+			throw new Error(
+				i18n.t('settings.ai.nutstoreLlmGateway.errors.usageFailed', {
+					status: response.status,
+				}),
+			)
+		}
+
+		return (await response.json()) as NutstoreLlmGatewayUsage
 	}
 
 	async ensureProviderReady(provider?: AIProviderConfig) {
