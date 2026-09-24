@@ -18,6 +18,8 @@ export const blobKV = createRecoverableStorage<Blob>('base_blob_store')
 export interface TraverseWebDAVCache {
 	rootCursor: string
 	queue: string[]
+	/** Unresolved directory reads; an empty queue alone does not imply completeness. */
+	pendingVerification?: string[]
 	nodes: Record<string, StatModel[]>
 }
 

@@ -45,7 +45,8 @@ export default class CacheServiceV1 extends BaseService {
 		try {
 			const kvKey = await this.getKVKey()
 			const localCache = await traverseWebDAVKV.get(kvKey)
-			if (localCache?.queue?.length === 0) {
+			// Local progress, including suspended verification, must survive a restart.
+			if (localCache) {
 				return false
 			}
 
@@ -60,7 +61,12 @@ export default class CacheServiceV1 extends BaseService {
 				format: 'binary',
 			})) as BufferLike
 			const exportedStorage = this.decodeStorage(fileContent)
-			if (!exportedStorage.traverseWebDAVCache) {
+			if (
+				!exportedStorage.traverseWebDAVCache ||
+				exportedStorage.traverseWebDAVCache.queue.length > 0 ||
+				(exportedStorage.traverseWebDAVCache.pendingVerification?.length ?? 0) >
+					0
+			) {
 				return false
 			}
 			if (
@@ -102,7 +108,11 @@ export default class CacheServiceV1 extends BaseService {
 			const traverseWebDAVCache = await traverseWebDAVKV.get(
 				await this.getKVKey(),
 			)
-			if (!traverseWebDAVCache || traverseWebDAVCache.queue.length > 0) {
+			if (
+				!traverseWebDAVCache ||
+				traverseWebDAVCache.queue.length > 0 ||
+				(traverseWebDAVCache.pendingVerification?.length ?? 0) > 0
+			) {
 				return false
 			}
 
