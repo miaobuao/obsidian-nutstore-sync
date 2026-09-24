@@ -88,7 +88,7 @@ function modelLabel(model: ModelSummary) {
 }
 
 export default class NutstoreLlmGatewayModal extends Modal {
-	private activeTab: NutstoreLlmGatewayTab = 'models'
+	private activeTab: NutstoreLlmGatewayTab = 'usage'
 	private usage: NutstoreLlmGatewayUsage | null = null
 	private usageError: string | null = null
 	private usageLoading = false
@@ -113,7 +113,7 @@ export default class NutstoreLlmGatewayModal extends Modal {
 		this.titleEl.setText(i18n.t('settings.ai.nutstoreLlmGateway.usage.title'))
 		this.modalEl.addClass('nutstore-llm-gateway-modal')
 		this.contentEl.addClass('nutstore-llm-gateway-modal__content')
-		this.render()
+		void this.loadUsage()
 	}
 
 	private get isBusy() {
@@ -156,11 +156,11 @@ export default class NutstoreLlmGatewayModal extends Modal {
 		}
 		let nextTab: NutstoreLlmGatewayTab | undefined
 		if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-			nextTab = tab === 'models' ? 'usage' : 'models'
+			nextTab = tab === 'usage' ? 'models' : 'usage'
 		} else if (event.key === 'Home') {
-			nextTab = 'models'
-		} else if (event.key === 'End') {
 			nextTab = 'usage'
+		} else if (event.key === 'End') {
+			nextTab = 'models'
 		}
 		if (!nextTab) {
 			return
@@ -254,8 +254,8 @@ export default class NutstoreLlmGatewayModal extends Modal {
 			'aria-label',
 			i18n.t('settings.ai.nutstoreLlmGateway.usage.title'),
 		)
-		this.renderTab(tabList, 'models', 'models')
 		this.renderTab(tabList, 'usage', 'usage')
+		this.renderTab(tabList, 'models', 'models')
 
 		const panel = container.createDiv({ cls: 'nutstore-llm-gateway__panel' })
 		panel.setAttribute('role', 'tabpanel')
