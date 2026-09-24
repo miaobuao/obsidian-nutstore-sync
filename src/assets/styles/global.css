@@ -253,6 +253,28 @@
 	max-height: calc(100% - 2rem);
 }
 
+.nutstore-llm-gateway__provider-name {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4em;
+	line-height: 1;
+}
+
+.nutstore-llm-gateway__provider-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1em;
+	height: 1em;
+	flex: 0 0 1em;
+	color: var(--text-accent);
+}
+
+.nutstore-llm-gateway__provider-icon svg {
+	width: 100%;
+	height: 100%;
+}
+
 .modal-content.nutstore-llm-gateway-modal__content {
 	display: flex;
 	flex-direction: column;

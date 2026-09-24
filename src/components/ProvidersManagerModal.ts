@@ -10,6 +10,7 @@ import {
 	listPresetProviders,
 	listProviders,
 } from '~/ai/catalog/config'
+import { CHATBOX_AI_ICON_ID } from '~/assets/icons/obsidian-nutstore-ai-icon'
 import { AIProviderConfig } from '~/ai/core/types'
 import { getProviderDefaultBaseURL } from '~/ai/providers/defaults'
 import { NUTSTORE_LLM_GATEWAY_PROVIDER_ID } from '~/consts'
@@ -340,20 +341,26 @@ export default class ProvidersManagerModal extends Modal {
 		const provider =
 			this.plugin.settings.ai.providers[NUTSTORE_LLM_GATEWAY_PROVIDER_ID]
 		const modelsCount = listModels(provider).length
+		const providerName = i18n.t('settings.ai.nutstoreLlmGateway.name')
 
-		const setting = new Setting(contentEl)
-			.setName(i18n.t('settings.ai.nutstoreLlmGateway.name'))
-			.setDesc(
-				isAuthorized
-					? i18n.t('settings.ai.nutstoreLlmGateway.connectedDesc', {
-							count: modelsCount,
+		const setting = new Setting(contentEl).setDesc(
+			isAuthorized
+				? i18n.t('settings.ai.nutstoreLlmGateway.connectedDesc', {
+						count: modelsCount,
+					})
+				: pendingAuthorization
+					? i18n.t('settings.ai.nutstoreLlmGateway.pendingDesc', {
+							code: pendingAuthorization.userCode,
 						})
-					: pendingAuthorization
-						? i18n.t('settings.ai.nutstoreLlmGateway.pendingDesc', {
-								code: pendingAuthorization.userCode,
-							})
-						: i18n.t('settings.ai.nutstoreLlmGateway.desc'),
-			)
+					: i18n.t('settings.ai.nutstoreLlmGateway.desc'),
+		)
+		setting.nameEl.addClass('nutstore-llm-gateway__provider-name')
+		const providerIcon = setting.nameEl.createSpan({
+			cls: 'nutstore-llm-gateway__provider-icon',
+		})
+		providerIcon.setAttribute('aria-hidden', 'true')
+		setIcon(providerIcon, CHATBOX_AI_ICON_ID)
+		setting.nameEl.createSpan({ text: providerName })
 
 		if (!isAuthorized) {
 			setting.addButton((button) => {
