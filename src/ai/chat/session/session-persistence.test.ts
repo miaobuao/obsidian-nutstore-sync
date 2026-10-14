@@ -13,6 +13,31 @@ import {
 } from '~/ai/chat/session/session-persistence'
 
 describe('chat session persistence', () => {
+	it('archives WIP search data once without making it executable App code', async () => {
+		const search = {
+			schemaVersion: 1,
+			turns: [{ text: '中性说明 Neutral explanation 🌿' }],
+			revisions: { neutral: { html: '<section>记录 Record 🧭</section>' } },
+		}
+		const original = {
+			schemaVersion: 2,
+			id: 'neutral-build',
+			createdAt: 1,
+			updatedAt: 1,
+			subagents: { master: createEmptyMasterAgent(1) },
+			search,
+		}
+		const migrated = migrateChatSession(original)
+		expect(migrated.changed).toBe(true)
+		expect(migrated.session.legacySearch).toEqual(search)
+		expect(migrated.session.workshop?.draftRevision).toBeUndefined()
+		expect(Reflect.get(migrated.session, 'search')).toBeUndefined()
+		expect(migrateChatSession(migrated.session).changed).toBe(false)
+		const decoded = decodeChatSessionFromStorage(
+			await encodeChatSessionForStorage(migrated.session),
+		) as ChatSession
+		expect(decoded.legacySearch).toEqual(search)
+	})
 	it('round-trips a subagent model snapshot and accepts legacy agents without one', async () => {
 		const master = createEmptyMasterAgent(1)
 		master.subagents['neutral-agent'] = {

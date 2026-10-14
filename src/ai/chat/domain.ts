@@ -1,4 +1,5 @@
 import type { LanguageModelUsage } from 'ai'
+import type { WorkshopHistory } from '~/ai/apps/domain'
 import type {
 	AppUIMessage,
 	ChatAgentState,
@@ -33,6 +34,10 @@ export interface LegacyChatSession extends ChatSessionBase {
 export interface ChatSession extends ChatSessionBase {
 	schemaVersion: 2
 	subagents: { master: ChatAgentState }
+	/** App creation context; independently saved Apps own their code and data. */
+	workshop?: WorkshopHistory
+	/** Original WIP presentation retained as an archive during one-time conversion. */
+	legacySearch?: unknown
 }
 
 export interface ChatSessionIndexItem {
@@ -40,6 +45,7 @@ export interface ChatSessionIndexItem {
 	title: string
 	createdAt: number
 	updatedAt: number
+	kind?: 'workshop'
 }
 
 export function resolveUsedContextTokens(usage?: LanguageModelUsage) {

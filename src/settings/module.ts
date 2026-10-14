@@ -13,7 +13,11 @@ export default class ModuleSettings extends BaseSettings {
 	readonly showGroupHeading = false
 
 	getSearchTerms() {
-		return [this.name(), i18n.t('settings.modules.description')]
+		return [
+			this.name(),
+			i18n.t('settings.modules.description'),
+			...(this.module === 'ai' ? [i18n.t('settings.modules.workshop')] : []),
+		]
 	}
 
 	async display() {
@@ -40,5 +44,25 @@ export default class ModuleSettings extends BaseSettings {
 						}
 					}),
 			)
+		if (this.module === 'ai') {
+			new Setting(this.containerEl)
+				.setName(i18n.t('settings.modules.workshop'))
+				.setDesc(i18n.t('settings.modules.workshopDescription'))
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.localSettings.ai.workshopEnabled !== false)
+						.setDisabled(
+							this.plugin.localSettings.modules.ai === ModuleState.Disabled,
+						)
+						.onChange(async (enabled) => {
+							toggle.setDisabled(true)
+							try {
+								await this.plugin.settingsService.setWorkshopEnabled(enabled)
+							} finally {
+								toggle.setDisabled(false)
+							}
+						}),
+				)
+		}
 	}
 }

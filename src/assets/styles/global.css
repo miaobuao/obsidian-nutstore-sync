@@ -1830,3 +1830,448 @@
 .ns-memory-editor-modal .inline-title {
 	display: none;
 }
+/* One responsive view uses the leaf width and visible keyboard viewport, not the device type. */
+.ns-workshop-container {
+	container-name: workshop;
+	container-type: inline-size;
+}
+.ns-workshop-view {
+	max-height: var(--ns-workshop-viewport-height, 100%);
+}
+.ns-workshop-view,
+.ns-app-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+.ns-workshop-top {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
+}
+.ns-workshop-heading {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 600;
+}
+.ns-workshop-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-width: 44px;
+	min-height: 44px;
+	height: auto;
+	padding: 10px;
+	flex-shrink: 0;
+	border-radius: 12px;
+	touch-action: manipulation;
+}
+.ns-workshop-button svg,
+.ns-app-library-icon svg {
+	width: 18px;
+	height: 18px;
+}
+.ns-workshop-top .ns-workshop-button {
+	min-width: 32px;
+	min-height: 32px;
+	padding: 6px;
+	border-radius: 8px;
+	background: transparent;
+	box-shadow: none;
+}
+.ns-workshop-top .ns-workshop-button:hover {
+	background: var(--background-modifier-hover);
+}
+.ns-workshop-stage {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+	overflow: hidden;
+	container: workshop-stage / size;
+}
+.ns-workshop-output,
+.ns-app-output {
+	flex: 1;
+	min-height: 0;
+}
+.ns-workshop-output {
+	position: relative;
+	margin-bottom: 48px;
+}
+.ns-workshop-surface,
+.ns-workshop-preview {
+	height: 100%;
+}
+.ns-workshop-preview {
+	position: absolute;
+	inset: 0;
+}
+.ns-workshop-feedback {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 28px;
+	text-align: center;
+	color: var(--text-muted);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	overflow-y: auto;
+}
+.ns-workshop-view.is-building .ns-workshop-feedback::before {
+	content: '';
+	width: 10px;
+	height: 10px;
+	flex-shrink: 0;
+	margin-right: 12px;
+	border-radius: 50%;
+	background: var(--interactive-accent);
+	animation: ns-workshop-pulse 1.6s ease-in-out infinite;
+}
+.ns-app-runtime {
+	width: 100%;
+	height: 100%;
+	border: 0;
+	display: block;
+	background: var(--background-primary);
+}
+.ns-workshop-composer {
+	position: relative;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 780px;
+	margin: 0 auto;
+	padding: 12px 20px;
+	flex-shrink: 0;
+	max-height: none;
+	overflow: visible;
+	z-index: 1;
+}
+.ns-workshop-intro,
+.ns-workshop-examples {
+	display: none;
+}
+.ns-workshop-view.is-home .ns-workshop-stage {
+	overflow-y: auto;
+}
+.ns-workshop-input:focus-within {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px
+		color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+.ns-workshop-button:focus-visible,
+.ns-workshop-examples button:focus-visible,
+.ns-workshop-timeline > summary:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+.ns-workshop-view.is-home .ns-workshop-output {
+	display: none;
+}
+.ns-workshop-view.is-home .ns-workshop-composer {
+	/* Keep the entire welcome flow centered; short leaves scroll from its start. */
+	margin: auto;
+	max-height: none;
+	overflow: visible;
+	padding-block: 32px;
+}
+.ns-workshop-view.is-home .ns-workshop-intro {
+	display: block;
+	text-align: center;
+	padding-bottom: 24px;
+}
+.ns-workshop-intro h1 {
+	font-size: clamp(24px, 5cqi, 36px);
+	font-weight: 700;
+	letter-spacing: -0.03em;
+	margin: 0 0 12px;
+}
+.ns-workshop-intro p {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.6;
+	margin: 0;
+}
+.ns-workshop-view.is-home .ns-workshop-examples {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+	justify-content: center;
+	margin-top: 20px;
+}
+.ns-workshop-examples button {
+	height: auto;
+	min-height: 44px;
+	white-space: normal;
+	padding: 10px 14px;
+	border-radius: 8px;
+	font-size: var(--font-ui-small);
+	text-align: left;
+	line-height: 1.5;
+	touch-action: manipulation;
+}
+.ns-workshop-input {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 18px;
+	padding: 12px;
+	background: var(--background-secondary);
+	box-shadow: 0 4px 20px rgb(0 0 0 / 4%);
+	transition:
+		border-color 160ms ease,
+		box-shadow 160ms ease;
+}
+.ns-workshop-input textarea {
+	display: block;
+	width: 100%;
+	min-height: 66px;
+	max-height: 22vh;
+	max-height: max(66px, 24cqh);
+	resize: vertical;
+	box-sizing: border-box;
+	font-size: 16px;
+	line-height: 1.5;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+}
+.ns-workshop-input textarea:focus {
+	box-shadow: none;
+}
+.ns-workshop-input-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 8px;
+}
+.ns-workshop-status {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	padding: 6px 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 60px;
+	overflow-y: auto;
+}
+.ns-workshop-status:empty {
+	display: none;
+}
+.ns-workshop-error {
+	color: var(--text-error);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.ns-workshop-timeline {
+	position: absolute;
+	bottom: 100%;
+	left: 20px;
+	right: 20px;
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 14px;
+	background: var(--background-primary);
+	box-shadow: 0 2px 12px rgb(0 0 0 / 4%);
+	font-size: var(--font-ui-small);
+}
+.ns-workshop-timeline > summary {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	cursor: pointer;
+	list-style: none;
+	min-height: 44px;
+	box-sizing: border-box;
+	padding: 12px 14px;
+	touch-action: manipulation;
+}
+.ns-workshop-timeline > summary::-webkit-details-marker {
+	display: none;
+}
+.ns-workshop-timeline-summary {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ns-workshop-timeline-chevron {
+	display: flex;
+}
+.ns-workshop-timeline-chevron svg {
+	width: 16px;
+	height: 16px;
+	transition: transform 180ms ease;
+}
+.ns-workshop-timeline[open] .ns-workshop-timeline-chevron svg {
+	transform: rotate(180deg);
+}
+.ns-workshop-progress-dot {
+	width: 7px;
+	height: 7px;
+	flex-shrink: 0;
+	border-radius: 50%;
+	background: var(--text-muted);
+}
+.ns-workshop-view.is-building .ns-workshop-progress-dot {
+	background: var(--interactive-accent);
+	animation: ns-workshop-pulse 1.6s ease-in-out infinite;
+}
+.ns-workshop-timeline-content {
+	box-sizing: border-box;
+	max-height: min(36vh, 320px);
+	max-height: min(36cqh, 320px, max(0px, calc(100cqh - 240px)));
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.ns-workshop-transcript {
+	padding: 14px;
+	--ns-chatbox-gap: 0.75rem;
+	--ns-chatbox-block-gap: 0.5rem;
+	--ns-chatbox-pad-x: 0.75rem;
+	--ns-chatbox-card-py: 0.625rem;
+	display: flex;
+	flex-direction: column;
+	gap: var(--ns-chatbox-gap);
+}
+@keyframes ns-workshop-pulse {
+	50% {
+		opacity: 0.35;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ns-workshop-view.is-building .ns-workshop-progress-dot,
+	.ns-workshop-view.is-building .ns-workshop-feedback::before {
+		animation: none;
+	}
+	.ns-workshop-timeline-chevron svg,
+	.ns-workshop-input {
+		transition: none;
+	}
+}
+@container workshop-stage (max-height: 650px) {
+	.ns-workshop-intro h1 {
+		margin: 0;
+		font-size: 26px;
+	}
+	.ns-workshop-intro p {
+		margin: 8px 0;
+	}
+	.ns-workshop-view.is-home .ns-workshop-examples {
+		margin-top: 8px;
+	}
+}
+.ns-workshop-candidate {
+	position: absolute;
+	/* Candidate dimensions are supplied from the visible preview by the view. */
+	left: -10000px;
+	visibility: hidden;
+	pointer-events: none;
+}
+.ns-workshop-view [hidden] {
+	display: none;
+}
+.ns-app-library-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 12px 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.ns-app-library-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.ns-app-library-title {
+	flex: 1;
+	min-width: 100px;
+	overflow-wrap: anywhere;
+}
+.ns-app-library-confirm {
+	width: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+.ns-app-library-confirm span {
+	flex: 1 1 180px;
+	overflow-wrap: anywhere;
+}
+.ns-app-evidence {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+/* Narrow desktop leaves and mobile share the same adaptation. */
+/* Keep the centered input reachable while the mobile keyboard is open. */
+@container workshop-stage (max-height: 420px) {
+	.ns-workshop-view.is-home .ns-workshop-intro {
+		display: none;
+	}
+}
+@container workshop (max-width: 600px) {
+	.ns-workshop-timeline {
+		left: 10px;
+		right: 10px;
+	}
+	.ns-workshop-view.is-home .ns-workshop-intro {
+		padding-bottom: 16px;
+	}
+	.ns-workshop-composer {
+		padding: 10px;
+	}
+	.ns-workshop-top {
+		gap: 4px;
+		padding: 6px 8px;
+	}
+	.ns-workshop-view.is-home .ns-workshop-composer {
+		padding: 24px 16px;
+	}
+	.ns-workshop-intro h1 {
+		font-size: 24px;
+	}
+	.ns-workshop-view.is-home .ns-workshop-examples {
+		grid-template-columns: minmax(0, 1fr);
+		margin-top: 16px;
+	}
+	.ns-workshop-feedback {
+		padding: 16px;
+	}
+}
+@media (max-width: 600px) {
+	.ns-app-library-row {
+		align-items: flex-start;
+		gap: 10px;
+		padding: 16px 0;
+	}
+	.ns-app-library-title {
+		flex-basis: calc(100% - 32px);
+		min-width: 0;
+	}
+	.ns-app-library-actions {
+		width: 100%;
+		justify-content: flex-end;
+	}
+}
+
+/* Short leaves (landscape or an open keyboard) keep the primary action in reach. */
+@container workshop-stage (max-height: 360px) {
+	.ns-workshop-input textarea {
+		height: 44px;
+		min-height: 44px;
+		resize: none;
+	}
+}

@@ -207,6 +207,12 @@ export default class SettingsService extends BaseService {
 		await Promise.all([this.saveLocalSettings(), applied])
 	}
 
+	async setWorkshopEnabled(enabled: boolean) {
+		this.plugin.localSettings.ai.workshopEnabled = enabled
+		const applied = this.plugin.applySettings()
+		await Promise.all([this.saveLocalSettings(), applied])
+	}
+
 	async saveLocalSettings() {
 		const path = normalizePath(`${this.plugin.manifest.dir}/data.local.json`)
 		await this.plugin.app.vault.adapter.write(

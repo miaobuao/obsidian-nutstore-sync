@@ -60,6 +60,7 @@ function finish(toolCalls: boolean): StreamPart {
 function harness(
 	tools: ToolSet,
 	viewImageAttachments = new InMemoryViewImageAttachmentRegistry(),
+	presentation?: { firstText: string; finalText: string },
 ) {
 	const agent = createEmptyMasterAgent(1)
 	agent.timeline.push({
@@ -77,6 +78,17 @@ function harness(
 	const model = new MockLanguageModelV4({
 		doStream: [
 			stream([
+				...(presentation
+					? [
+							{ type: 'text-start' as const, id: 'progress' },
+							{
+								type: 'text-delta' as const,
+								id: 'progress',
+								delta: presentation.firstText,
+							},
+							{ type: 'text-end' as const, id: 'progress' },
+						]
+					: []),
 				...Object.keys(tools).map((toolName): StreamPart => ({
 					type: 'tool-call',
 					toolCallId: toolName,
@@ -87,7 +99,11 @@ function harness(
 			]),
 			stream([
 				{ type: 'text-start', id: 'reply' },
-				{ type: 'text-delta', id: 'reply', delta: 'Result 结果 🌿' },
+				{
+					type: 'text-delta',
+					id: 'reply',
+					delta: presentation?.finalText ?? 'Result 结果 🌿',
+				},
 				{ type: 'text-end', id: 'reply' },
 				finish(false),
 			]),
@@ -113,7 +129,10 @@ function harness(
 		agent,
 		model,
 		controller,
-		run: (shouldYieldAfterToolStep: () => boolean) =>
+		run: (
+			shouldYieldAfterToolStep: () => boolean,
+			execution?: Parameters<AgentRunner['runTurn']>[0]['execution'],
+		) =>
 			runner.runTurn({
 				session,
 				agent,
@@ -131,11 +150,62 @@ function harness(
 				taskOrigin: { turnId: 'turn', signal: controller.signal },
 				abortSignal: controller.signal,
 				shouldYieldAfterToolStep,
+				execution,
 			}),
 	}
 }
 
 describe('AgentRunner input handoff', () => {
+	it.each(['准备制作 Preparing App 🌿', '准备核对 Preparing evidence 🌿'])(
+		'preserves custom execution step boundaries and projects subsequent input: %s',
+		async (progress) => {
+			const tools = {
+				read: tool({
+					inputSchema: z.object({ text: z.string() }),
+					execute: async ({ text }) => text,
+				}),
+			}
+			const final = '核证 Verified 📘'
+			const { run, model, agent } = harness(tools, undefined, {
+				firstText: progress,
+				finalText: final,
+			})
+			const observed: string[] = []
+			const finishReasons: Array<string | undefined> = []
+			const toolStates: string[] = []
+			const { projectAppMessages } = await import('~/ai/apps/context')
+			const result = await run(() => false, {
+				tools,
+				instructions: 'Build an App from evidence',
+				maxSteps: 12,
+				projectMessages: projectAppMessages,
+				onProgress: () => {
+					for (const message of agent.timeline)
+						for (const part of message.parts)
+							if (part.type === 'dynamic-tool') toolStates.push(part.state)
+				},
+				onStream: async (event, delta, finishReason) => {
+					observed.push(delta ? `${event}:${delta}` : event)
+					if (event === 'end') finishReasons.push(finishReason)
+				},
+			})
+			expect(result.status).toBe('completed')
+			expect(finishReasons).toEqual(['tool-calls', 'stop'])
+			expect(toolStates).toContain('input-available')
+			expect(toolStates).toContain('output-available')
+			expect(observed).toEqual([
+				'start',
+				`delta:${progress}`,
+				'end',
+				'start',
+				`delta:${final}`,
+				'end',
+			])
+			expect(JSON.stringify(model.doStreamCalls[1].prompt)).toContain(progress)
+			expect(JSON.stringify(agent.timeline)).toContain(progress)
+			expect(JSON.stringify(agent.timeline)).toContain(final)
+		},
+	)
 	it.each([false, true])(
 		'waits for every tool outcome before yielding (error: %s)',
 		async (fails) => {

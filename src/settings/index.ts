@@ -272,6 +272,8 @@ export interface NutstoreLocalSettings {
 	/** Disabling a module on one device must not disable it on others. */
 	modules: Record<FeatureModule, ModuleState>
 	ai: {
+		/** Workshop availability is a device-local choice within the AI module. */
+		workshopEnabled?: boolean
 		presetModels?: AIProviderDefinitions
 		presetModelsUpdatedAt?: string
 	}

@@ -76,6 +76,7 @@ import i18n from '~/i18n'
 import { chatMetaKV, chatSessionKV, type ChatMetaRecord } from '~/storage'
 import { createUniqueWordId } from '~/utils/create-id'
 import logger from '~/utils/logger'
+import { createWorkshopHistory } from '~/ai/apps/domain'
 import type NutstorePlugin from '..'
 import { BaseService } from './service.interface'
 
@@ -126,6 +127,7 @@ export default class ChatService extends BaseService {
 	private readonly sessionProcessor: SessionProcessor
 	private readonly compactionCoordinator: ContextCompactionCoordinator
 	private readonly skillRepository: SkillRepository
+	private readonly agentRunner: AgentRunner
 
 	constructor(
 		private plugin: NutstorePlugin,
@@ -197,6 +199,7 @@ export default class ChatService extends BaseService {
 			() => this.notify(),
 			app,
 		)
+		this.agentRunner = agentRunner
 		this.compactionCoordinator = new ContextCompactionCoordinator(
 			this.store,
 			this.messageFactory,
@@ -316,7 +319,7 @@ export default class ChatService extends BaseService {
 			await this.store.persistSession(initialSession)
 		}
 
-		if (this.state.sessionIndex.length === 0) {
+		if (!this.state.sessionIndex.some((item) => item.kind !== 'workshop')) {
 			const session = await this.createEmptySession()
 			this.scope.check()
 			this.state.activeSessionId = session.id
@@ -382,7 +385,9 @@ export default class ChatService extends BaseService {
 			loading: !this.state.initialized,
 			title: this.getActiveSessionTitle(),
 			activeContextItems: [],
-			sessionHistory: this.state.sessionIndex.map((item) => ({ ...item })),
+			sessionHistory: this.state.sessionIndex
+				.filter((item) => item.kind !== 'workshop')
+				.map((item) => ({ ...item })),
 			activeSessionId: this.state.activeSessionId,
 			timeline: activeSession ? buildTimeline(activeSession) : [],
 			agentsById: activeSession ? buildAgentViews(activeSession) : {},
@@ -582,6 +587,67 @@ export default class ChatService extends BaseService {
 	async ensureSession() {
 		await this.initialize()
 		this.scope.check()
+	}
+
+	/** App builds share the durable transcript and executor without selecting a chat. */
+	async createWorkshopSession() {
+		await this.initialize()
+		this.scope.check()
+		const session = await this.createEmptySession()
+		const selected = this.getLoadedActiveSession()?.model
+		if (selected) session.model = { ...selected }
+		session.workshop = createWorkshopHistory()
+		this.state.loadedSessions.set(session.id, session)
+		await this.persistWorkshopSession(session)
+		return session
+	}
+
+	async listWorkshopSessions() {
+		await this.initialize()
+		return this.state.sessionIndex.filter((item) => item.kind === 'workshop')
+	}
+
+	/** Reorder only App build conversations in the shared durable index. */
+	async reorderWorkshopSessions(ids: string[]) {
+		await this.initialize()
+		this.scope.check()
+		const conversations = this.state.sessionIndex.filter(
+			(item) => item.kind === 'workshop',
+		)
+		const items = new Map(conversations.map((item) => [item.id, item]))
+		if (
+			ids.length !== items.size ||
+			new Set(ids).size !== ids.length ||
+			ids.some((id) => !items.has(id))
+		)
+			throw new Error('App build history changed; reopen it before reordering')
+		let cursor = 0
+		this.state.sessionIndex = this.state.sessionIndex.map((item) =>
+			item.kind === 'workshop' ? items.get(ids[cursor++])! : item,
+		)
+		await this.store.persistMetaAndIndex()
+		this.notify()
+	}
+
+	async loadWorkshopSession(id: string) {
+		await this.initialize()
+		const session = await this.store.loadSessionById(id)
+		if (!session.workshop) throw new Error('Not an App build conversation')
+		return session
+	}
+
+	async persistWorkshopSession(session: ChatSession) {
+		this.scope.check()
+		this.store.upsertSessionIndexItem(
+			session,
+			session.workshop?.turns[0]?.text.slice(0, 80) || i18n.t('workshop.title'),
+		)
+		await this.store.persistSession(session)
+		await this.store.persistMetaAndIndex()
+	}
+
+	getAppBuildRunner() {
+		return this.agentRunner
 	}
 
 	async createSession() {

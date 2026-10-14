@@ -29,6 +29,7 @@ import { normalizeReversibleToolOpRecord } from '~/ai/chat/messages/reversible-o
 import { MASTER_AGENT_ID } from '~/ai/chat/agents/registry'
 import { normalizeRehydratedExecution } from '~/ai/chat/session/rehydration-execution'
 import logger from '~/utils/logger'
+import { recoverWorkshopHistory } from '~/ai/apps/domain'
 
 /**
  * Optional access to the legacy IndexedDB-backed session storage. Used once to
@@ -86,9 +87,12 @@ export class SessionStore {
 		if (cachedIndex) {
 			this.state.sessionIndex = cachedIndex
 			this.state.activeSessionId =
-				meta?.activeSessionId && diskIds.has(meta.activeSessionId)
+				meta?.activeSessionId &&
+				diskIds.has(meta.activeSessionId) &&
+				cachedIndex.find((item) => item.id === meta.activeSessionId)?.kind !==
+					'workshop'
 					? meta.activeSessionId
-					: cachedIndex[0]?.id
+					: cachedIndex.find((item) => item.kind !== 'workshop')?.id
 			return
 		}
 		await this.reconcileSessionIndex(legacyMigration, { diskIds, meta })
@@ -187,6 +191,7 @@ export class SessionStore {
 					title: payload.title || cached?.title || i18n.t('chatbox.newChat'),
 					createdAt: cached?.createdAt ?? numberOrZero(session.createdAt),
 					updatedAt: cached?.updatedAt ?? numberOrZero(session.updatedAt),
+					kind: session.workshop ? 'workshop' : undefined,
 				})
 			} catch {
 				/* skip corrupt session files */
@@ -218,8 +223,10 @@ export class SessionStore {
 				? [legacyMigration?.meta?.activeSessionId, meta?.activeSessionId]
 				: [meta.activeSessionId, legacyMigration?.meta?.activeSessionId]
 		this.state.activeSessionId =
-			preferredActive.find((id): id is string => !!id && validItems.has(id)) ??
-			items[0]?.id
+			preferredActive.find(
+				(id): id is string =>
+					!!id && validItems.has(id) && validItems.get(id)?.kind !== 'workshop',
+			) ?? items.find((item) => item.kind !== 'workshop')?.id
 		await this.persistMetaAndIndex()
 	}
 
@@ -358,6 +365,7 @@ export class SessionStore {
 				title: item.title,
 				createdAt: item.createdAt,
 				updatedAt: item.updatedAt,
+				kind: item.kind,
 			}
 		}
 		const meta: ChatMetaFile = {
@@ -400,7 +408,12 @@ export class SessionStore {
 			this.selection.sanitizeSessionSelection(rehydrated) ||
 			opsRewritten
 
-		changed = normalizeRehydratedExecution(rehydrated) || changed
+		// App build history retains interrupted calls; model
+		// context is built separately and never replays an incomplete pair.
+		changed =
+			(rehydrated.workshop
+				? recoverWorkshopHistory(rehydrated.workshop)
+				: normalizeRehydratedExecution(rehydrated)) || changed
 
 		return {
 			session: rehydrated,
@@ -527,6 +540,8 @@ export class SessionStore {
 						)
 					: undefined,
 				subagents: { master },
+				workshop: session.workshop,
+				legacySearch: session.legacySearch,
 			},
 			changed,
 		}
@@ -548,6 +563,7 @@ export class SessionStore {
 			title: title ?? existingTitle,
 			createdAt: session.createdAt,
 			updatedAt: session.updatedAt,
+			kind: session.workshop ? 'workshop' : undefined,
 		}
 		const existingIndex = this.state.sessionIndex.findIndex(
 			(entry) => entry.id === session.id,
@@ -583,6 +599,8 @@ function buildSessionIndexFromMeta(
 	const items: ChatSessionIndexItem[] = []
 	for (const id of meta.orderedSessionIds) {
 		const info = meta.sessions[id]
+		// Earlier WIP indices must be rebuilt from the one-time converted session records.
+		if (info && info.kind !== undefined && info.kind !== 'workshop') return null
 		if (
 			!diskIds.has(id) ||
 			indexedIds.has(id) ||

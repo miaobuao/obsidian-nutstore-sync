@@ -64,6 +64,10 @@ export default class NutstorePlugin extends Plugin {
 				this.localSettings.modules.ai === ModuleState.Enabled,
 			),
 		])
+		await this.ai.workshopLifecycle.update(
+			this.ai.lifecycle.active &&
+				this.localSettings.ai.workshopEnabled !== false,
+		)
 		await this.i18nService.update()
 		if (this.sync.lifecycle.active) await this.sync.scheduled.updateInterval()
 		if (this.ai.lifecycle.active) {

@@ -4,7 +4,6 @@ import {
 	type AssistantModelMessage,
 	type ContentPart,
 	type ModelMessage,
-	type StopCondition,
 	type ToolCallPart,
 	type ToolSet,
 } from 'ai'
@@ -93,6 +92,20 @@ interface RunAgentTurnOptions {
 		agent: ChatAgentState,
 		tools: ToolSet,
 	) => Promise<ModelMessage[]>
+	/** Presentation profiles reuse this loop and canonical transcript projection. */
+	execution?: {
+		tools: ToolSet
+		instructions: string
+		maxSteps: number
+		projectMessages: (messages: ModelMessage[]) => ModelMessage[]
+		/** Notify presentation subscribers after canonical transcript updates. */
+		onProgress?: () => void
+		onStream: (
+			event: 'start' | 'end' | 'delta',
+			delta?: string,
+			finishReason?: string,
+		) => Promise<void>
+	}
 }
 
 export class AgentRunner {
@@ -107,24 +120,29 @@ export class AgentRunner {
 	async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
 		const { session, agent } = options
 		const definition = this.toolExecutor.getAgentDefinition(agent.type)
-		const tools = await this.toolExecutor.createTools(
-			options.depth,
-			definition,
-			session,
-			options.model,
-		)
+		const defaultTools = options.execution
+			? undefined
+			: await this.toolExecutor.createTools(
+					options.depth,
+					definition,
+					session,
+					options.model,
+				)
+		const tools: ToolSet = options.execution?.tools ?? defaultTools!
 		const stableContext = this.toolExecutor.createStableToolsContext(
 			session,
 			definition,
 			options.abortSignal,
 		)
-		const systemPrompt = await buildAgentSystemPrompt(
-			this.app,
-			agent.type,
-			session.systemPrompt,
-			undefined,
-			agent.id,
-		)
+		const systemPrompt =
+			options.execution?.instructions ??
+			(await buildAgentSystemPrompt(
+				this.app,
+				agent.type,
+				session.systemPrompt,
+				undefined,
+				agent.id,
+			))
 		consumePendingInputs(agent)
 		const messages = options.buildMessages
 			? await options.buildMessages(agent, tools)
@@ -139,7 +157,10 @@ export class AgentRunner {
 			runtime: options.runtime,
 			store: this.store,
 			messageFactory: this.messageFactory,
-			notify: this.notify,
+			notify: () => {
+				this.notify()
+				options.execution?.onProgress?.()
+			},
 			assistantMeta: options.assistantMeta,
 			isTurnAlive: options.isTurnAlive,
 		})
@@ -216,17 +237,23 @@ export class AgentRunner {
 		}
 		let shouldSuspend = false
 		let finalMessage: AssistantModelMessage | undefined
-		const repeatedToolCalls: StopCondition<typeof tools> = ({ steps }) => {
-			const calls = steps.at(-1)?.toolCalls ?? []
+		const repeatedToolCalls = ({
+			steps,
+		}: {
+			steps: Array<{ toolCalls: Array<ToolCallPart | undefined> }>
+		}) => {
+			const calls =
+				steps
+					.at(-1)
+					?.toolCalls.filter((call): call is ToolCallPart => !!call) ?? []
 			if (!calls.length) return false
-			repeatState = updateToolCallRepeatState(
-				repeatState,
-				calls as ToolCallPart[],
-			)
+			repeatState = updateToolCallRepeatState(repeatState, calls)
 			return repeatState.isRepeatedTooManyTimes
 		}
-		const suspendAtStepBoundary: StopCondition<typeof tools> = async ({
+		const suspendAtStepBoundary = async ({
 			steps,
+		}: {
+			steps: Array<{ toolCalls: unknown[] }>
 		}) => {
 			if (!steps.at(-1)?.toolCalls.length) return false
 			// Provider tools may defer their results to another step. Never insert
@@ -244,14 +271,18 @@ export class AgentRunner {
 			shouldSuspend = (await options.shouldSuspendAfterToolStep?.()) ?? false
 			return shouldSuspend
 		}
-		const toolLoop = new ToolLoopAgent({
+		const loopSettings = {
 			model,
 			instructions: systemPrompt,
-			tools,
-			toolsContext,
-			stopWhen: [isLoopFinished(), repeatedToolCalls, suspendAtStepBoundary],
+			stopWhen: [
+				isLoopFinished(),
+				repeatedToolCalls,
+				suspendAtStepBoundary,
+				({ steps }: { steps: unknown[] }) =>
+					!!options.execution && steps.length >= options.execution.maxSteps,
+			],
 			maxOutputTokens: resolveModelOutputLimit(options.model),
-			prepareStep: async ({ messages }) => {
+			prepareStep: async ({ messages }: { messages: ModelMessage[] }) => {
 				readTracker.resetSnapshot()
 				await projector.project({ type: 'step-start' })
 				// A scheduler handoff can end the previous run before prepareStep
@@ -260,12 +291,24 @@ export class AgentRunner {
 					findLastAssistantToolCalls(messages),
 				)
 				const attachmentMessage = createViewImageAttachmentMessage(attachments)
-				if (!attachmentMessage) return {}
+				if (!attachmentMessage)
+					return options.execution
+						? { messages: options.execution.projectMessages(messages) }
+						: {}
 				return {
 					messages: [...messages, attachmentMessage],
 				}
 			},
-		})
+		}
+		// Preserve the SDK's concrete contextual-tool types for chat. Search
+		// probes close over a read-only capability set and require no toolsContext.
+		const toolLoop = options.execution
+			? new ToolLoopAgent({ ...loopSettings, tools: options.execution.tools })
+			: new ToolLoopAgent({
+					...loopSettings,
+					tools: defaultTools!,
+					toolsContext,
+				})
 		const result = await toolLoop.stream({
 			messages: prepareMessagesForModel(
 				options.provider,
@@ -326,9 +369,14 @@ export class AgentRunner {
 			},
 		})
 		for await (const chunk of result.stream) {
+			if (chunk.type === 'start-step')
+				await options.execution?.onStream('start')
 			if (chunk.type === 'text-delta' && chunk.text) {
 				await projector.project({ type: 'text-delta', delta: chunk.text })
+				await options.execution?.onStream('delta', chunk.text)
 			}
+			if (chunk.type === 'finish-step')
+				await options.execution?.onStream('end', undefined, chunk.finishReason)
 			if (chunk.type === 'error') throw chunk.error
 			if (chunk.type === 'abort') {
 				throw options.abortSignal?.reason ?? new Error('Agent run aborted')

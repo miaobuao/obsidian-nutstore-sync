@@ -18,6 +18,7 @@ import {
 } from '~/ai/chat/messages/message-utils'
 import { normalizeReversibleToolOpRecord } from '~/ai/chat/messages/reversible-op-utils'
 import createId from '~/utils/create-id'
+import { createWorkshopHistory } from '~/ai/apps/domain'
 
 export function normalizeLegacySession(
 	session: LegacyChatSession,
@@ -197,7 +198,18 @@ export function migrateChatSession(value: unknown): {
 	session: ChatSession
 	changed: boolean
 } {
-	if (isV2Session(value)) return { session: value, changed: false }
+	if (isV2Session(value)) {
+		const legacySearch: unknown = Reflect.get(value, 'search')
+		if (!legacySearch) return { session: value, changed: false }
+		// WIP presentation is archived, never treated as executable App code.
+		const session = {
+			...value,
+			legacySearch,
+			workshop: value.workshop ?? createWorkshopHistory(),
+		}
+		Reflect.deleteProperty(session, 'search')
+		return { session, changed: true }
+	}
 	return {
 		session: migrateLegacySession(value as LegacyChatSession),
 		changed: true,

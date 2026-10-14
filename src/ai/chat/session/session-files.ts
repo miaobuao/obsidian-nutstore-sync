@@ -5,6 +5,7 @@ import {
 	removeLocalPath,
 	writeLocalTextAtomic,
 } from '~/utils/local-vault-io'
+import { mkdirsVault } from '~/utils/mkdirs-vault'
 
 /**
  * Chat sessions are persisted as individual JSON files inside the vault (next
@@ -34,6 +35,7 @@ export interface ChatMetaSessionInfo {
 	title: string
 	createdAt: number
 	updatedAt: number
+	kind?: 'workshop'
 }
 
 export interface ChatMetaFile {
@@ -104,6 +106,32 @@ export class SessionsFileBackend {
 		)
 	}
 
+	/** Immutable artifacts are durable before a session starts referencing them. */
+	async writeArtifact(sessionId: string, id: string, content: string) {
+		if (!/^[\w-]+$/.test(sessionId) || !/^[\w-]+$/.test(id))
+			throw new Error('Invalid artifact identity')
+		const directory = `${CHAT_ROOT_DIR}/artifacts/${sessionId}`
+		await mkdirsVault(this.vault, directory)
+		await writeLocalTextAtomic(
+			this.vault,
+			`${directory}/${id}.json`,
+			JSON.stringify(content),
+		)
+	}
+
+	async readArtifact(sessionId: string, id: string): Promise<string> {
+		if (!/^[\w-]+$/.test(sessionId) || !/^[\w-]+$/.test(id))
+			throw new Error('Invalid artifact identity')
+		const value: unknown = JSON.parse(
+			await readLocalText(
+				this.vault,
+				`${CHAT_ROOT_DIR}/artifacts/${sessionId}/${id}.json`,
+			),
+		)
+		if (typeof value !== 'string') throw new Error('Invalid session artifact')
+		return value
+	}
+
 	async readSessionFile(id: string): Promise<ChatSessionFilePayload> {
 		const filePath = getChatSessionPath(id)
 		let content: string
@@ -136,6 +164,10 @@ export class SessionsFileBackend {
 	}
 
 	async deleteSessionFile(id: string) {
+		if (!id || id === '.' || id === '..' || /[/\\]/.test(id))
+			throw new Error('Invalid session identity')
+		// Artifacts belong exclusively to this session; deletion must not leave its evidence behind.
+		await removeLocalPath(this.app, `${CHAT_ROOT_DIR}/artifacts/${id}`, true)
 		await removeLocalPath(this.app, getChatSessionPath(id))
 	}
 
